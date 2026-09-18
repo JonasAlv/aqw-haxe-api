@@ -31,13 +31,11 @@ class QuestManager {
             _questIDs = [];
             for (raw in parts) {
                 var subParts = raw.split(":");
-                var valRaw = Std.parseInt(subParts[0]);
-                var val:Int = valRaw == null ? 0 : valRaw;
+                var val:Int = com.aqwapi.utils.AqwUtils.parseInt(subParts[0], 0);
                 if (val > 0) {
                     var itemId:Int = -1;
                     if (subParts.length > 1) {
-                        var itRaw = Std.parseInt(subParts[1]);
-                        itemId = itRaw == null ? -1 : itRaw;
+                        itemId = com.aqwapi.utils.AqwUtils.parseInt(subParts[1], -1);
                     }
                     _questIDs.push({ qid: val, itemId: itemId });
                 }
@@ -142,13 +140,11 @@ class QuestManager {
             _questIDs = [];
             for (raw in parts) {
                 var subParts = raw.split(":");
-                var valRaw = Std.parseInt(subParts[0]);
-                var val:Int = valRaw == null ? 0 : valRaw;
+                var val:Int = com.aqwapi.utils.AqwUtils.parseInt(subParts[0], 0);
                 if (val > 0) {
                     var itemId:Int = -1;
                     if (subParts.length > 1) {
-                        var itRaw = Std.parseInt(subParts[1]);
-                        itemId = itRaw == null ? -1 : itRaw;
+                        itemId = com.aqwapi.utils.AqwUtils.parseInt(subParts[1], -1);
                     }
                     _questIDs.push({ qid: val, itemId: itemId });
                 }

@@ -376,13 +376,11 @@ class CombatManager {
         var dl:Dynamic     = avatar.dataLeaf;
         if (dl != null && dl.intState == 0) return false;
 
-        var mpRaw = Std.parseInt(Std.string(icon.actObj.mp));
-        var mpCost:Int = icon.actObj.mp != null ? (mpRaw == null ? 0 : mpRaw) : 0;
+        var mpCost:Int = icon.actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(icon.actObj.mp, 0) : 0;
         var curMp:Int  = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
         if (curMp < mpCost) return false;
 
-        var hpRaw = Std.parseInt(Std.string(icon.actObj.hp));
-        var hpCost:Int = icon.actObj.hp != null ? (hpRaw == null ? 0 : hpRaw) : 0;
+        var hpCost:Int = icon.actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(icon.actObj.hp, 0) : 0;
         var curHp:Int  = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
         if (hpCost > 0 && curHp <= hpCost) return false;
 

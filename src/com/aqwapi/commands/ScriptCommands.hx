@@ -10,9 +10,7 @@ import com.aqwapi.utils.AqwTime;
 
 class ScriptCommands {
     private static inline function _parseInt(v:Dynamic, def:Int = 0):Int {
-        if (v == null) return def;
-        var res = Std.parseInt(Std.string(v));
-        return res == null ? def : res;
+        return com.aqwapi.utils.AqwUtils.parseInt(v, def);
     }
 
 		

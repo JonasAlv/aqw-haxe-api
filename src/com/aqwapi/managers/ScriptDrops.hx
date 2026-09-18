@@ -108,14 +108,12 @@ class ScriptDrops {
             var pending:Dynamic = pendingDrops[i];
             if (pending != null && pending.sName != null) {
                 var pendingName:String = Std.string(pending.sName).toLowerCase();
-                var pIdRaw = Std.parseInt(Std.string(pending.ItemID));
-                var pendingId:Int = pIdRaw == null ? 0 : pIdRaw;
+                var pendingId:Int = com.aqwapi.utils.AqwUtils.parseInt(pending.ItemID, 0);
                 var matches:Bool = false;
 
                 for (itemName in itemNames) {
                     var inStr:String = Std.string(itemName);
-                    var inIdRaw = Std.parseInt(inStr);
-                    var inId:Int = inIdRaw == null ? 0 : inIdRaw;
+                    var inId:Int = com.aqwapi.utils.AqwUtils.parseInt(inStr, 0);
                     var inLower:String = inStr.toLowerCase();
                     var isIdLookup:Bool = inId > 0;
 
@@ -130,8 +128,7 @@ class ScriptDrops {
                 if (!matches) {
                     for (itemName2 in itemNames) {
                         var inStr2:String = Std.string(itemName2);
-                        var inId2Raw = Std.parseInt(inStr2);
-                        var inId2:Int = inId2Raw == null ? 0 : inId2Raw;
+                        var inId2:Int = com.aqwapi.utils.AqwUtils.parseInt(inStr2, 0);
                         var inLower2:String = inStr2.toLowerCase();
                         var isIdLookup2:Bool = inId2 > 0;
                         if (!isIdLookup2 && pendingName.indexOf(inLower2) != -1) { matches = true; break; }
@@ -158,14 +155,12 @@ class ScriptDrops {
 
         if (targetDrops == null || targetDrops.length == 0 || item == null || item.sName == null) return false;
         var searchName:String = Std.string(item.sName).toLowerCase();
-        var sIdRaw = Std.parseInt(Std.string(item.ItemID));
-        var searchId:Int = sIdRaw == null ? 0 : sIdRaw;
+        var searchId:Int = com.aqwapi.utils.AqwUtils.parseInt(item.ItemID, 0);
 
         for (td in targetDrops) {
             var tdStr:String = Std.string(td);
             var tdLower:String = tdStr.toLowerCase();
-            var tdIdRaw = Std.parseInt(tdStr);
-            var tdId:Int = tdIdRaw == null ? 0 : tdIdRaw;
+            var tdId:Int = com.aqwapi.utils.AqwUtils.parseInt(tdStr, 0);
             var isIdLookup:Bool = tdId > 0;
 
             if (tdLower == "any" || tdLower == "all") return true;
@@ -179,8 +174,7 @@ class ScriptDrops {
         for (td2 in targetDrops) {
             var tdStr2:String = Std.string(td2);
             var tdLower2:String = tdStr2.toLowerCase();
-            var tdId2Raw = Std.parseInt(tdStr2);
-            var tdId2:Int = tdId2Raw == null ? 0 : tdId2Raw;
+            var tdId2:Int = com.aqwapi.utils.AqwUtils.parseInt(tdStr2, 0);
             var isIdLookup2:Bool = tdId2 > 0;
             if (!isIdLookup2 && searchName.indexOf(tdLower2) != -1) return true;
         }
