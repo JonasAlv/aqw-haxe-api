@@ -60,11 +60,25 @@ class ScriptCombat {
 
         if (targetMonster != null) {
             try {
-                if (Reflect.field(targetMonster, "pMC") != null) {
+                var mc:Dynamic = Reflect.field(targetMonster, "pMC");
+                if (mc != null) {
                     if (_game.world.setTarget != null) _game.world.setTarget(targetMonster);
+                    if (Reflect.field(mc, "mcChar") != null && _game.world.approachTarget != null) {
+                        _game.world.approachTarget();
+                    }
                 }
             } catch (e:Dynamic) {}
         }
+    }
+
+    public function approachTarget():Void {
+        if (_game == null || _game.world == null) return;
+        try {
+            var avt:Dynamic = _game.world.myAvatar;
+            if (avt != null && avt.target != null && avt.target.pMC != null && Reflect.field(avt.target.pMC, "mcChar") != null) {
+                if (_game.world.approachTarget != null) _game.world.approachTarget();
+            }
+        } catch (e:Dynamic) {}
     }
 
     public function cancelAutoAttack():Void {

@@ -25,9 +25,6 @@ var runCount = 0;
 function onStart() {
     log("Starting Grimgaol Dungeon Runner...");
 
-    // Enable private room for dungeon instances
-    setPrivateRoom(true, 94029);
-
     // Pre-load all quests into memory using UI-less batch loading
     loadQuests([dailyQuestId, 9467, 9466, 9468]);
 

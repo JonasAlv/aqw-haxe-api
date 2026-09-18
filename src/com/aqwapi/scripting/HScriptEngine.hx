@@ -206,6 +206,23 @@ class HScriptEngine {
         _interp.variables.set("cancelTarget", function():Void {
             AqwApi.combat.cancelTarget();
         });
+        _interp.variables.set("approach", function():Void {
+            AqwApi.combat.approachTarget();
+        });
+        _interp.variables.set("approachTarget", function():Void {
+            AqwApi.combat.approachTarget();
+        });
+        _interp.variables.set("walkTo", function(x:Float, y:Float, speed:Float = 16):Void {
+            if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
+                try {
+                    var avt:Dynamic = AqwApi.game.world.myAvatar;
+                    if (avt.pMC != null) {
+                        if (avt.pMC.walkTo != null) avt.pMC.walkTo(x, y, speed);
+                        if (AqwApi.game.world.pushMove != null) AqwApi.game.world.pushMove(avt.pMC, x, y, speed);
+                    }
+                } catch (e:Dynamic) {}
+            }
+        });
         _interp.variables.set("useSkill", function(index:Int):Bool {
             return AqwApi.combat.useSkill(index);
         });
