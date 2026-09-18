@@ -71,13 +71,13 @@ class ScriptCombat {
             if (rotation.indexOf(",") != -1) {
                 var rotParts = rotation.split(",");
                 for (rp in rotParts) {
-                    var ri = com.aqwapi.utils.AqwUtils.parseInt(rp, 0);
-                    if (ri > 0) rotInts.push(ri);
+                    var ri = com.aqwapi.utils.AqwUtils.parseInt(rp, -1);
+                    if (ri >= 0) rotInts.push(ri);
                 }
             } else {
                 for (i in 0...rotation.length) {
-                    var charVal = com.aqwapi.utils.AqwUtils.parseInt(rotation.charAt(i), 0);
-                    if (charVal > 0) rotInts.push(charVal);
+                    var charVal = com.aqwapi.utils.AqwUtils.parseInt(rotation.charAt(i), -1);
+                    if (charVal >= 0) rotInts.push(charVal);
                 }
             }
             if (rotInts.length > 0) CombatManager.setCustomRotation(rotInts);

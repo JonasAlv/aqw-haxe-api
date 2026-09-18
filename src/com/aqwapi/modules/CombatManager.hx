@@ -25,10 +25,12 @@ class CombatManager {
     public static var dodgeMode:String  = "Base";
 
     private static var _timer:Timer;
-    private static var _customRotation:Array<Int> = [5, 4, 3, 2, 1];
+    private static var _customRotation:Array<Int> = [4, 3, 2, 1];
     private static var _rotationIndex:Int = 0;
     private static var _skillsData:Dynamic = null;
     private static var _waitUntil:Dynamic  = {};
+    private static var _lastTargetMMID:String = null;
+    private static var _skillWaitStart:Float = 0;
 
     public static function init():Void {
         reloadSkills();
@@ -52,6 +54,8 @@ class CombatManager {
         IS_ON = true;
         _rotationIndex = 0;
         _waitUntil = {};
+        _lastTargetMMID = null;
+        _skillWaitStart = AqwTime.now();
 
         if (lockedMMID == null && AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
             var avatar:Dynamic = AqwApi.game.world.myAvatar;
@@ -81,6 +85,8 @@ class CombatManager {
         if (_timer != null) { _timer.stop(); _timer = null; }
         lockedMMID = null;
         targetName = null;
+        _lastTargetMMID = null;
+        _skillWaitStart = 0;
         if (AqwApi.game != null && AqwApi.game.world != null) {
             try {
                 if (AqwApi.game.world.cancelAutoAttack != null) {
@@ -193,7 +199,22 @@ class CombatManager {
             }
         }
 
-        if (target == null) return;
+        if (target == null) {
+            _lastTargetMMID = null;
+            return;
+        }
+
+        var curTargetMMID:String = null;
+        if (target.dataLeaf != null && target.dataLeaf.MonMapID != null) {
+            curTargetMMID = Std.string(target.dataLeaf.MonMapID);
+        } else if (target.objData != null && target.objData.MonMapID != null) {
+            curTargetMMID = Std.string(target.objData.MonMapID);
+        }
+        if (curTargetMMID != null && curTargetMMID != _lastTargetMMID) {
+            _lastTargetMMID = curTargetMMID;
+            _rotationIndex = 0;
+            _skillWaitStart = AqwTime.now();
+        }
 
         if (world.approachTarget != null) {
             try { world.approachTarget(); } catch (e:Dynamic) {}
@@ -228,80 +249,176 @@ class CombatManager {
 
         var advancedSkills:Array<Dynamic> = cast modeConfig.skills;
         var useMode:String = modeConfig.skillUseMode != null ? Std.string(modeConfig.skillUseMode) : "WaitForCooldown";
+        var skillTimeout:Float = (modeConfig.skillTimeout != null) ? com.aqwapi.utils.AqwUtils.parseInt(modeConfig.skillTimeout, 1000) : 1000;
+        if (skillTimeout <= 0) skillTimeout = 1000;
 
         if (useMode == "UseIfAvailable") {
             runUseIfAvailable(world, avatar, target, advancedSkills);
         } else {
-            runWaitForCooldown(world, avatar, target, advancedSkills);
+            runWaitForCooldown(world, avatar, target, advancedSkills, skillTimeout);
         }
     }
 
-    private static function runWaitForCooldown(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>):Void {
+    private static function runWaitForCooldown(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float):Void {
         if (_rotationIndex >= skills.length) _rotationIndex = 0;
         var skill:Dynamic = skills[_rotationIndex];
-        var skillId:Int = Std.int(skill.skillId) + 1;
-        if (!evaluateRules(skill.rules, world, avatar, target, skillId)) {
+        var skillId:Int = com.aqwapi.utils.AqwUtils.parseInt(skill.skillId, 1);
+
+        if (!evaluateSkillRules(skill, world, avatar, target, skillId)) {
             _rotationIndex = (_rotationIndex + 1) % skills.length;
+            _skillWaitStart = AqwTime.now();
             return;
         }
+
         if (tryFireSkill(world, avatar, skillId)) {
             _rotationIndex = (_rotationIndex + 1) % skills.length;
+            _skillWaitStart = AqwTime.now();
+        } else {
+            var now:Float = AqwTime.now();
+            if (skillTimeout > 0 && (now - _skillWaitStart) >= skillTimeout) {
+                _rotationIndex = (_rotationIndex + 1) % skills.length;
+                _skillWaitStart = now;
+            }
         }
     }
 
     private static function runUseIfAvailable(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>):Void {
         for (i in 0...skills.length) {
             var skill:Dynamic = skills[i];
-            var skillId:Int = Std.int(skill.skillId) + 1;
-            if (!evaluateRules(skill.rules, world, avatar, target, skillId)) continue;
+            var skillId:Int = com.aqwapi.utils.AqwUtils.parseInt(skill.skillId, 1);
+            if (!evaluateSkillRules(skill, world, avatar, target, skillId)) continue;
             if (tryFireSkill(world, avatar, skillId)) return;
         }
     }
 
-    private static function evaluateRules(rules:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int):Bool {
-        if (rules == null) return true;
-        if (!Std.isOfType(rules, Array)) return true;
-        var arr:Array<Dynamic> = cast rules;
+    private static function evaluateSkillRules(skill:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int):Bool {
+        if (skill == null || skill.rules == null) return true;
+        if (!Std.isOfType(skill.rules, Array)) return true;
+        var arr:Array<Dynamic> = cast skill.rules;
         if (arr.length == 0) return true;
+
+        var isMultiAura:Bool = (skill.isMultiAura == true);
+        var multiAuraOp:String = (skill.multiAuraOperator != null) ? Std.string(skill.multiAuraOperator).toUpperCase() : "AND";
         var pStats:Dynamic = getPlayerStats(world, avatar);
-        for (rule in arr) {
-            if (!evaluateRule(rule, world, avatar, target, pStats, skillId)) return false;
+
+        if (isMultiAura) {
+            var multiAuraRules:Array<Dynamic> = [];
+            var otherRules:Array<Dynamic> = [];
+
+            for (rule in arr) {
+                if (rule != null && Std.string(rule.type) == "MultiAura") {
+                    multiAuraRules.push(rule);
+                } else {
+                    otherRules.push(rule);
+                }
+            }
+
+            for (rule in otherRules) {
+                if (!evaluateRule(rule, world, avatar, target, pStats, skillId)) return false;
+            }
+
+            if (multiAuraRules.length > 0) {
+                if (multiAuraOp == "OR") {
+                    var anyPassed:Bool = false;
+                    for (mRule in multiAuraRules) {
+                        if (evaluateRule(mRule, world, avatar, target, pStats, skillId)) {
+                            anyPassed = true;
+                            break;
+                        }
+                    }
+                    if (!anyPassed) return false;
+                } else {
+                    for (mRule in multiAuraRules) {
+                        if (!evaluateRule(mRule, world, avatar, target, pStats, skillId)) return false;
+                    }
+                }
+            }
+            return true;
+        } else {
+            for (rule in arr) {
+                if (!evaluateRule(rule, world, avatar, target, pStats, skillId)) return false;
+            }
+            return true;
         }
-        return true;
     }
 
     private static function evaluateRule(rule:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, pStats:Dynamic, skillId:Int):Bool {
+        if (rule == null) return true;
         switch (Std.string(rule.type)) {
-            case "None": return true;
+            case "None":
+                return true;
+
             case "Wait":
                 var wKey:String = "s" + skillId;
                 var now:Float = AqwTime.now();
-                var timeout:Float = rule.timeout != null ? rule.timeout : 0;
+                var timeout:Float = rule.timeout != null ? com.aqwapi.utils.AqwUtils.parseInt(rule.timeout, 0) : 0;
                 var waitVal:Null<Float> = Reflect.field(_waitUntil, wKey);
                 if (waitVal == null || now >= waitVal) {
                     Reflect.setField(_waitUntil, wKey, now + timeout);
                     return true;
                 }
                 return false;
+
             case "Health":
                 var hp:Float = getStat(pStats, avatar, "HP");
                 var maxHp:Float = getStat(pStats, avatar, "MaxHP");
-                var hpPct:Float = (rule.isPercentage == true) ? (maxHp > 0 ? hp / maxHp * 100 : 0) : hp;
-                return compare(hpPct, rule.value, Std.string(rule.comparison));
+                var hpPct:Float = (rule.isPercentage != false) ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
+                var targetVal:Float = rule.value != null ? Std.parseFloat(Std.string(rule.value)) : 0;
+                return compare(hpPct, targetVal, Std.string(rule.comparison));
+
             case "Mana":
                 var mp:Float = getStat(pStats, avatar, "MP");
                 var maxMp:Float = getStat(pStats, avatar, "MaxMP");
-                var mpPct:Float = (rule.isPercentage == true) ? (maxMp > 0 ? mp / maxMp * 100 : 0) : mp;
-                return compare(mpPct, rule.value, Std.string(rule.comparison));
+                var mpPct:Float = (rule.isPercentage != false) ? (maxMp > 0 ? (mp / maxMp * 100) : 0) : mp;
+                var targetVal:Float = rule.value != null ? Std.parseFloat(Std.string(rule.value)) : 0;
+                return compare(mpPct, targetVal, Std.string(rule.comparison));
+
+            case "PartyHealth":
+                return evaluatePartyHealth(rule, world, avatar);
+
             case "Aura", "MultiAura":
-                var hasAura:Bool = checkAura(Std.string(rule.auraName), Std.string(rule.auraTarget), world, avatar, target);
-                return Std.string(rule.comparison) == "greater" ? hasAura : !hasAura;
+                var auraName:String = (rule.auraName != null) ? Std.string(rule.auraName) : "";
+                var auraTarget:String = (rule.auraTarget != null) ? Std.string(rule.auraTarget) : "self";
+                var stacks:Float = getAuraStacks(auraName, auraTarget, world, avatar, target);
+                var threshold:Float = (rule.value != null) ? Std.parseFloat(Std.string(rule.value)) : 0;
+                if (Math.isNaN(threshold)) threshold = 0;
+                var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "greater";
+                if (comp == "greater") {
+                    return (threshold > 0) ? (stacks >= threshold) : (stacks > 0);
+                } else {
+                    return (threshold > 0) ? (stacks <= threshold) : (stacks <= 0);
+                }
         }
         return true;
     }
 
     private static function compare(val:Float, threshold:Float, comp:String):Bool {
         return comp == "greater" ? val > threshold : val < threshold;
+    }
+
+    private static function evaluatePartyHealth(rule:Dynamic, world:Dynamic, avatar:Dynamic):Bool {
+        if (world == null || world.players == null) return false;
+        var threshold:Float = (rule.value != null) ? Std.parseFloat(Std.string(rule.value)) : 0;
+        var isPct:Bool = (rule.isPercentage != false);
+        var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "less";
+        var myFrame:String = (world.strFrame != null) ? Std.string(world.strFrame) : "";
+
+        try {
+            var players:Array<Dynamic> = cast world.players;
+            for (p in players) {
+                if (p == null) continue;
+                var pFrame:String = (p.strFrame != null) ? Std.string(p.strFrame) : "";
+                if (pFrame != myFrame) continue;
+                var dl:Dynamic = p.dataLeaf;
+                if (dl == null || dl.intHP == null) continue;
+                var hp:Float = Std.int(dl.intHP);
+                var maxHp:Float = (dl.intHPMax != null) ? Std.int(dl.intHPMax) : 1;
+                if (hp <= 0) continue;
+                var val:Float = isPct ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
+                if (compare(val, threshold, comp)) return true;
+            }
+        } catch (e:Dynamic) {}
+        return false;
     }
 
     private static function getPlayerStats(world:Dynamic, avatar:Dynamic):Dynamic {
@@ -320,29 +437,78 @@ class CombatManager {
         return 0;
     }
 
-    private static function checkAura(auraName:String, auraTarget:String, world:Dynamic, avatar:Dynamic, target:Dynamic):Bool {
+    private static function getAuraStacks(auraName:String, auraTarget:String, world:Dynamic, avatar:Dynamic, target:Dynamic):Float {
+        if (world == null || avatar == null || auraName == "") return 0;
         var auras:Dynamic = null;
-        if (auraTarget == "self") {
-            try { if (world.uoTreeLeaf != null && avatar.pnm != null) { var n:Dynamic = world.uoTreeLeaf(avatar.pnm); if (n != null && n.auras != null) auras = n.auras; } } catch (e:Dynamic) {}
+        var targetIsSelf:Bool = (auraTarget != null && auraTarget.toLowerCase() == "self");
+
+        if (targetIsSelf) {
+            try {
+                if (world.uoTree != null && avatar.pnm != null) {
+                    var uo = Reflect.field(world.uoTree, Std.string(avatar.pnm).toLowerCase());
+                    if (uo != null && uo.auras != null) auras = uo.auras;
+                }
+            } catch (e:Dynamic) {}
+            if (auras == null) {
+                try {
+                    if (world.uoTreeLeaf != null && avatar.pnm != null) {
+                        var n:Dynamic = world.uoTreeLeaf(avatar.pnm);
+                        if (n != null && n.auras != null) auras = n.auras;
+                    }
+                } catch (e:Dynamic) {}
+            }
             if (auras == null && avatar.auras != null) auras = avatar.auras;
         } else {
-            if (target != null && target.dataLeaf != null && target.dataLeaf.auras != null) auras = target.dataLeaf.auras;
+            // Target monster
+            if (target != null) {
+                try {
+                    var mmid:Dynamic = null;
+                    if (target.dataLeaf != null && target.dataLeaf.MonMapID != null) mmid = target.dataLeaf.MonMapID;
+                    else if (target.objData != null && target.objData.MonMapID != null) mmid = target.objData.MonMapID;
+                    if (mmid != null && world.monTree != null) {
+                        var monObj = Reflect.field(world.monTree, Std.string(mmid));
+                        if (monObj != null && monObj.auras != null) auras = monObj.auras;
+                    }
+                } catch (e:Dynamic) {}
+                if (auras == null && target.dataLeaf != null && target.dataLeaf.auras != null) {
+                    auras = target.dataLeaf.auras;
+                }
+                if (auras == null && target.auras != null) {
+                    auras = target.auras;
+                }
+            }
         }
-        if (auras == null) return false;
+
+        if (auras == null) return 0;
         var search:String = auraName.toLowerCase();
+        var totalStacks:Float = 0;
+
+        var processAura = function(a:Dynamic):Void {
+            if (a == null) return;
+            // Filter expired auras (a.e == 1 in AQW Flash)
+            if (a.e == 1 || a.e == "1" || a.e == true) return;
+            var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : "");
+            if (name != "" && name.toLowerCase() == search) {
+                var val:Dynamic = a.val;
+                if (val == null) {
+                    totalStacks += 1;
+                } else {
+                    var parsedVal:Float = Std.parseFloat(Std.string(val));
+                    totalStacks += Math.isNaN(parsedVal) ? 1 : parsedVal;
+                }
+            }
+        };
+
         if (Std.isOfType(auras, Array)) {
-            for (a in (cast auras : Array<Dynamic>)) {
-                if (a != null && a.name != null && Std.string(a.name).toLowerCase() == search) return true;
-                if (a != null && a.nam != null  && Std.string(a.nam).toLowerCase()  == search) return true;
-            }
+            for (a in (cast auras : Array<Dynamic>)) processAura(a);
         } else {
-            for (k in Reflect.fields(auras)) {
-                var av:Dynamic = Reflect.field(auras, k);
-                if (av != null && av.name != null && Std.string(av.name).toLowerCase() == search) return true;
-                if (av != null && av.nam  != null && Std.string(av.nam).toLowerCase()  == search) return true;
-            }
+            for (k in Reflect.fields(auras)) processAura(Reflect.field(auras, k));
         }
-        return false;
+        return totalStacks;
+    }
+
+    private static function checkAura(auraName:String, auraTarget:String, world:Dynamic, avatar:Dynamic, target:Dynamic):Bool {
+        return getAuraStacks(auraName, auraTarget, world, avatar, target) > 0;
     }
 
     public static function findClassConfig(className:String):Dynamic {
@@ -368,8 +534,8 @@ class CombatManager {
     private static function runSimpleRotation(world:Dynamic, avatar:Dynamic):Void {
         var valid:Array<Int> = [];
         for (idx in _customRotation) {
-            var icon:Dynamic = getIcon(idx);
-            if (icon != null && icon.actObj != null && icon.actObj.isOK != false) valid.push(idx);
+            var actObj:Dynamic = getSkillAction(idx);
+            if (actObj != null && actObj.isOK != false) valid.push(idx);
         }
         if (valid.length == 0) return;
         if (_rotationIndex >= valid.length) _rotationIndex = 0;
@@ -377,30 +543,30 @@ class CombatManager {
     }
 
     private static function tryFireSkill(world:Dynamic, avatar:Dynamic, idx:Int):Bool {
-        var icon:Dynamic = getIcon(idx);
-        if (icon == null || icon.actObj == null || icon.actObj.isOK == false) return false;
+        var actObj:Dynamic = getSkillAction(idx);
+        if (actObj == null || actObj.isOK == false) return false;
         var pStats:Dynamic = getPlayerStats(world, avatar);
         var dl:Dynamic     = avatar.dataLeaf;
         if (dl != null && dl.intState == 0) return false;
 
-        var mpCost:Int = icon.actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(icon.actObj.mp, 0) : 0;
+        var mpCost:Int = actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.mp, 0) : 0;
         var curMp:Int  = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
         if (curMp < mpCost) return false;
 
-        var hpCost:Int = icon.actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(icon.actObj.hp, 0) : 0;
+        var hpCost:Int = actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.hp, 0) : 0;
         var curHp:Int  = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
         if (hpCost > 0 && curHp <= hpCost) return false;
 
-        var ready:Bool = (world.actionTimeCheck != null) ? (world.actionTimeCheck(icon.actObj) == true) : true;
+        var ready:Bool = (world.actionTimeCheck != null) ? (world.actionTimeCheck(actObj) == true) : true;
         if (!ready) {
             try {
-                if (world.ActionResults != null && Reflect.field(world.ActionResults, icon.actObj.ref) != null) {
-                    var ar:Dynamic = Reflect.field(world.ActionResults, icon.actObj.ref);
-                    ready = (AqwTime.now() - ar.ts) >= icon.actObj.cd;
+                if (world.ActionResults != null && Reflect.field(world.ActionResults, actObj.ref) != null) {
+                    var ar:Dynamic = Reflect.field(world.ActionResults, actObj.ref);
+                    ready = (AqwTime.now() - ar.ts) >= actObj.cd;
                 }
             } catch (e:Dynamic) {}
         }
-        if (ready) { world.testAction(icon.actObj); return true; }
+        if (ready) { world.testAction(actObj); return true; }
         return false;
     }
 
@@ -411,36 +577,52 @@ class CombatManager {
 
     public static function canFireSkill(idx:Int):Bool {
         if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return false;
-        var icon:Dynamic = getIcon(idx);
-        if (icon == null || icon.actObj == null || icon.actObj.isOK == false) return false;
+        var actObj:Dynamic = getSkillAction(idx);
+        if (actObj == null || actObj.isOK == false) return false;
         var world = AqwApi.game.world;
         var avatar = world.myAvatar;
         var pStats:Dynamic = getPlayerStats(world, avatar);
         var dl:Dynamic     = avatar.dataLeaf;
         if (dl != null && dl.intState == 0) return false;
 
-        var mpCost:Int = icon.actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(icon.actObj.mp, 0) : 0;
+        var mpCost:Int = actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.mp, 0) : 0;
         var curMp:Int  = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
         if (curMp < mpCost) return false;
 
-        var hpCost:Int = icon.actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(icon.actObj.hp, 0) : 0;
+        var hpCost:Int = actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.hp, 0) : 0;
         var curHp:Int  = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
         if (hpCost > 0 && curHp <= hpCost) return false;
 
-        var ready:Bool = (world.actionTimeCheck != null) ? (world.actionTimeCheck(icon.actObj) == true) : true;
+        var ready:Bool = (world.actionTimeCheck != null) ? (world.actionTimeCheck(actObj) == true) : true;
         if (!ready) {
             try {
-                if (world.ActionResults != null && Reflect.field(world.ActionResults, icon.actObj.ref) != null) {
-                    var ar:Dynamic = Reflect.field(world.ActionResults, icon.actObj.ref);
-                    ready = (AqwTime.now() - ar.ts) >= icon.actObj.cd;
+                if (world.ActionResults != null && Reflect.field(world.ActionResults, actObj.ref) != null) {
+                    var ar:Dynamic = Reflect.field(world.ActionResults, actObj.ref);
+                    ready = (AqwTime.now() - ar.ts) >= actObj.cd;
                 }
             } catch (e:Dynamic) {}
         }
         return ready;
     }
 
+    private static function getSkillAction(idx:Int):Dynamic {
+        var icon:Dynamic = getIcon(idx);
+        if (icon != null && icon.actObj != null) return icon.actObj;
+        if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.actions != null && AqwApi.game.world.actions.active != null) {
+            try {
+                var actList:Array<Dynamic> = cast AqwApi.game.world.actions.active;
+                if (idx >= 0 && idx < actList.length) {
+                    var act:Dynamic = actList[idx];
+                    if (act != null) return act;
+                }
+            } catch (e:Dynamic) {}
+        }
+        return null;
+    }
+
     private static function getIcon(idx:Int):Dynamic {
         if (AqwApi.game == null || AqwApi.game.ui == null || AqwApi.game.ui.mcInterface == null || AqwApi.game.ui.mcInterface.actBar == null) return null;
-        return AqwApi.game.ui.mcInterface.actBar.getChildByName("i" + idx);
+        var childName:String = (idx == 0) ? "i1" : ("i" + (idx + 1));
+        return AqwApi.game.ui.mcInterface.actBar.getChildByName(childName);
     }
 }
