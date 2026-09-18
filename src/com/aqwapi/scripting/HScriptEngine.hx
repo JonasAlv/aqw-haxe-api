@@ -63,6 +63,28 @@ class HScriptEngine {
 
     public function reset():Void {
         if (isRunning) stop();
+        waitTimer = 0;
+        statusText = (_program != null) ? "Ready." : "Stopped.";
+
+        if (_program != null) {
+            _resetSandbox();
+            try {
+                _interp.execute(_program);
+                _hasOnStart = _interp.variables.exists("onStart") && Reflect.isFunction(_interp.variables.get("onStart"));
+                _hasOnTick = _interp.variables.exists("onTick") && Reflect.isFunction(_interp.variables.get("onTick"));
+                _hasOnStop = _interp.variables.exists("onStop") && Reflect.isFunction(_interp.variables.get("onStop"));
+                _hasOnPacket = _interp.variables.exists("onPacket") && Reflect.isFunction(_interp.variables.get("onPacket"));
+                _hasOnZoneEntered = _interp.variables.exists("onZoneEntered") && Reflect.isFunction(_interp.variables.get("onZoneEntered"));
+                _hasOnQuestUpdated = _interp.variables.exists("onQuestUpdated") && Reflect.isFunction(_interp.variables.get("onQuestUpdated"));
+                _hasOnInventoryChanged = _interp.variables.exists("onInventoryChanged") && Reflect.isFunction(_interp.variables.get("onInventoryChanged"));
+            } catch (e:Dynamic) {
+                ApiLogger.error("HScript", "Reset error: " + Std.string(e));
+            }
+        }
+    }
+
+    public function clear():Void {
+        if (isRunning) stop();
         _program = null;
         _hasOnStart = false;
         _hasOnTick = false;
@@ -72,9 +94,10 @@ class HScriptEngine {
         _hasOnQuestUpdated = false;
         _hasOnInventoryChanged = false;
         waitTimer = 0;
-        statusText = "Reset.";
+        statusText = "No script loaded.";
         _resetSandbox();
     }
+
 
     private function _resetSandbox():Void {
         _interp = new Interp();
@@ -215,7 +238,10 @@ class HScriptEngine {
         if ((AqwApi.game == null || AqwApi.game.world == null) && AqwApi.game != null) {
             AqwApi.init(AqwApi.game);
         }
-        if (_program == null) return;
+        if (_program == null) {
+            ApiLogger.warn("HScript", "Cannot start: no script loaded.");
+            return;
+        }
 
         isRunning = true;
         waitTimer = 0;
@@ -225,6 +251,11 @@ class HScriptEngine {
         statusText = "Running HScript...";
         AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STARTED, "HScript Started!"));
         ApiLogger.info("HScript", "HScript Started!");
+
+        try {
+            com.aqwapi.modules.ScriptManager.SINGLETON.isRunning = true;
+            com.aqwapi.modules.ScriptManager.SINGLETON.statusText = statusText;
+        } catch (e:Dynamic) {}
 
         if (_hasOnStart) {
             try {
@@ -242,6 +273,11 @@ class HScriptEngine {
         _timer.stop();
         statusText = "Stopped.";
 
+        try {
+            com.aqwapi.modules.ScriptManager.SINGLETON.isRunning = false;
+            com.aqwapi.modules.ScriptManager.SINGLETON.statusText = statusText;
+        } catch (e:Dynamic) {}
+
         if (_hasOnStop) {
             try {
                 var fn = _interp.variables.get("onStop");
@@ -258,6 +294,7 @@ class HScriptEngine {
         if (AqwApi.combat != null) AqwApi.combat.stopAuto();
         else CombatManager.stop();
     }
+
 
     private function onTimerTick(e:TimerEvent):Void {
         if (!isRunning) return;

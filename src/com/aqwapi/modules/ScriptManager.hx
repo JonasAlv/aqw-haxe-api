@@ -115,11 +115,12 @@ class ScriptManager {
         }
 
         if (isHScriptMode) {
-            isRunning = true;
             AqwApi.hscript.start();
+            isRunning = AqwApi.hscript.isRunning;
             statusText = AqwApi.hscript.statusText;
             return;
         }
+
 
         if (commands.length == 0) return;
 
