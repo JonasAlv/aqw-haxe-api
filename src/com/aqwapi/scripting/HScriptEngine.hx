@@ -187,6 +187,54 @@ class HScriptEngine {
             stop();
         });
 
+        // Packets & Network
+        _interp.variables.set("sendPacket", function(packet:String):Void {
+            if (AqwApi.game != null && AqwApi.game.sfc != null) {
+                AqwApi.game.sfc.sendString(packet);
+            }
+        });
+        _interp.variables.set("sendXt", function(cmd:String, args:Array<Dynamic> = null):Void {
+            if (AqwApi.transport != null) {
+                AqwApi.transport.sendExtensionCommand(cmd, args != null ? args : []);
+            }
+        });
+        _interp.variables.set("dungeonQueue", function(mapName:String):Void {
+            var roomId = AqwApi.map.roomId;
+            var packet = "%xt%zm%dungeonQueue%" + roomId + "%" + mapName + "-100000%";
+            if (AqwApi.game != null && AqwApi.game.sfc != null) {
+                AqwApi.game.sfc.sendString(packet);
+            }
+        });
+
+        // Target & Auras
+        _interp.variables.set("getTarget", function():Dynamic {
+            return AqwApi.player.target;
+        });
+        _interp.variables.set("hasTargetAura", function(auraName:String):Bool {
+            var t = AqwApi.player.target;
+            return (t != null) ? t.hasAura(auraName) : false;
+        });
+        _interp.variables.set("hasPlayerAura", function(auraName:String):Bool {
+            return AqwApi.player.hasAura(auraName);
+        });
+
+        // Monster & Cell Query
+        _interp.variables.set("isMonsterAliveInCell", function(cell:String):Bool {
+            var list = AqwApi.monsters.getByCell(cell);
+            for (m in list) {
+                if (m != null && m.alive && m.hp > 0) return true;
+            }
+            return false;
+        });
+        _interp.variables.set("getLivingMonstersInCell", function(cell:String):Array<Dynamic> {
+            var list = AqwApi.monsters.getByCell(cell);
+            var res:Array<Dynamic> = [];
+            for (m in list) {
+                if (m != null && m.alive && m.hp > 0) res.push(m);
+            }
+            return res;
+        });
+
         // Utilities
         _interp.variables.set("Math", Math);
         _interp.variables.set("Std", Std);

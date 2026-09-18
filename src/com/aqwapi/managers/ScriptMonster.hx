@@ -25,6 +25,28 @@ class ScriptMonster {
     public function findByMapId(mapId:String, aliveOnly:Bool = true):EntityDTO {
         if (mapId == null) return null;
         var search:String = Std.string(mapId);
+
+        // 1. Direct lookup via world.monTree if available
+        if (_game != null && _game.world != null && _game.world.monTree != null) {
+            try {
+                var rawTree:Dynamic = _game.world.monTree;
+                var rawMon:Dynamic = null;
+                if (Reflect.hasField(rawTree, search)) {
+                    rawMon = Reflect.field(rawTree, search);
+                } else {
+                    var idInt:Null<Int> = Std.parseInt(search);
+                    if (idInt != null && Reflect.hasField(rawTree, Std.string(idInt))) {
+                        rawMon = Reflect.field(rawTree, Std.string(idInt));
+                    }
+                }
+                if (rawMon != null) {
+                    var ent = new EntityDTO(rawMon);
+                    if (!aliveOnly || ent.alive) return ent;
+                }
+            } catch (e:Dynamic) {}
+        }
+
+        // 2. Scan raw monsters
         for (monster in _getRawMonsters()) {
             if (monster == null) continue;
             var target = new EntityDTO(monster);

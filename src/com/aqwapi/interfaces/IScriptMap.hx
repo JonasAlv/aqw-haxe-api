@@ -7,4 +7,5 @@ interface IScriptMap {
     function snapTo(target:Dynamic):Void;
     var isLoaded(get, never):Bool;
     var name(get, never):String;
+    var roomId(get, never):Int;
 }

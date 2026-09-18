@@ -82,4 +82,19 @@ class ScriptMap {
         if (_game == null || _game.world == null) return "";
         return _game.world.strMapName != null ? Std.string(_game.world.strMapName) : "";
     }
+
+    public var roomId(get, never):Int;
+    @:getter(roomId)
+    public function get_roomId_prop():Int {
+        if (_game == null) return 1;
+        if (_game.sfc != null && _game.sfc.activeRoomId != null) return Std.int(_game.sfc.activeRoomId);
+        if (_game.world != null && _game.world.curRoom != null) return Std.int(_game.world.curRoom);
+        return 1;
+    }
+    public function get_roomId():Int {
+        if (_game == null) return 1;
+        if (_game.sfc != null && _game.sfc.activeRoomId != null) return Std.int(_game.sfc.activeRoomId);
+        if (_game.world != null && _game.world.curRoom != null) return Std.int(_game.world.curRoom);
+        return 1;
+    }
 }

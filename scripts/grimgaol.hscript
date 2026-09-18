@@ -1,0 +1,291 @@
+// Grimgaol Dungeon Automation Script
+// Faithfully ported from Skua's Grimgaol.cs
+// Supports 12-cell dungeon progression, boss counter-mechanics, and quest turn-ins
+
+var dailyQuestId = 9469;
+var dungeonQuests = [9467, 9466, 9468];
+var clearItem = "Grimskull's Gaol Cleared";
+
+var allDrops = [
+    "Grimskull's Gaol Cleared",
+    "Traitorous Skull",
+    "Grimskull Trolling Rep"
+];
+
+var dungeonCells = [
+    "Enter", "r2", "r3", "r4", "r5", 
+    "r6", "r7", "r8", "r9", "r10", 
+    "r11", "r12", "r12a"
+];
+
+var currentClass = "Generic";
+var rotationIndex = 0;
+var runCount = 0;
+
+function onStart() {
+    log("Starting Grimgaol Dungeon Runner...");
+
+    // Accept quests
+    acceptQuest(dailyQuestId);
+    for (q in dungeonQuests) acceptQuest(q);
+
+    // Class selection
+    if (hasItem("Dragon of Time")) {
+        currentClass = "Dragon of Time";
+        equip("Dragon of Time");
+    } else if (hasItem("King's Echo")) {
+        currentClass = "King's Echo";
+        equip("King's Echo");
+    } else if (hasItem("Legion Revenant")) {
+        currentClass = "Legion Revenant";
+        equip("Legion Revenant");
+    } else if (hasItem("ArchPaladin")) {
+        currentClass = "ArchPaladin";
+        equip("ArchPaladin");
+    } else {
+        currentClass = "Generic";
+    }
+
+    log("Equipped Class: " + currentClass);
+
+    // Enter dungeon if not already inside
+    if (map.name.toLowerCase() != "grimgaol") {
+        log("Queueing for Grimgaol dungeon...");
+        dungeonQueue("grimgaol");
+        sleep(2500);
+    }
+}
+
+function getNextCell(cell) {
+    if (cell == "Enter") return "r2";
+    if (cell == "r2") return "r3";
+    if (cell == "r3") return "r4";
+    if (cell == "r4") return "r5";
+    if (cell == "r5") return "r6";
+    if (cell == "r6") return "r7";
+    if (cell == "r7") return "r8";
+    if (cell == "r8") return "r9";
+    if (cell == "r9") return "r10";
+    if (cell == "r10") return "r11";
+    if (cell == "r11") return "r12";
+    if (cell == "r12") return "r12a";
+    return "r12a";
+}
+
+function findActiveCombatCell() {
+    for (c in dungeonCells) {
+        if (c == "r12a") return "r12a";
+        if (isMonsterAliveInCell(c)) return c;
+    }
+    return "r12a";
+}
+
+function onTick() {
+    // 1. Handle player death
+    if (!player.isAlive) {
+        log("Player defeated, waiting for respawn...");
+        rotationIndex = 0;
+        sleep(2000);
+        return;
+    }
+
+    // 2. Ensure inside Grimgaol map
+    if (map.name.toLowerCase() != "grimgaol") {
+        // Check if finished previous run and has turn-in
+        if (hasItem(clearItem)) {
+            for (q in dungeonQuests) completeQuest(q);
+            completeQuest(dailyQuestId);
+            for (d in allDrops) getDrop(d);
+            runCount = runCount + 1;
+            log("Runs completed: " + runCount);
+            sleep(1000);
+        }
+
+        acceptQuest(dailyQuestId);
+        for (q in dungeonQuests) acceptQuest(q);
+
+        log("Queueing into Grimgaol dungeon...");
+        dungeonQueue("grimgaol");
+        sleep(2500);
+        return;
+    }
+
+    // 3. Cutscene bypass
+    var cellLower = player.cell.toLowerCase();
+    if (cellLower.indexOf("cut") != -1) {
+        log("Cutscene detected, jumping to Enter...");
+        jump("Enter", "Spawn");
+        sleep(1000);
+        return;
+    }
+
+    // 4. Dungeon Completion in r12a
+    if (player.cell == "r12a") {
+        log("Grimgaol Cleared! Turning in quests and collecting drops...");
+        for (d in allDrops) getDrop(d);
+        for (q in dungeonQuests) completeQuest(q);
+        completeQuest(dailyQuestId);
+        runCount = runCount + 1;
+        log("Total Grimgaol Runs Complete: " + runCount);
+
+        // Leave dungeon to reset instance
+        join("whitemap-100000");
+        sleep(2000);
+        return;
+    }
+
+    // 5. Active cell recovery (e.g. after respawning at Enter)
+    var currentCell = player.cell;
+    var activeCell = findActiveCombatCell();
+
+    // If current cell is cleared but we are behind where active monsters are, jump forward
+    if (!isMonsterAliveInCell(currentCell) && activeCell != currentCell) {
+        log("Cell " + currentCell + " is clear. Advancing to active cell: " + activeCell);
+        jump(activeCell, "Left");
+        sleep(800);
+        return;
+    }
+
+    // 6. Cell Combat
+    executeCellCombat(currentCell);
+}
+
+function executeCellCombat(cell) {
+    // Collect living monsters in current cell
+    var monstersInCell = getLivingMonstersInCell(cell);
+    if (monstersInCell.length == 0) {
+        var next = getNextCell(cell);
+        log("Cleared room " + cell + "! Advancing to " + next);
+        jump(next, "Left");
+        sleep(800);
+        return;
+    }
+
+    // A. Room 10 Priority Target Switching (Mechro Lich 16 -> 17 -> 18 -> Cyborg 19)
+    if (cell == "r10") {
+        handleRoom10Target();
+    } else {
+        // Standard Target Acquisition
+        if (player.target == null || !player.target.alive) {
+            attack(monstersInCell[0].mapId);
+            sleep(200);
+            return;
+        }
+    }
+
+    // B. Boss Counter-Mechanic: Talon Twisting Reflect Shield (Enter & r12)
+    if (cell == "Enter" || cell == "r12") {
+        var hasTalon = hasTargetAura("Talon Twisting");
+        var hasRetaliate = hasTargetAura("Retaliate");
+
+        if (hasTalon && !hasRetaliate) {
+            cancelAutoAttack();
+            cancelTarget();
+            log("REFLECT SHIELD (Talon Twisting) active! Pausing combat until Retaliate appears...");
+            sleep(1000);
+            return;
+        }
+    }
+
+    // C. Boss Counter-Mechanic: Empress Angler Execute (r3)
+    if (cell == "r3") {
+        var hasBlade = hasTargetAura("Concealed Blade");
+        var hasFeeder = hasTargetAura("Bottom Feeder");
+
+        if (hasBlade && !hasFeeder) {
+            log("EXECUTE DETECTED (Concealed Blade)! Emergency heal prioritized!");
+            if (canUseSkill(2)) useSkill(2);
+            else if (canUseSkill(3)) useSkill(3);
+            sleep(250);
+            return;
+        }
+    }
+
+    // D. Fire Class Skills
+    fireClassSkills(cell);
+    sleep(150);
+}
+
+function handleRoom10Target() {
+    var mon16 = monsters.findByMapId("16", true);
+    if (mon16 != null && mon16.alive && mon16.hp > 70000) {
+        if (player.target == null || player.target.mapId != "16") attack("16");
+        return;
+    }
+
+    var mon17 = monsters.findByMapId("17", true);
+    if (mon17 != null && mon17.alive && mon17.hp > 50000) {
+        if (player.target == null || player.target.mapId != "17") attack("17");
+        return;
+    }
+
+    var mon18 = monsters.findByMapId("18", true);
+    if (mon18 != null && mon18.alive && mon18.hp > 20000) {
+        if (player.target == null || player.target.mapId != "18") attack("18");
+        return;
+    }
+
+    // Thresholds cleared: attack any remaining living monster in r10
+    if (player.target == null || !player.target.alive) {
+        var alive = getLivingMonstersInCell("r10");
+        if (alive.length > 0) attack(alive[0].mapId);
+    }
+}
+
+function fireClassSkills(cell) {
+    // Check Contrarium (heal inversion)
+    var hasContrarium = (cell == "Enter" || cell == "r12") && hasPlayerAura("Contrarium");
+
+    // Select skill rotation by class
+    var rot = [1, 2, 3, 4];
+    if (currentClass == "Dragon of Time") {
+        rot = [3, 2, 1, 2, 4, 2];
+    } else if (currentClass == "Legion Revenant") {
+        rot = [3, 4, 1, 2];
+    } else if (currentClass == "King's Echo") {
+        rot = [1, 2];
+    }
+
+    // King's Echo specific utility:
+    if (currentClass == "King's Echo") {
+        // Skill 4 on low mana
+        if (player.mp <= player.maxMp * 0.25 && canUseSkill(4)) {
+            useSkill(4);
+            return;
+        }
+        // Skill 3 on low HP only if NOT afflicted with Contrarium
+        if (player.hp <= player.maxHp * 0.65 && !hasContrarium && canUseSkill(3)) {
+            useSkill(3);
+            return;
+        }
+    }
+
+    // Execute next rotation skill
+    var skill = rot[rotationIndex];
+
+    // Contrarium protection: skip healing skill (skill 2 for DoT, skill 3 for KE/AP)
+    if (hasContrarium && (skill == 2 || skill == 3)) {
+        rotationIndex = (rotationIndex + 1) % rot.length;
+        skill = rot[rotationIndex];
+    }
+
+    if (canUseSkill(skill)) {
+        useSkill(skill);
+        rotationIndex = (rotationIndex + 1) % rot.length;
+    } else {
+        // Try any off-cooldown rotation skill
+        for (i in 0...rot.length) {
+            var candidate = rot[i];
+            if (hasContrarium && (candidate == 2 || candidate == 3)) continue;
+            if (canUseSkill(candidate)) {
+                useSkill(candidate);
+                break;
+            }
+        }
+    }
+}
+
+function onStop() {
+    log("Grimgaol Runner stopped.");
+    dropCombat();
+}

@@ -19,6 +19,10 @@ class ScriptCombat {
             targetMonster = (targetName == "*") ? _game.world.getMonster("Any") : _game.world.getMonster(targetName);
         }
         if (targetMonster == null) {
+            var ent:com.aqwapi.data.EntityDTO = AqwApi.monsters.findByMapId(monsterName, true);
+            if (ent != null) targetMonster = ent.raw;
+        }
+        if (targetMonster == null) {
             var ent:com.aqwapi.data.EntityDTO = AqwApi.monsters.findByName(monsterName, true);
             if (ent != null) targetMonster = ent.raw;
         }
