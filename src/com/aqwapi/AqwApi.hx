@@ -32,7 +32,14 @@ class AqwApi {
         player = new ScriptPlayer(game);
         drops = new ScriptDrops(game);
         shop = new ScriptShop(game);
-        monsters = new ScriptMonster(game);
+        try {
+            if ((untyped Math).isNaN == null) {
+                (untyped Math).isNaN = untyped __global__["isNaN"];
+            }
+            if ((untyped Math).isFinite == null) {
+                (untyped Math).isFinite = untyped __global__["isFinite"];
+            }
+        } catch (e:Dynamic) {}
         hscript = HScriptEngine.SINGLETON;
     }
 

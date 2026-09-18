@@ -25,10 +25,10 @@ class ScriptMonster {
     public function findByMapId(mapId:String, aliveOnly:Bool = true):EntityDTO {
         if (mapId == null) return null;
         var search:String = Std.string(mapId);
-        var idInt:Null<Int> = Std.parseInt(search);
+        var idInt:Int = com.aqwapi.utils.AqwUtils.parseInt(search, 0);
 
         // 1. Native AQW world.getMonster(int) lookup (returns live Avatar instance with pMC)
-        if (idInt != null && idInt > 0 && _game != null && _game.world != null && _game.world.getMonster != null) {
+        if (idInt > 0 && _game != null && _game.world != null && _game.world.getMonster != null) {
             try {
                 var rawAvt:Dynamic = _game.world.getMonster(idInt);
                 if (rawAvt != null) {
@@ -52,7 +52,7 @@ class ScriptMonster {
                 var rawMon:Dynamic = null;
                 if (Reflect.hasField(rawTree, search)) {
                     rawMon = Reflect.field(rawTree, search);
-                } else if (idInt != null && Reflect.hasField(rawTree, Std.string(idInt))) {
+                } else if (idInt > 0 && Reflect.hasField(rawTree, Std.string(idInt))) {
                     rawMon = Reflect.field(rawTree, Std.string(idInt));
                 }
                 if (rawMon != null) {

@@ -31,8 +31,8 @@ class ScriptCombat {
 
         // 2. MonMapID integer lookup (native world.getMonster(int))
         if (targetMonster == null) {
-            var idInt:Null<Int> = Std.parseInt(sName);
-            if (idInt != null && idInt > 0 && _game.world.getMonster != null) {
+            var idInt:Int = com.aqwapi.utils.AqwUtils.parseInt(sName, 0);
+            if (idInt > 0 && _game.world.getMonster != null) {
                 try {
                     var avt:Dynamic = _game.world.getMonster(idInt);
                     if (avt != null && Reflect.field(avt, "pMC") != null) {
