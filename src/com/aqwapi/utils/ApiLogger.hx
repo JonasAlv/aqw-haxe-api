@@ -125,9 +125,6 @@ class ApiLogger {
             try {
                 flash.Lib.trace(formatted);
             } catch (e:Dynamic) {}
-            try {
-                untyped __global__["trace"](formatted);
-            } catch (e:Dynamic) {}
         }
 
         if (printToFile) {
