@@ -214,7 +214,7 @@ class CombatManager {
             for (key in Reflect.fields(config)) { modeConfig = Reflect.field(config, key); break; }
         }
 
-        if (modeConfig == null || modeConfig.skills == null || !Std.is(modeConfig.skills, Array) || (cast modeConfig.skills : Array<Dynamic>).length == 0) {
+        if (modeConfig == null || modeConfig.skills == null || !Std.isOfType(modeConfig.skills, Array) || (cast modeConfig.skills : Array<Dynamic>).length == 0) {
             runSimpleRotation(world, avatar);
             return;
         }
@@ -253,7 +253,7 @@ class CombatManager {
 
     private static function evaluateRules(rules:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int):Bool {
         if (rules == null) return true;
-        if (!Std.is(rules, Array)) return true;
+        if (!Std.isOfType(rules, Array)) return true;
         var arr:Array<Dynamic> = cast rules;
         if (arr.length == 0) return true;
         var pStats:Dynamic = getPlayerStats(world, avatar);
@@ -323,7 +323,7 @@ class CombatManager {
         }
         if (auras == null) return false;
         var search:String = auraName.toLowerCase();
-        if (Std.is(auras, Array)) {
+        if (Std.isOfType(auras, Array)) {
             for (a in (cast auras : Array<Dynamic>)) {
                 if (a != null && a.name != null && Std.string(a.name).toLowerCase() == search) return true;
                 if (a != null && a.nam != null  && Std.string(a.nam).toLowerCase()  == search) return true;
@@ -351,7 +351,7 @@ class CombatManager {
     public static function getAvailableModes(className:String):Array<String> {
         var config:Dynamic = findClassConfig(className);
         if (config == null) return ["Base"];
-        if (Std.is(config, Array)) return ["Base"];
+        if (Std.isOfType(config, Array)) return ["Base"];
         var modes:Array<String> = [];
         for (mode in Reflect.fields(config)) modes.push(mode);
         if (modes.length == 0) return ["Base"];

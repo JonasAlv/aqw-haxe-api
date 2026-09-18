@@ -55,7 +55,7 @@ class ScriptMonster {
             try {
                 var rawList:Dynamic = _game.world.getMonstersByCell(cell);
                 var arr:Array<Dynamic> = [];
-                if (Std.is(rawList, Array)) {
+                if (Std.isOfType(rawList, Array)) {
                     var a:Array<Dynamic> = cast rawList;
                     for (i in 0...a.length) {
                         if (a[i] != null) arr.push(a[i]);
@@ -97,7 +97,7 @@ class ScriptMonster {
         var list:Array<Dynamic> = [];
 
         // In Flash, raw can be an Array, a Dictionary, or an Object
-        if (Std.is(raw, Array)) {
+        if (Std.isOfType(raw, Array)) {
             var arr:Array<Dynamic> = cast raw;
             for (i in 0...arr.length) {
                 var item:Dynamic = arr[i];
