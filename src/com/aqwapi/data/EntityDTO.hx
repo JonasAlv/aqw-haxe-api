@@ -40,6 +40,15 @@ class EntityDTO {
         return true;
     }
 
+    public var hasGraphic(get, never):Bool;
+    private function get_hasGraphic():Bool {
+        if (raw == null) return false;
+        try {
+            var mc:Dynamic = _sf(raw, "pMC");
+            return mc != null;
+        } catch (e:Dynamic) { return false; }
+    }
+
     public function new(rawData:Dynamic) {
         if (rawData == null) return;
         this.raw = rawData;

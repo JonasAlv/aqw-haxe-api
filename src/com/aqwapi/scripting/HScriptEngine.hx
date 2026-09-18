@@ -238,7 +238,8 @@ class HScriptEngine {
         });
         _interp.variables.set("dungeonQueue", function(mapName:String, roomNum:Int = -1):Void {
             var roomId = AqwApi.map.roomId;
-            var num = (roomNum > 0) ? roomNum : AqwApi.map.privateRoomNumber;
+            var num = (roomNum > 0) ? roomNum : (100000 + Std.random(90000));
+            AqwApi.map.privateRoomNumber = num;
             var targetMap = (mapName.indexOf("-") != -1) ? mapName : (mapName + "-" + num);
             var packet = "%xt%zm%dungeonQueue%" + roomId + "%" + targetMap + "%";
             if (AqwApi.game != null && AqwApi.game.sfc != null) {
@@ -266,7 +267,7 @@ class HScriptEngine {
         _interp.variables.set("isMonsterAliveInCell", function(cell:String):Bool {
             var list = AqwApi.monsters.getByCell(cell);
             for (m in list) {
-                if (m != null && m.alive && m.hp > 0) return true;
+                if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return true;
             }
             return false;
         });
@@ -274,7 +275,7 @@ class HScriptEngine {
             var list = AqwApi.monsters.getByCell(cell);
             var res:Array<Dynamic> = [];
             for (m in list) {
-                if (m != null && m.alive && m.hp > 0) res.push(m);
+                if (m != null && m.alive && m.hp > 0 && m.hasGraphic) res.push(m);
             }
             return res;
         });

@@ -17,7 +17,6 @@ function onStart() {
     stateTimer = 0;
     retryCount = 0;
     acceptedAnyDungeonQuest = false;
-    setPrivateRoom(true, 94029);
 }
 
 function onStop() {
@@ -46,7 +45,14 @@ function onTick() {
             sleep(2000);
             return;
         } else {
-            log("[Step 1] Already inside Grimgaol!");
+            var living = getLivingMonstersInCell("Enter");
+            if (living.length == 0) {
+                log("[Step 1] Current Grimgaol instance is empty/cleared. Jumping to battleon to allow fresh queue...");
+                join("battleon");
+                sleep(1500);
+                return;
+            }
+            log("[Step 1] Inside active Grimgaol with living monsters!");
             state = 2;
             sleep(300);
             return;

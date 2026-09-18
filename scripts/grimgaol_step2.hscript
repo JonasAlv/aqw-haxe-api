@@ -6,12 +6,14 @@ var dungeonQuests = [9467, 9466, 9468];
 
 var currentClass = "Generic";
 var rotationIndex = 0;
+var grimskullEngaged = false;
 var grimskullDefeated = false;
 
 function onStart() {
     log("==========================================");
     log("[Step 2] Grimgaol Room 1 Combat Debug Initialized");
     log("==========================================");
+    grimskullEngaged = false;
     grimskullDefeated = false;
     rotationIndex = 0;
 
@@ -49,7 +51,7 @@ function onTick() {
 
     // 1. Ensure inside Grimgaol at Enter
     if (map.name.toLowerCase() != "grimgaol") {
-        log("[Step 2] Not in Grimgaol. Queueing...");
+        log("[Step 2] Not in Grimgaol. Queueing fresh dungeon instance...");
         dungeonQueue("grimgaol");
         sleep(2000);
         return;
@@ -77,12 +79,20 @@ function onTick() {
     // 3. Find living monsters in Enter cell
     var monstersInCell = getLivingMonstersInCell("Enter");
     if (monstersInCell.length == 0) {
-        if (!grimskullDefeated) {
+        if (grimskullEngaged && !grimskullDefeated) {
             grimskullDefeated = true;
             log("==========================================");
             log("[Step 2] SUCCESS! Grimskull defeated in Enter!");
             log("[Step 2] Room 1 is 100% clear. Next cell: r2.");
             log("==========================================");
+            sleep(3000);
+            return;
+        } else if (!grimskullEngaged && !grimskullDefeated) {
+            log("[Step 2] Enter cell is empty (instance was already cleared).");
+            log("[Step 2] Jumping to Battleon to queue a fresh Grimgaol run...");
+            join("battleon");
+            sleep(1500);
+            return;
         }
         sleep(3000);
         return;
@@ -94,6 +104,7 @@ function onTick() {
     if (player.target == null || !player.target.alive) {
         log("[Step 2] Target acquired: " + targetMon.name + " (MapID: " + targetMon.mapId + ", HP: " + targetMon.hp + ")");
         attack(targetMon.mapId);
+        grimskullEngaged = true;
         sleep(250);
         return;
     }

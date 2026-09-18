@@ -62,7 +62,6 @@ class ScriptCombat {
             try {
                 if (Reflect.field(targetMonster, "pMC") != null) {
                     if (_game.world.setTarget != null) _game.world.setTarget(targetMonster);
-                    if (_game.world.approachTarget != null) _game.world.approachTarget();
                 }
             } catch (e:Dynamic) {}
         }
