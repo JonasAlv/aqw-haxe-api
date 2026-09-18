@@ -11,9 +11,10 @@ class ApiLogger {
 
     public static var level:Int = LEVEL_INFO;
     public static var printToConsole:Bool = true;
-    public static var printToChat:Bool = false;
-    public static var chatMinLevel:Int = LEVEL_WARN;
+    public static var printToChat:Bool = true;
+    public static var chatMinLevel:Int = LEVEL_INFO;
     public static var onLog:String->Int->String->Void = null;
+
 
     private static var _traceInited:Bool = initTrace();
     private static function initTrace():Bool {
@@ -59,9 +60,13 @@ class ApiLogger {
 
         if (printToConsole) {
             try {
+                flash.Lib.trace(formatted);
+            } catch (e:Dynamic) {}
+            try {
                 untyped __global__["trace"](formatted);
             } catch (e:Dynamic) {}
         }
+
 
         if (printToChat && msgLevel >= chatMinLevel) {
             pushChat(msgLevel >= LEVEL_WARN ? "warning" : "server", formatted);
