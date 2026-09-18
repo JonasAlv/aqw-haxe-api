@@ -181,6 +181,15 @@ class HScriptEngine {
         _interp.variables.set("StringTools", StringTools);
         _interp.variables.set("Date", Date);
         _interp.variables.set("AqwTime", AqwTime);
+        _interp.variables.set("isNaN", function(v:Dynamic):Bool {
+            return (untyped __global__["isNaN"])(v);
+        });
+        _interp.variables.set("parseInt", function(v:Dynamic):Null<Int> {
+            return com.aqwapi.utils.AqwUtils.parseInt(v);
+        });
+        _interp.variables.set("parseFloat", function(v:Dynamic):Float {
+            return com.aqwapi.utils.AqwUtils.parseFloat(v);
+        });
     }
 
     public function loadScript(scriptCode:String):Bool {
@@ -262,7 +271,7 @@ class HScriptEngine {
                 var fn = _interp.variables.get("onStart");
                 fn();
             } catch (e:Dynamic) {
-                _handleScriptError("onStart error: " + Std.string(e));
+                _handleScriptError("onStart error: " + Std.string(e), e);
             }
         }
     }
@@ -314,7 +323,7 @@ class HScriptEngine {
                 var fn = _interp.variables.get("onTick");
                 fn();
             } catch (err:Dynamic) {
-                _handleScriptError("onTick error: " + Std.string(err));
+                _handleScriptError("onTick error: " + Std.string(err), err);
             }
         } else {
             var bgCombat = CombatManager.IS_ON;
@@ -332,30 +341,37 @@ class HScriptEngine {
 
     private function onGameZoneEntered(e:GameEvent):Void {
         if (isRunning && _hasOnZoneEntered) {
-            try { _interp.variables.get("onZoneEntered")(e.data); } catch(err:Dynamic) { _handleScriptError("onZoneEntered: " + err); }
+            try { _interp.variables.get("onZoneEntered")(e.data); } catch(err:Dynamic) { _handleScriptError("onZoneEntered: " + err, err); }
         }
     }
 
     private function onGameQuestUpdated(e:GameEvent):Void {
         if (isRunning && _hasOnQuestUpdated) {
-            try { _interp.variables.get("onQuestUpdated")(e.data); } catch(err:Dynamic) { _handleScriptError("onQuestUpdated: " + err); }
+            try { _interp.variables.get("onQuestUpdated")(e.data); } catch(err:Dynamic) { _handleScriptError("onQuestUpdated: " + err, err); }
         }
     }
 
     private function onGameInventoryChanged(e:GameEvent):Void {
         if (isRunning && _hasOnInventoryChanged) {
-            try { _interp.variables.get("onInventoryChanged")(e.data); } catch(err:Dynamic) { _handleScriptError("onInventoryChanged: " + err); }
+            try { _interp.variables.get("onInventoryChanged")(e.data); } catch(err:Dynamic) { _handleScriptError("onInventoryChanged: " + err, err); }
         }
     }
 
     public function handlePacket(type:String, cmd:String, data:Dynamic):Void {
         if (isRunning && _hasOnPacket) {
-            try { _interp.variables.get("onPacket")(type, cmd, data); } catch(err:Dynamic) { _handleScriptError("onPacket: " + err); }
+            try { _interp.variables.get("onPacket")(type, cmd, data); } catch(err:Dynamic) { _handleScriptError("onPacket: " + err, err); }
         }
     }
 
-    private function _handleScriptError(msg:String):Void {
-        ApiLogger.error("HScript", msg);
+    private function _handleScriptError(msg:String, err:Dynamic = null):Void {
+        var fullMsg = msg;
+        if (err != null) {
+            try {
+                var stack:String = (Reflect.field(err, "getStackTrace") != null) ? (untyped err).getStackTrace() : "";
+                if (stack != null && stack != "") fullMsg += "\n" + stack;
+            } catch (e:Dynamic) {}
+        }
+        ApiLogger.error("HScript", fullMsg);
         statusText = "Error: " + msg;
         AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "HScript Error: " + msg));
         stop();

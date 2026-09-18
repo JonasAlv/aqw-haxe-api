@@ -43,12 +43,12 @@ class ScriptCombat {
             if (rotation.indexOf(",") != -1) {
                 var rotParts = rotation.split(",");
                 for (rp in rotParts) {
-                    var ri = (Std.parseInt(rp) == null ? 0 : Std.parseInt(rp));
+                    var ri = com.aqwapi.utils.AqwUtils.parseInt(rp, 0);
                     if (ri > 0) rotInts.push(ri);
                 }
             } else {
                 for (i in 0...rotation.length) {
-                    var charVal = (Std.parseInt(rotation.charAt(i)) == null ? 0 : Std.parseInt(rotation.charAt(i)));
+                    var charVal = com.aqwapi.utils.AqwUtils.parseInt(rotation.charAt(i), 0);
                     if (charVal > 0) rotInts.push(charVal);
                 }
             }

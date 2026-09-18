@@ -25,7 +25,7 @@ class ScriptInventory {
 
     public function getQuantity(itemNameOrId:String):Int {
         if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return 0;
-        var targetId:Int = (Std.parseInt(itemNameOrId) == null ? 0 : Std.parseInt(itemNameOrId));
+        var targetId:Int = com.aqwapi.utils.AqwUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
         var targetName:String = itemNameOrId.toLowerCase();
         var items:Array<Dynamic> = cast _game.world.myAvatar.items;
@@ -60,14 +60,14 @@ class ScriptInventory {
         if (item == null || item.sName == null) return 0;
         var itemName:String = Std.string(item.sName).toLowerCase();
         for (targetName in targetNames) {
-            var targetId:Int = (Std.parseInt(targetName) == null ? 0 : Std.parseInt(targetName));
+            var targetId:Int = com.aqwapi.utils.AqwUtils.parseInt(targetName, 0);
             var isIdLookup:Bool = targetId > 0;
             var matches:Bool = isIdLookup ? (item.ItemID == targetId) : (itemName == targetName);
             if (matches) {
                 if (Reflect.hasField(countedNames, targetName)) return 0;
                 Reflect.setField(countedNames, targetName, true);
-                var qty:Null<Int> = Std.parseInt(Std.string(item.iQty));
-                return (qty == null || qty < 1) ? 1 : qty;
+                var qty:Int = com.aqwapi.utils.AqwUtils.parseInt(item.iQty, 1);
+                return (qty < 1) ? 1 : qty;
             }
         }
         return 0;
@@ -75,7 +75,7 @@ class ScriptInventory {
 
     private function _findItem(itemNameOrId:String):Dynamic {
         if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return null;
-        var itemId:Int = (Std.parseInt(itemNameOrId) == null ? 0 : Std.parseInt(itemNameOrId));
+        var itemId:Int = com.aqwapi.utils.AqwUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = itemId > 0;
         var targetName:String = itemNameOrId.toLowerCase();
         var bestMatch:Dynamic = null;

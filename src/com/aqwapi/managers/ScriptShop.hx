@@ -21,7 +21,7 @@ class ScriptShop {
     public function buyItem(itemNameOrId:String, quantity:Int = 1):Void {
         if (quantity < 1) quantity = 1;
         if (_game == null || _game.world == null) return;
-        var targetId:Int = (Std.parseInt(itemNameOrId) == null ? 0 : Std.parseInt(itemNameOrId));
+        var targetId:Int = com.aqwapi.utils.AqwUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
         var target:String = itemNameOrId.toLowerCase();
         try {
@@ -59,7 +59,7 @@ class ScriptShop {
     public function sellItem(itemNameOrId:String, quantity:Int = 1):Void {
         if (quantity < 1) quantity = 1;
         if (_game == null || _game.world == null) return;
-        var targetId:Int = (Std.parseInt(itemNameOrId) == null ? 0 : Std.parseInt(itemNameOrId));
+        var targetId:Int = com.aqwapi.utils.AqwUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
         var target:String = itemNameOrId.toLowerCase();
         try {
