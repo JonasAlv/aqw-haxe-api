@@ -17,3 +17,4 @@ class AqwUtils {
         return untyped __global__["isNaN"](v) ? def : v;
     }
 }
+
