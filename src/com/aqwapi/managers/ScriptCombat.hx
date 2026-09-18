@@ -27,6 +27,8 @@ class ScriptCombat {
             if (ent != null) targetMonster = ent.raw;
         }
         if (targetMonster != null) {
+            if (_game.world.setTarget != null) _game.world.setTarget(targetMonster);
+            if (_game.world.approachTarget != null) _game.world.approachTarget();
             try {
                 var hasPMC = Reflect.hasField(targetMonster, "pMC") && Reflect.field(targetMonster, "pMC") != null;
                 if (hasPMC) {
@@ -67,6 +69,9 @@ class ScriptCombat {
         cancelAutoAttack();
         cancelTarget();
         if (_game == null || _game.world == null || _game.world.moveToCell == null) return;
+        var currentCell:String = _game.world.strFrame;
+        var currentPad:String = _game.world.strPad;
+        _game.world.moveToCell(currentCell, currentPad);
         try {
             var currentCell:String = _game.world.strFrame;
             var currentPad:String = _game.world.strPad;

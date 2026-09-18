@@ -25,7 +25,10 @@ var runCount = 0;
 function onStart() {
     log("Starting Grimgaol Dungeon Runner...");
 
-    // Accept quests
+    // Pre-load and accept quests
+    loadQuest(dailyQuestId);
+    for (q in dungeonQuests) loadQuest(q);
+
     acceptQuest(dailyQuestId);
     for (q in dungeonQuests) acceptQuest(q);
 

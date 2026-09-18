@@ -153,7 +153,13 @@ class HScriptEngine {
         _interp.variables.set("getDrop", function(itemName:String):Void {
             AqwApi.drops.getDrop(itemName);
         });
+        _interp.variables.set("loadQuest", function(questId:Int):Void {
+            AqwApi.quest.load(questId);
+        });
         _interp.variables.set("acceptQuest", function(questId:Int):Void {
+            AqwApi.quest.accept(questId);
+        });
+        _interp.variables.set("ensureAccept", function(questId:Int):Void {
             AqwApi.quest.accept(questId);
         });
         _interp.variables.set("completeQuest", function(questId:Int, itemId:Int = -1):Void {

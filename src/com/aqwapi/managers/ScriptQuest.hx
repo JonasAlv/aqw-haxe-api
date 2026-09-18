@@ -13,14 +13,25 @@ class ScriptQuest implements IScriptQuest {
     private var _timer:Timer;
     private var _questIDs:Array<Dynamic> = [];
     private var _lastTurnIns:Dynamic = {};
+    private var _lastLoadRequests:Map<Int, Float> = new Map<Int, Float>();
 
     public function new(gameReference:AQWGame) {
         _game = gameReference;
     }
 
     public function load(questId:Int):Void {
+        var now:Float = AqwTime.now();
+        if (_lastLoadRequests.exists(questId) && (now - _lastLoadRequests.get(questId)) < 3000) {
+            return;
+        }
+        _lastLoadRequests.set(questId, now);
         if (_game != null && _game.world != null && _game.world.getQuests != null) {
-            _game.world.getQuests([questId]);
+            try {
+                _game.world.getQuests([questId]);
+            } catch (e:Dynamic) {}
+        } else if (_game != null && _game.sfc != null) {
+            var rId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : 1;
+            _game.sfc.sendString("%xt%zm%getQuests%" + rId + "%" + questId + "%");
         }
     }
 
@@ -32,15 +43,14 @@ class ScriptQuest implements IScriptQuest {
     }
 
     public function accept(questId:Int):Void {
-        if (_game != null && _game.world != null && _game.world.acceptQuest != null) {
-            if (_game.world.questTree != null && Reflect.field(_game.world.questTree, Std.string(questId)) != null) {
+        if (_game == null || _game.world == null) return;
+        if (_game.world.questTree != null && Reflect.field(_game.world.questTree, Std.string(questId)) != null) {
+            if (_game.world.acceptQuest != null) {
                 _game.world.acceptQuest(questId);
-            } else {
-                AqwApi.dispatcher.dispatchEvent(new ApiEvent(
-                    ApiEvent.NOTIFICATION,
-                    "Quest " + questId + " not loaded! Skipping accept."
-                ));
             }
+        } else {
+            // Automatically request quest data from server if not yet loaded
+            load(questId);
         }
     }
 
