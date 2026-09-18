@@ -151,6 +151,56 @@ class ScriptQuest implements IScriptQuest {
         return isInProgress(questId);
     }
 
+    public function isAvailable(questId:Int):Bool {
+        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
+        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+        if (qData == null) return false;
+
+        var world = _game.world;
+        var myAvatar = world.myAvatar;
+        if (myAvatar == null || myAvatar.objData == null) return false;
+
+        // 1. One-time quest already done (bOnce == 1 && slotVal >= qval)
+        var bOnce:Int = (qData.bOnce != null) ? Std.int(qData.bOnce) : 0;
+        var qslot:Int = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
+        var qval:Int = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
+        if (bOnce == 1) {
+            if (qslot >= 0 && world.getQuestValue != null) {
+                var curSlotVal:Int = Std.int(world.getQuestValue(qslot));
+                if (curSlotVal >= qval) return false;
+            }
+        }
+
+        // 2. Member / Upgrade requirement
+        var bUpg:Int = (qData.bUpg != null) ? Std.int(qData.bUpg) : 0;
+        if (bUpg == 1) {
+            var isUpgraded:Bool = (myAvatar.isUpgraded != null) ? myAvatar.isUpgraded() : false;
+            if (!isUpgraded) return false;
+        }
+
+        // 3. Level requirement
+        var iLvl:Int = (qData.iLvl != null) ? Std.int(qData.iLvl) : 0;
+        var pLvl:Int = (myAvatar.objData.intLevel != null) ? Std.int(myAvatar.objData.intLevel) : 0;
+        if (iLvl > pLvl) return false;
+
+        // 4. Prerequisite slot requirement
+        if (qslot >= 0 && qval > 0 && world.getQuestValue != null) {
+            var curVal:Int = Std.int(world.getQuestValue(qslot));
+            var reqVal:Int = Std.int(Math.abs(qval)) - 1;
+            if (curVal < reqVal) return false;
+        }
+
+        // 5. Daily or Special Achievement Flag
+        if (qData.sField != null && qData.iIndex != null && world.getAchievement != null) {
+            try {
+                var ach = world.getAchievement(qData.sField, qData.iIndex);
+                if (ach != 0) return false;
+            } catch (e:Dynamic) {}
+        }
+
+        return true;
+    }
+
     public var isAutoRunning(get, never):Bool;
 
     @:getter(isAutoRunning)

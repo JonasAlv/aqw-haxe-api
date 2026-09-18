@@ -1,0 +1,153 @@
+// Grimgaol Step 2: Room 1 (Enter) Combat Debug
+// Tests monster target acquisition, class skill rotation, Talon Twisting pause, and Contrarium guard in Room 1.
+
+var dailyQuestId = 9469;
+var dungeonQuests = [9467, 9466, 9468];
+
+var currentClass = "Generic";
+var rotationIndex = 0;
+var grimskullDefeated = false;
+
+function onStart() {
+    log("==========================================");
+    log("[Step 2] Grimgaol Room 1 Combat Debug Initialized");
+    log("==========================================");
+    grimskullDefeated = false;
+    rotationIndex = 0;
+
+    // Detect and select loadout
+    if (hasItem("Dragon of Time")) {
+        currentClass = "Dragon of Time";
+        equip("Dragon of Time");
+    } else if (hasItem("King's Echo")) {
+        currentClass = "King's Echo";
+        equip("King's Echo");
+    } else if (hasItem("Legion Revenant")) {
+        currentClass = "Legion Revenant";
+        equip("Legion Revenant");
+    } else if (hasItem("ArchPaladin")) {
+        currentClass = "ArchPaladin";
+        equip("ArchPaladin");
+    } else {
+        currentClass = "Generic";
+    }
+    log("[Step 2] Class selected: " + currentClass);
+}
+
+function onStop() {
+    log("[Step 2] Script Stopped.");
+    dropCombat();
+}
+
+function onTick() {
+    if (!map.isLoaded) {
+        sleep(500);
+        return;
+    }
+
+    skipCutscene();
+
+    // 1. Ensure inside Grimgaol at Enter
+    if (map.name.toLowerCase() != "grimgaol") {
+        log("[Step 2] Not in Grimgaol. Queueing...");
+        dungeonQueue("grimgaol");
+        sleep(2000);
+        return;
+    }
+
+    if (player.cell != "Enter") {
+        log("[Step 2] Cell is '" + player.cell + "', jumping to Enter...");
+        jump("Enter", "Spawn");
+        sleep(800);
+        return;
+    }
+
+    // 2. Ensure quests are loaded and accepted
+    if (!isQuestAccepted(dailyQuestId)) {
+        if (!isQuestLoaded(dailyQuestId)) loadQuests([dailyQuestId, 9467, 9466, 9468]);
+        acceptQuest(dailyQuestId);
+    }
+    for (q in dungeonQuests) {
+        if (!isQuestAccepted(q)) {
+            if (!isQuestLoaded(q)) loadQuests([dailyQuestId, 9467, 9466, 9468]);
+            acceptQuest(q);
+        }
+    }
+
+    // 3. Find living monsters in Enter cell
+    var monstersInCell = getLivingMonstersInCell("Enter");
+    if (monstersInCell.length == 0) {
+        if (!grimskullDefeated) {
+            grimskullDefeated = true;
+            log("==========================================");
+            log("[Step 2] SUCCESS! Grimskull defeated in Enter!");
+            log("[Step 2] Room 1 is 100% clear. Next cell: r2.");
+            log("==========================================");
+        }
+        sleep(3000);
+        return;
+    }
+
+    var targetMon = monstersInCell[0];
+
+    // 4. Target Acquisition
+    if (player.target == null || !player.target.alive) {
+        log("[Step 2] Target acquired: " + targetMon.name + " (MapID: " + targetMon.mapId + ", HP: " + targetMon.hp + ")");
+        attack(targetMon.mapId);
+        sleep(250);
+        return;
+    }
+
+    // 5. Boss Mechanic: Talon Twisting (100% Reflect Shield)
+    var hasTalon = hasTargetAura("Talon Twisting");
+    var hasRetaliate = hasTargetAura("Retaliate");
+    if (hasTalon && !hasRetaliate) {
+        cancelAutoAttack();
+        cancelTarget();
+        log("[Step 2] REFLECT SHIELD (Talon Twisting) active! Combat paused until Retaliate...");
+        sleep(1000);
+        return;
+    }
+
+    // 6. Boss Mechanic: Contrarium (Heal Inversion)
+    var hasContrarium = hasPlayerAura("Contrarium");
+
+    // 7. Fire class skills
+    var rot = [1, 2, 3, 4];
+    if (currentClass == "Dragon of Time") {
+        rot = [3, 2, 1, 2, 4, 2];
+    } else if (currentClass == "Legion Revenant") {
+        rot = [3, 4, 1, 2];
+    } else if (currentClass == "King's Echo") {
+        rot = [1, 2];
+    }
+
+    // King's Echo specific utility:
+    if (currentClass == "King's Echo") {
+        if (player.mp <= player.maxMp * 0.25 && canUseSkill(4)) {
+            useSkill(4);
+            sleep(200);
+            return;
+        }
+        if (player.hp <= player.maxHp * 0.65 && !hasContrarium && canUseSkill(3)) {
+            useSkill(3);
+            sleep(200);
+            return;
+        }
+    }
+
+    var skill = rot[rotationIndex];
+
+    // Contrarium protection: skip healing skill (skill 2 for DoT, skill 3 for KE/AP)
+    if (hasContrarium && (skill == 2 || skill == 3)) {
+        rotationIndex = (rotationIndex + 1) % rot.length;
+        skill = rot[rotationIndex];
+    }
+
+    if (canUseSkill(skill)) {
+        useSkill(skill);
+        rotationIndex = (rotationIndex + 1) % rot.length;
+    }
+
+    sleep(200);
+}

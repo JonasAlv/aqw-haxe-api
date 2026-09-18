@@ -194,6 +194,9 @@ class HScriptEngine {
         _interp.variables.set("isQuestAccepted", function(questId:Int):Bool {
             return AqwApi.quest.isAccepted(questId);
         });
+        _interp.variables.set("isQuestAvailable", function(questId:Int):Bool {
+            return AqwApi.quest.isAvailable(questId);
+        });
         _interp.variables.set("dropCombat", function():Void {
             AqwApi.combat.dropCombat();
         });

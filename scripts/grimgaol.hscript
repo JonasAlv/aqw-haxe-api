@@ -28,21 +28,8 @@ function onStart() {
     // Enable private room for dungeon instances
     setPrivateRoom(true, 94029);
 
-    // Pre-load and accept quests with pacing
-    loadQuest(dailyQuestId);
-    sleep(150);
-    for (q in dungeonQuests) { loadQuest(q); sleep(150); }
-
-    if (!isQuestAccepted(dailyQuestId)) {
-        acceptQuest(dailyQuestId);
-        sleep(350);
-    }
-    for (q in dungeonQuests) {
-        if (!isQuestAccepted(q)) {
-            acceptQuest(q);
-            sleep(350);
-        }
-    }
+    // Pre-load all quests into memory using UI-less batch loading
+    loadQuests([dailyQuestId, 9467, 9466, 9468]);
 
     // Class selection
     if (hasItem("Dragon of Time")) {
@@ -169,15 +156,12 @@ function onTick() {
     // Ensure quests are loaded and accepted in Enter
     if (player.cell == "Enter") {
         if (!isQuestAccepted(dailyQuestId)) {
-            if (!isQuestLoaded(dailyQuestId)) {
-                openQuest(dailyQuestId);
-                loadQuest(dailyQuestId);
-            }
+            if (!isQuestLoaded(dailyQuestId)) loadQuests([dailyQuestId, 9467, 9466, 9468]);
             acceptQuest(dailyQuestId);
         }
         for (q in dungeonQuests) {
             if (!isQuestAccepted(q)) {
-                if (!isQuestLoaded(q)) loadQuest(q);
+                if (!isQuestLoaded(q)) loadQuests([dailyQuestId, 9467, 9466, 9468]);
                 acceptQuest(q);
             }
         }

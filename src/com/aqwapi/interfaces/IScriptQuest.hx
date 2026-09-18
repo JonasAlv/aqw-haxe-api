@@ -11,6 +11,7 @@ interface IScriptQuest {
     function isCompleted(questId:Int):Bool;
     function isComplete(questId:Int):Bool;
     function isAccepted(questId:Int):Bool;
+    function isAvailable(questId:Int):Bool;
 
     function startAuto(questString:String):Void;
 
