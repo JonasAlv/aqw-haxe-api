@@ -1,0 +1,117 @@
+// Four Harbingers - Halosis Boss Script
+// Written for HScript / AQW Mobile Mod
+
+var questId = 10850;
+var targetDrop = "Signet of Inner Conflict";
+var bossMap = "fourharbingers";
+var bossCell = "r2";
+var bossPad = "Bottom";
+
+var dieNowDetected = false;
+var dieNowAt = 0.0;
+var dieNowHandled = false;
+
+function onStart() {
+    log("Starting Halosis HScript runner...");
+    acceptQuest(questId);
+    
+    // Equip class if available
+    if (hasItem("Chaos Avenger")) {
+        equip("Chaos Avenger");
+    } else if (hasItem("Dragon of Time")) {
+        equip("Dragon of Time");
+    }
+
+    join(bossMap, bossCell, bossPad);
+    combat.startCustom("3,2,1,2,4,2");
+}
+
+function onTick() {
+    if (!player.isAlive) {
+        log("Player dead, waiting for respawn...");
+        sleep(2000);
+        return;
+    }
+
+    // Ensure we are in the boss room
+    if (map.name.toLowerCase() != bossMap) {
+        join(bossMap, bossCell, bossPad);
+        sleep(2000);
+        return;
+    }
+
+    if (player.cell != bossCell) {
+        jump(bossCell, bossPad);
+        sleep(500);
+        return;
+    }
+
+    // Check quest / drop completion
+    if (hasItem(targetDrop)) {
+        log("Obtained " + targetDrop + "! Turning in quest " + questId);
+        completeQuest(questId);
+        getDrop(targetDrop);
+        sleep(1000);
+        return;
+    }
+
+    // Acquire target if not targeted
+    if (player.target == null || !player.target.alive) {
+        attack(1);
+        sleep(300);
+        return;
+    }
+
+    var target = player.target;
+
+    // --- BOSS MECHANIC: Crits Inverted ---
+    if (player.hasAura("Crits Inverted")) {
+        if (combat.isAutoRunning) {
+            log("Crits Inverted detected! Pausing attack.");
+            combat.stopAuto();
+        }
+        return;
+    }
+
+    // --- BOSS MECHANIC: Die Now Survival ---
+    if (dieNowDetected && !dieNowHandled) {
+        var elapsed = AqwTime.now() - dieNowAt;
+        if (combat.isAutoRunning) combat.stopAuto();
+
+        if (elapsed >= 2000) {
+            log("Executing survival skill against Die Now!");
+            combat.attack(1);
+            dieNowDetected = false;
+            dieNowHandled = true;
+            combat.startCustom("3,2,1,2,4,2");
+        }
+        return;
+    }
+
+    // Ensure combat rotation is running
+    if (!combat.isAutoRunning) {
+        combat.startCustom("3,2,1,2,4,2");
+    }
+
+    // Pickup any drops
+    getDrop(targetDrop);
+}
+
+function onPacket(type, cmd, data) {
+    // Listen for boss cast warnings or text messages
+    if (type == "json" && data != null && data.cmd == "warning") {
+        var msg = Std.string(data.msg);
+        if (msg.indexOf("Die Now") != -1) {
+            log("Warning: Boss cast 'Die Now'!");
+            dieNowDetected = true;
+            dieNowAt = AqwTime.now();
+            dieNowHandled = false;
+        }
+    }
+}
+
+function onStop() {
+    log("Halosis HScript stopped.");
+    combat.stopAuto();
+    dropCombat();
+}

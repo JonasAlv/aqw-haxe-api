@@ -6,8 +6,11 @@ interface IScriptQuest {
     function accept(questId:Int):Void;
     function complete(questId:Int, itemId:Int = -1):Void;
     function isCompleted(questId:Int):Bool;
+    function isComplete(questId:Int):Bool;
+    function isAccepted(questId:Int):Bool;
 
     function startAuto(questString:String):Void;
+
     function stopAuto():Void;
     var isAutoRunning(get, never):Bool;
 }

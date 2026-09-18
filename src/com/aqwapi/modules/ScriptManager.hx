@@ -19,6 +19,7 @@ class ScriptManager {
     public var unbankedItems:Dynamic    = {};
     public var completedThisSession:Dynamic = {};
     public var statusText:String        = "Stopped";
+    public var isHScriptMode:Bool       = false;
 
     private static var _instance:ScriptManager;
     public static var SINGLETON(get, never):ScriptManager;
@@ -37,12 +38,32 @@ class ScriptManager {
         _timer.addEventListener(TimerEvent.TIMER, onTick, false, 0, true);
     }
 
+    public static function isHScript(text:String):Bool {
+        if (text == null) return false;
+        var trimmed = StringTools.trim(text);
+        if (trimmed.indexOf("//hscript") == 0 || trimmed.indexOf("#hscript") == 0) return true;
+        if (trimmed.indexOf("function ") != -1 || trimmed.indexOf("function(") != -1) return true;
+        if (trimmed.indexOf("var ") != -1 && (trimmed.indexOf(";") != -1 || trimmed.indexOf("=") != -1)) return true;
+        if (trimmed.indexOf("class ") != -1) return true;
+        return false;
+    }
+
     public function loadScript(scriptText:String):Void {
         if ((AqwApi.game == null || AqwApi.game.world == null) && AqwApi.game != null) AqwApi.init(AqwApi.game);
 
         commands = [];
         currentIndex = 0;
         unbankedItems = {};
+
+        if (isHScript(scriptText)) {
+            isHScriptMode = true;
+            reset();
+            AqwApi.hscript.loadScript(scriptText);
+            statusText = AqwApi.hscript.statusText;
+            return;
+        }
+
+        isHScriptMode = false;
 
         scriptText = scriptText.split("\r\n").join("\n").split("\r").join("\n");
         var lines = scriptText.split("\n");
@@ -83,12 +104,23 @@ class ScriptManager {
         unbankedItems = {};
         completedThisSession = {};
         statusText = "Stopped";
+        if (isHScriptMode && AqwApi.hscript != null) {
+            AqwApi.hscript.reset();
+        }
     }
 
     public function start():Void {
         if (AqwApi.game == null || AqwApi.game.world == null) {
             if (AqwApi.game != null) AqwApi.init(AqwApi.game);
         }
+
+        if (isHScriptMode) {
+            isRunning = true;
+            AqwApi.hscript.start();
+            statusText = AqwApi.hscript.statusText;
+            return;
+        }
+
         if (commands.length == 0) return;
 
         if (currentIndex >= commands.length) {
@@ -110,6 +142,13 @@ class ScriptManager {
     }
 
     public function stop():Void {
+        if (isHScriptMode) {
+            isRunning = false;
+            AqwApi.hscript.stop();
+            statusText = AqwApi.hscript.statusText;
+            return;
+        }
+
         if (!isRunning) return;
         isRunning = false;
         _timer.stop();

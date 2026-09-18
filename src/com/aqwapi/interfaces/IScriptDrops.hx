@@ -13,5 +13,7 @@ interface IScriptDrops {
     function addPendingDrop(item:Dynamic):Void;
     function removePendingDrop(index:Int):Void;
     function acceptPendingDrops(itemNames:Array<Dynamic>):Int;
+    function getDrop(itemName:String):Void;
     function isTargetDrop(item:Dynamic):Bool;
 }
+

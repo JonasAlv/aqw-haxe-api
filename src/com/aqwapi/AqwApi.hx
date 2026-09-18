@@ -4,6 +4,7 @@ import flash.events.EventDispatcher;
 import com.aqwapi.interfaces.*;
 import com.aqwapi.managers.*;
 import com.aqwapi.net.TransportAdapter;
+import com.aqwapi.scripting.HScriptEngine;
 import com.aqwapi.utils.ApiLogger;
 
 class AqwApi {
@@ -19,6 +20,7 @@ class AqwApi {
     public static var shop(default, null):ScriptShop;
     public static var monsters(default, null):ScriptMonster;
     public static var transport(default, null):TransportAdapter;
+    public static var hscript(default, null):HScriptEngine;
 
     public static function init(gameReference:Dynamic):Void {
         game = cast gameReference;
@@ -31,6 +33,7 @@ class AqwApi {
         drops = new ScriptDrops(game);
         shop = new ScriptShop(game);
         monsters = new ScriptMonster(game);
+        hscript = HScriptEngine.SINGLETON;
     }
 
     public static var isReady(get, never):Bool;

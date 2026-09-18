@@ -1,8 +1,10 @@
 package com.aqwapi.managers;
 
 import com.aqwapi.interfaces.IScriptPlayer;
+import com.aqwapi.data.EntityDTO;
 
-class ScriptPlayer {
+class ScriptPlayer implements IScriptPlayer {
+
     private var _game:AQWGame;
 
     public function new(gameReference:AQWGame) {
@@ -80,4 +82,29 @@ class ScriptPlayer {
     @:getter(level)
     public function get_level_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intLevel) : 0; }
     public function get_level():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intLevel) : 0; }
+
+    public var target(get, never):EntityDTO;
+    @:getter(target)
+    public function get_target_prop():EntityDTO {
+        var a = _avatar();
+        if (a != null && a.target != null) return new EntityDTO(a.target);
+        return null;
+    }
+    public function get_target():EntityDTO {
+        var a = _avatar();
+        if (a != null && a.target != null) return new EntityDTO(a.target);
+        return null;
+    }
+
+    public function getAura(auraName:String):Dynamic {
+        var a = _avatar();
+        if (a == null) return null;
+        var ent = new EntityDTO(a);
+        return ent.getAura(auraName);
+    }
+
+    public function hasAura(auraName:String):Bool {
+        return getAura(auraName) != null;
+    }
 }
+

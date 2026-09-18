@@ -150,7 +150,12 @@ class ScriptDrops {
         return accepted;
     }
 
+    public function getDrop(itemName:String):Void {
+        acceptPendingDrops([itemName]);
+    }
+
     public function isTargetDrop(item:Dynamic):Bool {
+
         if (targetDrops == null || targetDrops.length == 0 || item == null || item.sName == null) return false;
         var searchName:String = Std.string(item.sName).toLowerCase();
         var sIdRaw = Std.parseInt(Std.string(item.ItemID));

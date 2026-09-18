@@ -86,7 +86,16 @@ class ScriptQuest implements IScriptQuest {
         return false;
     }
 
+    public inline function isComplete(questId:Int):Bool {
+        return isCompleted(questId);
+    }
+
+    public inline function isAccepted(questId:Int):Bool {
+        return isInProgress(questId);
+    }
+
     public var isAutoRunning(get, never):Bool;
+
     @:getter(isAutoRunning)
     public function get_isAutoRunning_prop():Bool {
         return _timer != null && _timer.running;

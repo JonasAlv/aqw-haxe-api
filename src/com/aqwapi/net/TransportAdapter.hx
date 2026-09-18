@@ -44,6 +44,10 @@ class TransportAdapter {
                 cmd = Std.string(event.params.dataObj.name);
         }
 
+        if (AqwApi.hscript != null) {
+            AqwApi.hscript.handlePacket(type, cmd, dataObj);
+        }
+
         switch (cmd) {
             case "moveToArea":
                 AqwApi.dispatcher.dispatchEvent(new GameEvent(GameEvent.ZONE_ENTERED, dataObj));
@@ -53,5 +57,6 @@ class TransportAdapter {
                 AqwApi.dispatcher.dispatchEvent(new GameEvent(GameEvent.INVENTORY_CHANGED, dataObj));
             default:
         }
+
     }
 }

@@ -1,5 +1,7 @@
 package com.aqwapi.interfaces;
 
+import com.aqwapi.data.EntityDTO;
+
 interface IScriptPlayer {
     var state(get, never):Int;
     var hp(get, never):Int;
@@ -13,4 +15,8 @@ interface IScriptPlayer {
     var cell(get, never):String;
     var pad(get, never):String;
     var level(get, never):Int;
+    var target(get, never):EntityDTO;
+    function hasAura(auraName:String):Bool;
+    function getAura(auraName:String):Dynamic;
 }
+
