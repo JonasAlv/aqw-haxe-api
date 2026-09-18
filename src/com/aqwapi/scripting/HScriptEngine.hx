@@ -156,6 +156,15 @@ class HScriptEngine {
         _interp.variables.set("loadQuest", function(questId:Int):Void {
             AqwApi.quest.load(questId);
         });
+        _interp.variables.set("isQuestLoaded", function(questId:Int):Bool {
+            return AqwApi.quest.isLoaded(questId);
+        });
+        _interp.variables.set("showQuests", function(questIds:Dynamic):Void {
+            AqwApi.quest.showQuests(Std.string(questIds));
+        });
+        _interp.variables.set("openQuest", function(questId:Int):Void {
+            AqwApi.quest.showQuests(Std.string(questId));
+        });
         _interp.variables.set("acceptQuest", function(questId:Int):Void {
             AqwApi.quest.accept(questId);
         });

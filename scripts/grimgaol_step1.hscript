@@ -1,0 +1,256 @@
+// Grimgaol Step 1: Join Map, Skip Cutscene, and Accept Quests
+// Dedicated debug script to test map entry, cutscene bypass, and quest negotiation step-by-step.
+
+var dailyQuestId = 9469;
+var dungeonQuests = [9467, 9466, 9468];
+
+var state = 0;
+var stateTimer = 0;
+var retryCount = 0;
+var acceptedAnyDungeonQuest = false;
+
+function onStart() {
+    log("==========================================");
+    log("[Step 1] Grimgaol Debug Script Initialized");
+    log("==========================================");
+    state = 0;
+    stateTimer = 0;
+    retryCount = 0;
+    acceptedAnyDungeonQuest = false;
+    setPrivateRoom(true, 94029);
+}
+
+function onStop() {
+    log("[Step 1] Script Stopped.");
+}
+
+function onTick() {
+    // ----------------------------------------------------
+    // STATE 0: Check Current Map & Queue into Grimgaol
+    // ----------------------------------------------------
+    if (state == 0) {
+        if (!map.isLoaded) {
+            log("[Step 1] Waiting for initial map to load...");
+            sleep(500);
+            return;
+        }
+
+        var mapName = map.name.toLowerCase();
+        log("[Step 1] Current map: " + mapName + " | Cell: " + player.cell);
+
+        if (mapName != "grimgaol") {
+            log("[Step 1] Queueing for Grimgaol dungeon instance...");
+            dungeonQueue("grimgaol");
+            state = 1;
+            stateTimer = 0;
+            sleep(2000);
+            return;
+        } else {
+            log("[Step 1] Already inside Grimgaol!");
+            state = 2;
+            sleep(300);
+            return;
+        }
+    }
+
+    // ----------------------------------------------------
+    // STATE 1: Waiting for Grimgaol to finish loading
+    // ----------------------------------------------------
+    if (state == 1) {
+        stateTimer = stateTimer + 1;
+        if (map.isLoaded && map.name.toLowerCase() == "grimgaol") {
+            log("[Step 1] Successfully loaded into Grimgaol! Current cell: " + player.cell);
+            state = 2;
+            stateTimer = 0;
+            sleep(500);
+            return;
+        }
+
+        if (stateTimer > 25) { // ~2.5s elapsed without entering
+            log("[Step 1] Retrying dungeon queue...");
+            dungeonQueue("grimgaol");
+            stateTimer = 0;
+            sleep(2000);
+        } else {
+            sleep(200);
+        }
+        return;
+    }
+
+    // ----------------------------------------------------
+    // STATE 2: Handle & Skip Cutscene, Jump to Enter
+    // ----------------------------------------------------
+    if (state == 2) {
+        log("[Step 1] Clearing cutscenes and popup modals...");
+        skipCutscene();
+
+        var cellLower = player.cell.toLowerCase();
+        log("[Step 1] Player cell: " + player.cell);
+
+        if (cellLower.indexOf("cut") != -1 || player.cell != "Enter") {
+            log("[Step 1] Cell is '" + player.cell + "', jumping to Enter / Spawn...");
+            jump("Enter", "Spawn");
+            sleep(800);
+            return;
+        }
+
+        if (player.cell == "Enter") {
+            log("[Step 1] Player confirmed in 'Enter' cell! Cutscene skipped.");
+            state = 3;
+            stateTimer = 0;
+            sleep(500);
+            return;
+        } else {
+            skipCutscene();
+            jump("Enter", "Spawn");
+            sleep(500);
+            return;
+        }
+    }
+
+    // ----------------------------------------------------
+    // STATE 3: Open / Request Quest Data from Server
+    // ----------------------------------------------------
+    if (state == 3) {
+        log("[Step 1] Opening / loading quest data from server...");
+
+        // Load daily quest
+        if (!isQuestLoaded(dailyQuestId)) {
+            log("[Step 1] Requesting Daily Quest " + dailyQuestId + " (openQuest)...");
+            openQuest(dailyQuestId);
+            loadQuest(dailyQuestId);
+        }
+
+        // Load dungeon quests
+        for (q in dungeonQuests) {
+            if (!isQuestLoaded(q)) {
+                log("[Step 1] Requesting Dungeon Quest " + q + "...");
+                loadQuest(q);
+            }
+        }
+
+        state = 4;
+        stateTimer = 0;
+        sleep(1000);
+        return;
+    }
+
+    // ----------------------------------------------------
+    // STATE 4: Verify Quest Metadata Loaded in questTree
+    // ----------------------------------------------------
+    if (state == 4) {
+        stateTimer = stateTimer + 1;
+        var dailyLoaded = isQuestLoaded(dailyQuestId);
+        log("[Step 1] Daily Quest (" + dailyQuestId + ") loaded in memory: " + dailyLoaded);
+
+        var loadedDungeonCount = 0;
+        for (q in dungeonQuests) {
+            var qLoaded = isQuestLoaded(q);
+            log("[Step 1] Dungeon Quest (" + q + ") loaded in memory: " + qLoaded);
+            if (qLoaded) loadedDungeonCount = loadedDungeonCount + 1;
+        }
+
+        if (dailyLoaded || loadedDungeonCount > 0 || stateTimer >= 8) {
+            log("[Step 1] Quest metadata ready! Dismissing quest popups and accepting...");
+            skipCutscene();
+            state = 5;
+            stateTimer = 0;
+            retryCount = 0;
+            sleep(400);
+            return;
+        } else {
+            sleep(400);
+            return;
+        }
+    }
+
+    // ----------------------------------------------------
+    // STATE 5: Send Quest Accept Requests
+    // ----------------------------------------------------
+    if (state == 5) {
+        retryCount = retryCount + 1;
+        log("[Step 1] Sending Accept packets (Attempt " + retryCount + ")...");
+
+        // Try accepting daily quest
+        if (!isQuestAccepted(dailyQuestId)) {
+            log("[Step 1] Accepting Daily Quest: " + dailyQuestId);
+            acceptQuest(dailyQuestId);
+        }
+
+        // Try accepting dungeon quests
+        for (q in dungeonQuests) {
+            if (!isQuestAccepted(q) && !acceptedAnyDungeonQuest) {
+                log("[Step 1] Accepting Dungeon Quest: " + q);
+                acceptQuest(q);
+            }
+        }
+
+        state = 6;
+        stateTimer = 0;
+        sleep(1000);
+        return;
+    }
+
+    // ----------------------------------------------------
+    // STATE 6: Verify Server Acceptance
+    // ----------------------------------------------------
+    if (state == 6) {
+        stateTimer = stateTimer + 1;
+
+        var dailyAcc = isQuestAccepted(dailyQuestId);
+        log("[Step 1] Server Confirmation -> Daily Quest (" + dailyQuestId + "): " + (dailyAcc ? "ACCEPTED" : "NOT ACCEPTED"));
+
+        var countAccepted = 0;
+        for (q in dungeonQuests) {
+            var acc = isQuestAccepted(q);
+            log("[Step 1] Server Confirmation -> Dungeon Quest (" + q + "): " + (acc ? "ACCEPTED" : "NOT ACCEPTED"));
+            if (acc) {
+                countAccepted = countAccepted + 1;
+                acceptedAnyDungeonQuest = true;
+            }
+        }
+
+        // If at least one dungeon quest or daily quest is accepted, or if retried 3 times
+        if (countAccepted > 0 || dailyAcc || retryCount >= 3) {
+            state = 7;
+            sleep(300);
+            return;
+        } else {
+            log("[Step 1] Quest acceptance still pending, retrying...");
+            state = 5;
+            sleep(500);
+            return;
+        }
+    }
+
+    // ----------------------------------------------------
+    // STATE 7: Final Step 1 Verification & Summary
+    // ----------------------------------------------------
+    if (state == 7) {
+        // Clear any lingering quest popup dialogs
+        skipCutscene();
+
+        log("==========================================");
+        log("[Step 1] === VERIFICATION RESULTS ===");
+        log("Map: " + map.name + " | Cell: " + player.cell + " | Pad: " + player.pad);
+        log("Player State: " + (player.isAlive ? "Alive" : "Dead") + " (HP: " + player.hp + "/" + player.maxHp + ")");
+        log("Daily Quest (9469): " + (isQuestAccepted(dailyQuestId) ? "[ACCEPTED]" : "[NOT ACCEPTED / NOT AVAILABLE]"));
+        for (q in dungeonQuests) {
+            log("Dungeon Quest (" + q + "): " + (isQuestAccepted(q) ? "[ACCEPTED]" : "[NOT ACCEPTED / NOT AVAILABLE]"));
+        }
+        log("==========================================");
+        log("[Step 1] COMPLETE! Ready for combat debug.");
+        state = 8;
+        sleep(3000);
+        return;
+    }
+
+    // ----------------------------------------------------
+    // STATE 8: Done / Idle
+    // ----------------------------------------------------
+    if (state == 8) {
+        // Keep idle to avoid re-running
+        sleep(5000);
+        return;
+    }
+}

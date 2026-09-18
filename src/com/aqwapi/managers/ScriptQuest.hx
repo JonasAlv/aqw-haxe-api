@@ -21,7 +21,7 @@ class ScriptQuest implements IScriptQuest {
 
     public function load(questId:Int):Void {
         var now:Float = AqwTime.now();
-        if (_lastLoadRequests.exists(questId) && (now - _lastLoadRequests.get(questId)) < 3000) {
+        if (_lastLoadRequests.exists(questId) && (now - _lastLoadRequests.get(questId)) < 1500) {
             return;
         }
         _lastLoadRequests.set(questId, now);
@@ -35,6 +35,20 @@ class ScriptQuest implements IScriptQuest {
         }
     }
 
+    public function isLoaded(questId:Int):Bool {
+        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
+        return Reflect.field(_game.world.questTree, Std.string(questId)) != null;
+    }
+
+    public function showQuests(questIds:String):Void {
+        if (_game == null || _game.world == null) return;
+        try {
+            if (_game.world.showQuests != null) {
+                _game.world.showQuests(questIds, "q");
+            }
+        } catch (e:Dynamic) {}
+    }
+
     public function isInProgress(questId:Int):Bool {
         if (_game != null && _game.world != null && _game.world.isQuestInProgress != null) {
             return _game.world.isQuestInProgress(questId);
@@ -44,9 +58,19 @@ class ScriptQuest implements IScriptQuest {
 
     public function accept(questId:Int):Void {
         if (_game == null || _game.world == null) return;
-        if (_game.world.questTree != null && Reflect.field(_game.world.questTree, Std.string(questId)) != null) {
+        if (isLoaded(questId)) {
+            var accepted:Bool = false;
             if (_game.world.acceptQuest != null) {
-                _game.world.acceptQuest(questId);
+                try {
+                    _game.world.acceptQuest(questId);
+                    accepted = true;
+                } catch (e:Dynamic) {}
+            }
+            if (!accepted && _game.sfc != null) {
+                try {
+                    var rId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.world.curRoom;
+                    _game.sfc.sendString("%xt%zm%acceptQuest%" + rId + "%" + questId + "%");
+                } catch (e:Dynamic) {}
             }
         } else {
             // Automatically request quest data from server if not yet loaded

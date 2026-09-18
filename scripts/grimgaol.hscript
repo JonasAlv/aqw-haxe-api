@@ -166,6 +166,23 @@ function onTick() {
         return;
     }
 
+    // Ensure quests are loaded and accepted in Enter
+    if (player.cell == "Enter") {
+        if (!isQuestAccepted(dailyQuestId)) {
+            if (!isQuestLoaded(dailyQuestId)) {
+                openQuest(dailyQuestId);
+                loadQuest(dailyQuestId);
+            }
+            acceptQuest(dailyQuestId);
+        }
+        for (q in dungeonQuests) {
+            if (!isQuestAccepted(q)) {
+                if (!isQuestLoaded(q)) loadQuest(q);
+                acceptQuest(q);
+            }
+        }
+    }
+
     // 5. Active cell recovery (e.g. after respawning at Enter)
     var currentCell = player.cell;
     var activeCell = findActiveCombatCell();
