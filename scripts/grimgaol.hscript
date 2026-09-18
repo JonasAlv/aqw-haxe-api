@@ -25,12 +25,24 @@ var runCount = 0;
 function onStart() {
     log("Starting Grimgaol Dungeon Runner...");
 
-    // Pre-load and accept quests
-    loadQuest(dailyQuestId);
-    for (q in dungeonQuests) loadQuest(q);
+    // Enable private room for dungeon instances
+    setPrivateRoom(true, 94029);
 
-    acceptQuest(dailyQuestId);
-    for (q in dungeonQuests) acceptQuest(q);
+    // Pre-load and accept quests with pacing
+    loadQuest(dailyQuestId);
+    sleep(150);
+    for (q in dungeonQuests) { loadQuest(q); sleep(150); }
+
+    if (!isQuestAccepted(dailyQuestId)) {
+        acceptQuest(dailyQuestId);
+        sleep(350);
+    }
+    for (q in dungeonQuests) {
+        if (!isQuestAccepted(q)) {
+            acceptQuest(q);
+            sleep(350);
+        }
+    }
 
     // Class selection
     if (hasItem("Dragon of Time")) {
@@ -113,8 +125,16 @@ function onTick() {
             sleep(1000);
         }
 
-        acceptQuest(dailyQuestId);
-        for (q in dungeonQuests) acceptQuest(q);
+        if (!isQuestAccepted(dailyQuestId)) {
+            acceptQuest(dailyQuestId);
+            sleep(350);
+        }
+        for (q in dungeonQuests) {
+            if (!isQuestAccepted(q)) {
+                acceptQuest(q);
+                sleep(350);
+            }
+        }
 
         log("Queueing into Grimgaol dungeon...");
         dungeonQueue("grimgaol");

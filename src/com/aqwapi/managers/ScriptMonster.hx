@@ -25,19 +25,35 @@ class ScriptMonster {
     public function findByMapId(mapId:String, aliveOnly:Bool = true):EntityDTO {
         if (mapId == null) return null;
         var search:String = Std.string(mapId);
+        var idInt:Null<Int> = Std.parseInt(search);
 
-        // 1. Direct lookup via world.monTree if available
+        // 1. Native AQW world.getMonster(int) lookup (returns live Avatar instance with pMC)
+        if (idInt != null && idInt > 0 && _game != null && _game.world != null && _game.world.getMonster != null) {
+            try {
+                var rawAvt:Dynamic = _game.world.getMonster(idInt);
+                if (rawAvt != null) {
+                    var ent = new EntityDTO(rawAvt);
+                    if (!aliveOnly || ent.alive) return ent;
+                }
+            } catch (e:Dynamic) {}
+        }
+
+        // 2. Scan raw monsters (Avatar instances from world.monsters)
+        for (monster in _getRawMonsters()) {
+            if (monster == null) continue;
+            var target = new EntityDTO(monster);
+            if ((target.mapId == search || target.id == search) && (!aliveOnly || target.alive)) return target;
+        }
+
+        // 3. Fallback to world.monTree leaf (for metadata if Avatar not yet spawned)
         if (_game != null && _game.world != null && _game.world.monTree != null) {
             try {
                 var rawTree:Dynamic = _game.world.monTree;
                 var rawMon:Dynamic = null;
                 if (Reflect.hasField(rawTree, search)) {
                     rawMon = Reflect.field(rawTree, search);
-                } else {
-                    var idInt:Null<Int> = Std.parseInt(search);
-                    if (idInt != null && Reflect.hasField(rawTree, Std.string(idInt))) {
-                        rawMon = Reflect.field(rawTree, Std.string(idInt));
-                    }
+                } else if (idInt != null && Reflect.hasField(rawTree, Std.string(idInt))) {
+                    rawMon = Reflect.field(rawTree, Std.string(idInt));
                 }
                 if (rawMon != null) {
                     var ent = new EntityDTO(rawMon);
@@ -46,12 +62,6 @@ class ScriptMonster {
             } catch (e:Dynamic) {}
         }
 
-        // 2. Scan raw monsters
-        for (monster in _getRawMonsters()) {
-            if (monster == null) continue;
-            var target = new EntityDTO(monster);
-            if ((target.mapId == search || target.id == search) && (!aliveOnly || target.alive)) return target;
-        }
         return null;
     }
 

@@ -14,22 +14,53 @@ class ScriptCombat {
     public function attack(monsterName:String):Void {
         if (_game == null || _game.world == null || _game.world.myAvatar == null) return;
         var targetMonster:Dynamic = null;
-        if (_game.world.getMonster != null) {
-            var targetName:String = monsterName.toLowerCase();
-            targetMonster = (targetName == "*") ? _game.world.getMonster("Any") : _game.world.getMonster(targetName);
+        var sName:String = (monsterName != null) ? monsterName : "*";
+        var targetName:String = sName.toLowerCase();
+
+        // 1. Wildcard / any monster in current cell
+        if (targetName == "*" || targetName == "any" || targetName == "") {
+            var currentCell = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
+            var living = AqwApi.monsters.getByCell(currentCell);
+            for (m in living) {
+                if (m != null && m.alive && m.raw != null && Reflect.field(m.raw, "pMC") != null) {
+                    targetMonster = m.raw;
+                    break;
+                }
+            }
         }
+
+        // 2. MonMapID integer lookup (native world.getMonster(int))
         if (targetMonster == null) {
-            var ent:com.aqwapi.data.EntityDTO = AqwApi.monsters.findByMapId(monsterName, true);
-            if (ent != null) targetMonster = ent.raw;
+            var idInt:Null<Int> = Std.parseInt(sName);
+            if (idInt != null && idInt > 0 && _game.world.getMonster != null) {
+                try {
+                    var avt:Dynamic = _game.world.getMonster(idInt);
+                    if (avt != null && Reflect.field(avt, "pMC") != null) {
+                        targetMonster = avt;
+                    }
+                } catch (e:Dynamic) {}
+            }
         }
+
+        // 3. Fallback to findByMapId
         if (targetMonster == null) {
-            var ent:com.aqwapi.data.EntityDTO = AqwApi.monsters.findByName(monsterName, true);
-            if (ent != null) targetMonster = ent.raw;
+            var ent:com.aqwapi.data.EntityDTO = AqwApi.monsters.findByMapId(sName, true);
+            if (ent != null && ent.raw != null && Reflect.field(ent.raw, "pMC") != null) {
+                targetMonster = ent.raw;
+            }
         }
+
+        // 4. Fallback to findByName
+        if (targetMonster == null) {
+            var entName:com.aqwapi.data.EntityDTO = AqwApi.monsters.findByName(sName, true);
+            if (entName != null && entName.raw != null && Reflect.field(entName.raw, "pMC") != null) {
+                targetMonster = entName.raw;
+            }
+        }
+
         if (targetMonster != null) {
             try {
-                var hasPMC = Reflect.hasField(targetMonster, "pMC") && Reflect.field(targetMonster, "pMC") != null;
-                if (hasPMC) {
+                if (Reflect.field(targetMonster, "pMC") != null) {
                     if (_game.world.setTarget != null) _game.world.setTarget(targetMonster);
                     if (_game.world.approachTarget != null) _game.world.approachTarget();
                 }

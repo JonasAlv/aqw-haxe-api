@@ -255,19 +255,48 @@ class HScriptEngine {
 
         // Cutscene & UI
         _interp.variables.set("skipCutscene", function():Void {
-            if (AqwApi.game != null && AqwApi.game.world != null) {
+            if (AqwApi.game != null) {
                 try {
-                    var w:Dynamic = AqwApi.game.world;
-                    if (Reflect.hasField(w, "mcExtSWF") && w.mcExtSWF != null && w.mcExtSWF.numChildren > 0) {
-                        var ext:Dynamic = w.mcExtSWF.getChildAt(0);
-                        if (ext != null && Reflect.hasField(ext, "totalFrames")) {
-                            ext.gotoAndPlay(ext.totalFrames - 2);
-                            if (Reflect.hasField(w, "showInterface")) w.showInterface();
+                    var g:Dynamic = AqwApi.game;
+                    var w:Dynamic = g.world;
+
+                    // 1. Cancel active cutscene handler
+                    if (w != null) {
+                        if (Reflect.hasField(w, "cHandle") && w.cHandle != null) {
+                            try { w.cHandle.cancel(); } catch (e:Dynamic) {}
+                        }
+                        // Set map session seenIt0 so dungeon map doesn't re-trigger cutscenes
+                        if (Reflect.hasField(w, "objSession") && w.objSession != null && w.strMapName != null) {
+                            try {
+                                var sName:String = Std.string(w.strMapName);
+                                var sess:Dynamic = Reflect.field(w.objSession, sName);
+                                if (sess != null) Reflect.setField(sess, "seenIt0", true);
+                            } catch (e:Dynamic) {}
                         }
                     }
-                    if (AqwApi.game.ui != null && Reflect.hasField(AqwApi.game.ui, "mcPopup")) {
-                        var p = AqwApi.game.ui.mcPopup;
-                        if (p != null && Reflect.hasField(p, "onClose")) p.onClose();
+
+                    // 2. Clear external cutscene SWF from game/world
+                    if (Reflect.hasField(g, "mcExtSWF") && g.mcExtSWF != null && g.mcExtSWF.numChildren > 0) {
+                        if (Reflect.hasField(g, "clearExternamSWF")) {
+                            try { g.clearExternamSWF(); } catch (e:Dynamic) {}
+                        } else {
+                            try {
+                                while (g.mcExtSWF.numChildren > 0) g.mcExtSWF.removeChildAt(0);
+                                if (Reflect.hasField(g, "showInterface")) g.showInterface();
+                                if (w != null) w.visible = true;
+                            } catch (e:Dynamic) {}
+                        }
+                    }
+
+                    // 3. Close popup only if a modal is actually active (not idle/none)
+                    if (g.ui != null && Reflect.hasField(g.ui, "mcPopup")) {
+                        var p:Dynamic = g.ui.mcPopup;
+                        if (p != null) {
+                            var lbl:String = (p.currentLabel != null) ? Std.string(p.currentLabel) : "";
+                            if (lbl != "" && lbl != "Idle" && lbl != "none") {
+                                if (Reflect.hasField(p, "onClose")) p.onClose();
+                            }
+                        }
                     }
                 } catch (e:Dynamic) {}
             }
