@@ -11,8 +11,10 @@ class ApiLogger {
 
     public static var level:Int = LEVEL_INFO;
     public static var printToConsole:Bool = true;
+    public static var printToFile:Bool = true;
     public static var printToChat:Bool = true;
     public static var chatMinLevel:Int = LEVEL_INFO;
+
     public static var onLog:String->Int->String->Void = null;
 
 
@@ -67,6 +69,20 @@ class ApiLogger {
             } catch (e:Dynamic) {}
         }
 
+        if (printToFile) {
+            try {
+                var fileCls:Dynamic = untyped __global__["flash.filesystem.File"];
+                var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
+                var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
+                if (fileCls != null && fsCls != null && fmCls != null) {
+                    var f = fileCls.applicationDirectory.resolvePath("bot.log");
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(f, fmCls.APPEND);
+                    fs.writeUTFBytes(formatted + "\n");
+                    fs.close();
+                }
+            } catch (e:Dynamic) {}
+        }
 
         if (printToChat && msgLevel >= chatMinLevel) {
             pushChat(msgLevel >= LEVEL_WARN ? "warning" : "server", formatted);
@@ -77,6 +93,7 @@ class ApiLogger {
                 onLog(tag, msgLevel, message);
             } catch (e:Dynamic) {}
         }
+
     }
 
     public static function pushChat(type:String, text:String, sender:String = "API"):Void {

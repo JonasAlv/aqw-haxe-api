@@ -1,7 +1,9 @@
 -cp src
 -D air
+-debug
 -lib hscript
 -swf bin/AqwApi.swc
+
 --macro include('com.aqwapi')
 hscript.Parser
 hscript.Interp
