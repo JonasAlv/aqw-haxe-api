@@ -156,6 +156,20 @@ class HScriptEngine {
         _interp.variables.set("loadQuest", function(questId:Int):Void {
             AqwApi.quest.load(questId);
         });
+        _interp.variables.set("loadQuests", function(questIds:Dynamic):Void {
+            if (Std.isOfType(questIds, Array)) {
+                var arr:Array<Dynamic> = cast questIds;
+                var intArr:Array<Int> = [];
+                for (item in arr) {
+                    var qid = com.aqwapi.utils.AqwUtils.parseInt(item, 0);
+                    if (qid > 0) intArr.push(qid);
+                }
+                AqwApi.quest.loadMultiple(intArr);
+            } else if (questIds != null) {
+                var qid = com.aqwapi.utils.AqwUtils.parseInt(questIds, 0);
+                if (qid > 0) AqwApi.quest.load(qid);
+            }
+        });
         _interp.variables.set("isQuestLoaded", function(questId:Int):Bool {
             return AqwApi.quest.isLoaded(questId);
         });

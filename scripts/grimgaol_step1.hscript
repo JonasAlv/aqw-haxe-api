@@ -109,29 +109,18 @@ function onTick() {
     }
 
     // ----------------------------------------------------
-    // STATE 3: Open / Request Quest Data from Server
+    // STATE 3: Batch Load Quest Data from Server (UI-less)
     // ----------------------------------------------------
     if (state == 3) {
-        log("[Step 1] Opening / loading quest data from server...");
+        log("[Step 1] Loading quest metadata into memory (loadQuests, no UI popup)...");
 
-        // Load daily quest
-        if (!isQuestLoaded(dailyQuestId)) {
-            log("[Step 1] Requesting Daily Quest " + dailyQuestId + " (openQuest)...");
-            openQuest(dailyQuestId);
-            loadQuest(dailyQuestId);
-        }
-
-        // Load dungeon quests
-        for (q in dungeonQuests) {
-            if (!isQuestLoaded(q)) {
-                log("[Step 1] Requesting Dungeon Quest " + q + "...");
-                loadQuest(q);
-            }
-        }
+        var allQuests = [dailyQuestId];
+        for (q in dungeonQuests) allQuests.push(q);
+        loadQuests(allQuests);
 
         state = 4;
         stateTimer = 0;
-        sleep(1000);
+        sleep(600);
         return;
     }
 
@@ -254,3 +243,4 @@ function onTick() {
         return;
     }
 }
+

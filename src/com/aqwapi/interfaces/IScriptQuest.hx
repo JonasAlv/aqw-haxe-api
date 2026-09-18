@@ -2,6 +2,7 @@ package com.aqwapi.interfaces;
 
 interface IScriptQuest {
     function load(questId:Int):Void;
+    function loadMultiple(questIds:Array<Int>):Void;
     function isLoaded(questId:Int):Bool;
     function showQuests(questIds:String):Void;
     function isInProgress(questId:Int):Bool;

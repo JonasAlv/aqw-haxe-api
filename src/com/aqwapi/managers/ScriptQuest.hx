@@ -35,6 +35,29 @@ class ScriptQuest implements IScriptQuest {
         }
     }
 
+    public function loadMultiple(questIds:Array<Int>):Void {
+        if (questIds == null || questIds.length == 0) return;
+        var toLoad:Array<Dynamic> = [];
+        var now:Float = AqwTime.now();
+        for (qid in questIds) {
+            if (qid > 0 && !isLoaded(qid)) {
+                if (!_lastLoadRequests.exists(qid) || (now - _lastLoadRequests.get(qid)) >= 1500) {
+                    _lastLoadRequests.set(qid, now);
+                    toLoad.push(qid);
+                }
+            }
+        }
+        if (toLoad.length == 0) return;
+        if (_game != null && _game.world != null && _game.world.getQuests != null) {
+            try {
+                _game.world.getQuests(toLoad);
+            } catch (e:Dynamic) {}
+        } else if (_game != null && _game.sfc != null) {
+            var rId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : 1;
+            _game.sfc.sendString("%xt%zm%getQuests%" + rId + "%" + toLoad.join("%") + "%");
+        }
+    }
+
     public function isLoaded(questId:Int):Bool {
         if (_game == null || _game.world == null || _game.world.questTree == null) return false;
         return Reflect.field(_game.world.questTree, Std.string(questId)) != null;
