@@ -2,6 +2,10 @@ package com.aqwapi.interfaces;
 
 interface IScriptCombat {
     function attack(monsterName:String):Void;
+    function cancelAutoAttack():Void;
+    function cancelTarget():Void;
+    function useSkill(index:Int):Bool;
+    function canUseSkill(index:Int):Bool;
     function dropCombat():Void;
     function startSmart():Void;
     function startCustom(rotation:String):Void;

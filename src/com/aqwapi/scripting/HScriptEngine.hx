@@ -168,6 +168,18 @@ class HScriptEngine {
         _interp.variables.set("dropCombat", function():Void {
             AqwApi.combat.dropCombat();
         });
+        _interp.variables.set("cancelAutoAttack", function():Void {
+            AqwApi.combat.cancelAutoAttack();
+        });
+        _interp.variables.set("cancelTarget", function():Void {
+            AqwApi.combat.cancelTarget();
+        });
+        _interp.variables.set("useSkill", function(index:Int):Bool {
+            return AqwApi.combat.useSkill(index);
+        });
+        _interp.variables.set("canUseSkill", function(index:Int):Bool {
+            return AqwApi.combat.canUseSkill(index);
+        });
         _interp.variables.set("equip", function(itemName:String):Void {
             AqwApi.inventory.equip(itemName);
         });

@@ -81,6 +81,13 @@ class CombatManager {
         if (_timer != null) { _timer.stop(); _timer = null; }
         lockedMMID = null;
         targetName = null;
+        if (AqwApi.game != null && AqwApi.game.world != null) {
+            try {
+                if (AqwApi.game.world.cancelAutoAttack != null) {
+                    AqwApi.game.world.cancelAutoAttack();
+                }
+            } catch (e:Dynamic) {}
+        }
         AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.COMBAT_TOGGLED, "Combat Stopped"));
         ApiLogger.info("Combat", "Combat Stopped");
     }
@@ -395,6 +402,41 @@ class CombatManager {
         }
         if (ready) { world.testAction(icon.actObj); return true; }
         return false;
+    }
+
+    public static function tryFireSkillPublic(idx:Int):Bool {
+        if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return false;
+        return tryFireSkill(AqwApi.game.world, AqwApi.game.world.myAvatar, idx);
+    }
+
+    public static function canFireSkill(idx:Int):Bool {
+        if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return false;
+        var icon:Dynamic = getIcon(idx);
+        if (icon == null || icon.actObj == null || icon.actObj.isOK == false) return false;
+        var world = AqwApi.game.world;
+        var avatar = world.myAvatar;
+        var pStats:Dynamic = getPlayerStats(world, avatar);
+        var dl:Dynamic     = avatar.dataLeaf;
+        if (dl != null && dl.intState == 0) return false;
+
+        var mpCost:Int = icon.actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(icon.actObj.mp, 0) : 0;
+        var curMp:Int  = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
+        if (curMp < mpCost) return false;
+
+        var hpCost:Int = icon.actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(icon.actObj.hp, 0) : 0;
+        var curHp:Int  = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
+        if (hpCost > 0 && curHp <= hpCost) return false;
+
+        var ready:Bool = (world.actionTimeCheck != null) ? (world.actionTimeCheck(icon.actObj) == true) : true;
+        if (!ready) {
+            try {
+                if (world.ActionResults != null && Reflect.field(world.ActionResults, icon.actObj.ref) != null) {
+                    var ar:Dynamic = Reflect.field(world.ActionResults, icon.actObj.ref);
+                    ready = (AqwTime.now() - ar.ts) >= icon.actObj.cd;
+                }
+            } catch (e:Dynamic) {}
+        }
+        return ready;
     }
 
     private static function getIcon(idx:Int):Dynamic {

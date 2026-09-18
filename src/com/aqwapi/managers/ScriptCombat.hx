@@ -28,7 +28,35 @@ class ScriptCombat {
         }
     }
 
+    public function cancelAutoAttack():Void {
+        if (_game == null || _game.world == null) return;
+        try {
+            if (_game.world.cancelAutoAttack != null) {
+                _game.world.cancelAutoAttack();
+            }
+        } catch (e:Dynamic) {}
+    }
+
+    public function cancelTarget():Void {
+        if (_game == null || _game.world == null) return;
+        try {
+            if (_game.world.cancelTarget != null) {
+                _game.world.cancelTarget();
+            }
+        } catch (e:Dynamic) {}
+    }
+
+    public function useSkill(index:Int):Bool {
+        return CombatManager.tryFireSkillPublic(index);
+    }
+
+    public function canUseSkill(index:Int):Bool {
+        return CombatManager.canFireSkill(index);
+    }
+
     public function dropCombat():Void {
+        cancelAutoAttack();
+        cancelTarget();
         if (_game == null || _game.world == null || _game.world.moveToCell == null) return;
         var currentCell:String = _game.world.strFrame;
         var currentPad:String = _game.world.strPad;
@@ -57,7 +85,10 @@ class ScriptCombat {
         CombatManager.start(false, false);
     }
 
-    public function stopAuto():Void { CombatManager.stop(); dropCombat(); }
+    public function stopAuto():Void {
+        CombatManager.stop();
+        cancelAutoAttack();
+    }
 
     public function equipLoadout(type:String):Bool {
         var c = ""; var m = "";
