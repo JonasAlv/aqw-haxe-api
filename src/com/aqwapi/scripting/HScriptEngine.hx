@@ -183,6 +183,12 @@ class HScriptEngine {
         _interp.variables.set("equip", function(itemName:String):Void {
             AqwApi.inventory.equip(itemName);
         });
+        _interp.variables.set("equipClass", function(type:String):Bool {
+            return AqwApi.combat.equipLoadout(type);
+        });
+        _interp.variables.set("equipLoadout", function(type:String):Bool {
+            return AqwApi.combat.equipLoadout(type);
+        });
         _interp.variables.set("stop", function():Void {
             stop();
         });
