@@ -9,6 +9,9 @@ class ScriptMap {
         _game = gameReference;
     }
 
+    private var _usePrivateRoom:Bool = true;
+    private var _privateRoomNumber:Int = 100000;
+
     public function join(mapName:String, cell:String = "Enter", pad:String = "Spawn"):Void {
         if (_game == null || _game.world == null || _game.sfc == null) return;
         var avatar:Dynamic = _game.world.myAvatar;
@@ -20,13 +23,18 @@ class ScriptMap {
                 username = Std.string(avatar.dataLeaf.strUsername);
         }
 
-        if (mapName.indexOf("-") != -1) {
+        var targetMap:String = mapName;
+        if (_usePrivateRoom && targetMap.indexOf("-") == -1) {
+            targetMap = targetMap + "-" + _privateRoomNumber;
+        }
+
+        if (targetMap.indexOf("-") != -1) {
             if (AqwApi.transport != null) {
-                AqwApi.transport.send("zm", "cmd", ["1", "tfer", username, mapName]);
+                AqwApi.transport.send("zm", "cmd", ["1", "tfer", username, targetMap]);
             }
         } else {
             if (_game.world.gotoTown != null) {
-                _game.world.gotoTown(mapName, cell, pad);
+                _game.world.gotoTown(targetMap, cell, pad);
             }
         }
     }
@@ -97,4 +105,20 @@ class ScriptMap {
         if (_game.world != null && _game.world.curRoom != null) return Std.int(_game.world.curRoom);
         return 1;
     }
+
+    public var usePrivateRoom(get, set):Bool;
+    @:getter(usePrivateRoom)
+    public function get_usePrivateRoom_prop():Bool { return _usePrivateRoom; }
+    @:setter(usePrivateRoom)
+    public function set_usePrivateRoom_prop(v:Bool):Bool { _usePrivateRoom = v; return v; }
+    public function get_usePrivateRoom():Bool { return _usePrivateRoom; }
+    public function set_usePrivateRoom(v:Bool):Bool { _usePrivateRoom = v; return v; }
+
+    public var privateRoomNumber(get, set):Int;
+    @:getter(privateRoomNumber)
+    public function get_privateRoomNumber_prop():Int { return _privateRoomNumber; }
+    @:setter(privateRoomNumber)
+    public function set_privateRoomNumber_prop(v:Int):Int { _privateRoomNumber = v; return v; }
+    public function get_privateRoomNumber():Int { return _privateRoomNumber; }
+    public function set_privateRoomNumber(v:Int):Int { _privateRoomNumber = v; return v; }
 }

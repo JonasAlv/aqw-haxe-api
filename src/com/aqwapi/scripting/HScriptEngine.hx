@@ -204,12 +204,18 @@ class HScriptEngine {
                 AqwApi.transport.sendExtensionCommand(cmd, args != null ? args : []);
             }
         });
-        _interp.variables.set("dungeonQueue", function(mapName:String):Void {
+        _interp.variables.set("dungeonQueue", function(mapName:String, roomNum:Int = -1):Void {
             var roomId = AqwApi.map.roomId;
-            var packet = "%xt%zm%dungeonQueue%" + roomId + "%" + mapName + "-100000%";
+            var num = (roomNum > 0) ? roomNum : AqwApi.map.privateRoomNumber;
+            var targetMap = (mapName.indexOf("-") != -1) ? mapName : (mapName + "-" + num);
+            var packet = "%xt%zm%dungeonQueue%" + roomId + "%" + targetMap + "%";
             if (AqwApi.game != null && AqwApi.game.sfc != null) {
                 AqwApi.game.sfc.sendString(packet);
             }
+        });
+        _interp.variables.set("setPrivateRoom", function(enabled:Bool, roomNumber:Int = 100000):Void {
+            AqwApi.map.usePrivateRoom = enabled;
+            if (roomNumber > 0) AqwApi.map.privateRoomNumber = roomNumber;
         });
 
         // Target & Auras

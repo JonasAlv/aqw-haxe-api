@@ -8,4 +8,6 @@ interface IScriptMap {
     var isLoaded(get, never):Bool;
     var name(get, never):String;
     var roomId(get, never):Int;
+    var usePrivateRoom(get, set):Bool;
+    var privateRoomNumber(get, set):Int;
 }
