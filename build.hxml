@@ -1,0 +1,4 @@
+-cp src
+-D air
+-swf bin/AqwApi.swc
+--macro include('com.aqwapi')

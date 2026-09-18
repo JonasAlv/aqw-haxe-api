@@ -1,0 +1,3 @@
+package;
+
+typedef AQWGame = Dynamic;
