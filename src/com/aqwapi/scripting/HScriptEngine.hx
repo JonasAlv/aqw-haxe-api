@@ -241,6 +241,26 @@ class HScriptEngine {
             return res;
         });
 
+        // Cutscene & UI
+        _interp.variables.set("skipCutscene", function():Void {
+            if (AqwApi.game != null && AqwApi.game.world != null) {
+                try {
+                    var w:Dynamic = AqwApi.game.world;
+                    if (Reflect.hasField(w, "mcExtSWF") && w.mcExtSWF != null && w.mcExtSWF.numChildren > 0) {
+                        var ext:Dynamic = w.mcExtSWF.getChildAt(0);
+                        if (ext != null && Reflect.hasField(ext, "totalFrames")) {
+                            ext.gotoAndPlay(ext.totalFrames - 2);
+                            if (Reflect.hasField(w, "showInterface")) w.showInterface();
+                        }
+                    }
+                    if (AqwApi.game.ui != null && Reflect.hasField(AqwApi.game.ui, "mcPopup")) {
+                        var p = AqwApi.game.ui.mcPopup;
+                        if (p != null && Reflect.hasField(p, "onClose")) p.onClose();
+                    }
+                } catch (e:Dynamic) {}
+            }
+        });
+
         // Utilities
         _interp.variables.set("Math", Math);
         _interp.variables.set("Std", Std);

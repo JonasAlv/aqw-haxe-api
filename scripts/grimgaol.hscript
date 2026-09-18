@@ -81,6 +81,15 @@ function findActiveCombatCell() {
 }
 
 function onTick() {
+    // 0. Ensure map is loaded and avatar ready
+    if (!map.isLoaded) {
+        sleep(500);
+        return;
+    }
+
+    // Dismiss any cutscenes or popup dialogs
+    skipCutscene();
+
     // 1. Handle player death
     if (!player.isAlive) {
         log("Player defeated, waiting for respawn...");
