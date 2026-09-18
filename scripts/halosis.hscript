@@ -15,12 +15,13 @@ function onStart() {
     log("Starting Halosis HScript runner...");
     acceptQuest(questId);
     
-    // Equip class if available
-    if (hasItem("Chaos Avenger")) {
-        equip("Chaos Avenger");
-    } else if (hasItem("Dragon of Time")) {
+    // Equip Dragon of Time
+    if (hasItem("Dragon of Time")) {
         equip("Dragon of Time");
+    } else if (hasItem("Chaos Avenger")) {
+        equip("Chaos Avenger");
     }
+
 
     join(bossMap, bossCell, bossPad);
     combat.startCustom("3,2,1,2,4,2");
@@ -115,3 +116,4 @@ function onStop() {
     combat.stopAuto();
     dropCombat();
 }
+
