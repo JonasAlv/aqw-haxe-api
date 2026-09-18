@@ -47,6 +47,67 @@ class ApiLogger {
         log(tag, LEVEL_ERROR, message);
     }
 
+    private static var _logFile:Dynamic = null;
+    private static var _logFileInitialized:Bool = false;
+
+    private static function _resolveLogFile():Dynamic {
+        if (_logFileInitialized) return _logFile;
+        _logFileInitialized = true;
+
+        try {
+            var fileCls:Dynamic = untyped __global__["flash.filesystem.File"];
+            var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
+            var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
+            if (fileCls == null || fsCls == null || fmCls == null) return null;
+
+            // Priority 1: applicationStorageDirectory/bot.log (guaranteed writable on all AIR desktop/mobile targets)
+            try {
+                if (fileCls.applicationStorageDirectory != null) {
+                    var candidate = fileCls.applicationStorageDirectory.resolvePath("bot.log");
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(candidate, fmCls.APPEND);
+                    fs.writeUTFBytes("");
+                    fs.close();
+                    _logFile = candidate;
+                    flash.Lib.trace("[ApiLogger] Logging to appStorage file: " + candidate.nativePath);
+                    return _logFile;
+                }
+            } catch (e:Dynamic) {}
+
+            // Priority 2: haxe-workspace/bot.log (applicationDirectory.parent.parent)
+            try {
+                if (fileCls.applicationDirectory != null && 
+                    fileCls.applicationDirectory.parent != null && 
+                    fileCls.applicationDirectory.parent.parent != null) {
+                    var candidate = fileCls.applicationDirectory.parent.parent.resolvePath("bot.log");
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(candidate, fmCls.APPEND);
+                    fs.writeUTFBytes("");
+                    fs.close();
+                    _logFile = candidate;
+                    flash.Lib.trace("[ApiLogger] Logging to workspace file: " + candidate.nativePath);
+                    return _logFile;
+                }
+            } catch (e:Dynamic) {}
+
+            // Priority 3: userDirectory/bot.log
+            try {
+                if (fileCls.userDirectory != null) {
+                    var candidate = fileCls.userDirectory.resolvePath("bot.log");
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(candidate, fmCls.APPEND);
+                    fs.writeUTFBytes("");
+                    fs.close();
+                    _logFile = candidate;
+                    flash.Lib.trace("[ApiLogger] Logging to userDir file: " + candidate.nativePath);
+                    return _logFile;
+                }
+            } catch (e:Dynamic) {}
+        } catch (e:Dynamic) {}
+
+        return null;
+    }
+
     public static function log(tag:String, msgLevel:Int, message:String):Void {
         if (msgLevel < level) return;
 
@@ -71,17 +132,19 @@ class ApiLogger {
 
         if (printToFile) {
             try {
-                var fileCls:Dynamic = untyped __global__["flash.filesystem.File"];
-                var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
-                var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
-                if (fileCls != null && fsCls != null && fmCls != null) {
-                    var f = fileCls.applicationDirectory.resolvePath("bot.log");
+                var f = _resolveLogFile();
+                if (f != null) {
+                    var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
+                    var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
                     var fs = Type.createInstance(fsCls, []);
                     fs.open(f, fmCls.APPEND);
                     fs.writeUTFBytes(formatted + "\n");
                     fs.close();
                 }
-            } catch (e:Dynamic) {}
+            } catch (e:Dynamic) {
+                _logFileInitialized = false;
+                _logFile = null;
+            }
         }
 
         if (printToChat && msgLevel >= chatMinLevel) {
