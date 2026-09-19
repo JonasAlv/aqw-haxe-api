@@ -1,7 +1,6 @@
 package com.aqwapi;
 
 import flash.events.EventDispatcher;
-import com.aqwapi.interfaces.*;
 import com.aqwapi.managers.*;
 import com.aqwapi.net.TransportAdapter;
 import com.aqwapi.scripting.HScriptEngine;

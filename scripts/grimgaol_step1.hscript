@@ -164,19 +164,30 @@ function onTick() {
     // ----------------------------------------------------
     if (state == 5) {
         retryCount = retryCount + 1;
-        log("[Step 1] Sending Accept packets (Attempt " + retryCount + ")...");
+        log("[Step 1] Determining available quests (Attempt " + retryCount + ")...");
 
-        // Try accepting daily quest
-        if (!isQuestAccepted(dailyQuestId)) {
-            log("[Step 1] Accepting Daily Quest: " + dailyQuestId);
-            acceptQuest(dailyQuestId);
-        }
+        var slotVal = getQuestValue(530);
+        var firstTimeCleared = hasBeenCompleted(9466) || slotVal >= 4;
+        log("[Step 1] Slot 530 value: " + slotVal + " | First time cleared: " + firstTimeCleared);
 
-        // Try accepting dungeon quests
-        for (q in dungeonQuests) {
-            if (!isQuestAccepted(q) && !acceptedAnyDungeonQuest) {
-                log("[Step 1] Accepting Dungeon Quest: " + q);
-                acceptQuest(q);
+        if (!firstTimeCleared) {
+            if (isQuestAvailable(9466)) {
+                log("[Step 1] Accepting First-Time Quest 9466...");
+                acceptQuest(9466);
+            } else {
+                log("[Step 1] WARNING: Quest 9466 is NOT available yet! Prerequisite boulder quests missing.");
+            }
+        } else {
+            var rerunId = 9467;
+            if (isQuestAvailable(9468)) rerunId = 9468;
+            if (isQuestAvailable(rerunId)) {
+                log("[Step 1] Accepting Gaol Rerun Quest " + rerunId + "...");
+                acceptQuest(rerunId);
+            }
+
+            if (!isDailyComplete(dailyQuestId) && isQuestAvailable(dailyQuestId)) {
+                log("[Step 1] Accepting Daily Quest " + dailyQuestId + "...");
+                acceptQuest(dailyQuestId);
             }
         }
 
@@ -191,29 +202,41 @@ function onTick() {
     // ----------------------------------------------------
     if (state == 6) {
         stateTimer = stateTimer + 1;
+        var slotVal = getQuestValue(530);
+        var firstTimeCleared = hasBeenCompleted(9466) || slotVal >= 4;
 
-        var dailyAcc = isQuestAccepted(dailyQuestId);
-        log("[Step 1] Server Confirmation -> Daily Quest (" + dailyQuestId + "): " + (dailyAcc ? "ACCEPTED" : "NOT ACCEPTED"));
-
-        var countAccepted = 0;
-        for (q in dungeonQuests) {
-            var acc = isQuestAccepted(q);
-            log("[Step 1] Server Confirmation -> Dungeon Quest (" + q + "): " + (acc ? "ACCEPTED" : "NOT ACCEPTED"));
-            if (acc) {
-                countAccepted = countAccepted + 1;
-                acceptedAnyDungeonQuest = true;
+        if (!firstTimeCleared) {
+            var q9466Acc = isQuestAccepted(9466);
+            log("[Step 1] Server Confirmation -> First-Time Quest (9466): " + (q9466Acc ? "ACCEPTED" : "NOT ACCEPTED"));
+            if (q9466Acc) {
+                log("[Step 1] SUCCESS: First-time Grimgaol quest successfully accepted!");
+                state = 7;
+                sleep(400);
+                return;
+            }
+        } else {
+            var dailyAcc = isQuestAccepted(dailyQuestId);
+            var rerun7Acc = isQuestAccepted(9467);
+            var rerun8Acc = isQuestAccepted(9468);
+            log("[Step 1] Server Confirmation -> Daily (9469): " + (dailyAcc ? "ACCEPTED" : "NOT ACCEPTED"));
+            log("[Step 1] Server Confirmation -> Rerun (9467): " + (rerun7Acc ? "ACCEPTED" : "NOT ACCEPTED"));
+            log("[Step 1] Server Confirmation -> Rerun Legend (9468): " + (rerun8Acc ? "ACCEPTED" : "NOT ACCEPTED"));
+            if (rerun7Acc || rerun8Acc) {
+                log("[Step 1] SUCCESS: Gaol rerun quest successfully accepted!");
+                state = 7;
+                sleep(400);
+                return;
             }
         }
 
-        // If at least one dungeon quest or daily quest is accepted, or if retried 3 times
-        if (countAccepted > 0 || dailyAcc || retryCount >= 3) {
-            state = 7;
-            sleep(300);
+        if (retryCount < 3) {
+            state = 5;
+            sleep(1000);
             return;
         } else {
-            log("[Step 1] Quest acceptance still pending, retrying...");
-            state = 5;
-            sleep(500);
+            log("[Step 1] Finished quest acceptance sequence. Quests may be locked if prerequisites are not met.");
+            state = 7;
+            sleep(400);
             return;
         }
     }
@@ -229,23 +252,13 @@ function onTick() {
         log("[Step 1] === VERIFICATION RESULTS ===");
         log("Map: " + map.name + " | Cell: " + player.cell + " | Pad: " + player.pad);
         log("Player State: " + (player.isAlive ? "Alive" : "Dead") + " (HP: " + player.hp + "/" + player.maxHp + ")");
-        log("Daily Quest (9469): " + (isQuestAccepted(dailyQuestId) ? "[ACCEPTED]" : "[NOT ACCEPTED / NOT AVAILABLE]"));
-        for (q in dungeonQuests) {
-            log("Dungeon Quest (" + q + "): " + (isQuestAccepted(q) ? "[ACCEPTED]" : "[NOT ACCEPTED / NOT AVAILABLE]"));
-        }
+        log("First-Time Clear (9466): " + (isQuestAccepted(9466) ? "[ACCEPTED]" : "[NOT ACCEPTED]"));
+        log("Rerun Quest (9467): " + (isQuestAccepted(9467) ? "[ACCEPTED]" : "[NOT ACCEPTED]"));
+        log("Rerun Legend (9468): " + (isQuestAccepted(9468) ? "[ACCEPTED]" : "[NOT ACCEPTED]"));
+        log("Daily Quest (9469): " + (isQuestAccepted(dailyQuestId) ? "[ACCEPTED]" : "[NOT ACCEPTED]"));
         log("==========================================");
         log("[Step 1] COMPLETE! Ready for combat debug.");
-        state = 8;
-        sleep(3000);
-        return;
-    }
-
-    // ----------------------------------------------------
-    // STATE 8: Done / Idle
-    // ----------------------------------------------------
-    if (state == 8) {
-        // Keep idle to avoid re-running
-        sleep(5000);
+        stop();
         return;
     }
 }

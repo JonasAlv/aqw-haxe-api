@@ -566,7 +566,18 @@ class CombatManager {
                 }
             } catch (e:Dynamic) {}
         }
-        if (ready) { world.testAction(actObj); return true; }
+        if (ready) {
+            try {
+                if (AqwApi.combat != null) {
+                    var sc:Dynamic = AqwApi.combat;
+                    if (sc.infiniteRange == true) {
+                        actObj.range = 20000;
+                    }
+                }
+            } catch (e:Dynamic) {}
+            world.testAction(actObj);
+            return true;
+        }
         return false;
     }
 

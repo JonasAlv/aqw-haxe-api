@@ -1,7 +1,6 @@
 package com.aqwapi.managers;
 
 import com.aqwapi.data.EntityDTO;
-import com.aqwapi.interfaces.IScriptMonster;
 
 class ScriptMonster {
     private var _game:AQWGame;

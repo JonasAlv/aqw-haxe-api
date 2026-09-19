@@ -17,13 +17,13 @@ function onStart() {
     grimskullDefeated = false;
     rotationIndex = 0;
 
-    // Detect and select loadout
-    if (hasItem("Dragon of Time")) {
-        currentClass = "Dragon of Time";
-        equip("Dragon of Time");
-    } else if (hasItem("King's Echo")) {
+    // Detect and select loadout (King's Echo is #1 priority)
+    if (hasItem("King's Echo")) {
         currentClass = "King's Echo";
         equip("King's Echo");
+    } else if (hasItem("Dragon of Time")) {
+        currentClass = "Dragon of Time";
+        equip("Dragon of Time");
     } else if (hasItem("Legion Revenant")) {
         currentClass = "Legion Revenant";
         equip("Legion Revenant");
@@ -34,10 +34,12 @@ function onStart() {
         currentClass = "Generic";
     }
     log("[Step 2] Class selected: " + currentClass);
+    setInfiniteRange(true);
 }
 
 function onStop() {
     log("[Step 2] Script Stopped.");
+    setInfiniteRange(false);
     dropCombat();
 }
 
@@ -67,14 +69,21 @@ function onTick() {
     }
 
     // 2. Ensure quests are loaded and accepted
-    if (!isQuestAccepted(dailyQuestId)) {
-        if (!isQuestLoaded(dailyQuestId)) loadQuests([dailyQuestId, 9467, 9466, 9468]);
-        acceptQuest(dailyQuestId);
-    }
-    for (q in dungeonQuests) {
-        if (!isQuestAccepted(q)) {
-            if (!isQuestLoaded(q)) loadQuests([dailyQuestId, 9467, 9466, 9468]);
-            acceptQuest(q);
+    var slotVal = getQuestValue(530);
+    var firstTimeCleared = hasBeenCompleted(9466) || slotVal >= 4;
+
+    if (!firstTimeCleared) {
+        if (!isQuestAccepted(9466) && isQuestAvailable(9466)) {
+            acceptQuest(9466);
+        }
+    } else {
+        var rerunId = 9467;
+        if (isQuestAvailable(9468)) rerunId = 9468;
+        if (!isQuestAccepted(rerunId) && isQuestAvailable(rerunId)) {
+            acceptQuest(rerunId);
+        }
+        if (!isDailyComplete(dailyQuestId) && !isQuestAccepted(dailyQuestId) && isQuestAvailable(dailyQuestId)) {
+            acceptQuest(dailyQuestId);
         }
     }
 
@@ -109,10 +118,11 @@ function onTick() {
         if (r2Monsters.length == 0) {
             log("==========================================");
             log("[Step 2] SUCCESS! Grim Bomb defeated in Room 2 (r2)!");
-            log("[Step 2] Room 1 and Room 2 100% complete! Next cell: r3.");
+            log("[Step 2] Room 1 and Room 2 100% complete!");
+            log("[Step 2] Debug verified! Use 'grimgaol.hscript' for full 12-cell runner.");
             log("==========================================");
             jump("r3", "Left");
-            sleep(2000);
+            stop();
             return;
         }
     }
@@ -125,24 +135,24 @@ function onTick() {
 
     var targetMon = monstersInCell[0];
 
-    // 4. Target Acquisition & Close Range Approach
+    // 4. Boss Mechanic: Talon Twisting (100% Reflect Shield in Enter)
+    var hasTalon = (targetMon != null && targetMon.hasAura("Talon Twisting")) || hasTargetAura("Talon Twisting");
+    var hasRetaliate = (targetMon != null && targetMon.hasAura("Retaliate")) || hasTargetAura("Retaliate");
+    if (hasTalon && !hasRetaliate) {
+        cancelAutoAttack();
+        cancelTarget();
+        log("[Step 2] REFLECT SHIELD (Talon Twisting) active! Combat paused until Retaliate...");
+        sleep(1000);
+        return;
+    }
+
+    // 5. Target Acquisition & Close Range Approach
     if (player.target == null || !player.target.alive) {
         log("[Step 2] Target acquired: " + targetMon.name + " (MapID: " + targetMon.mapId + ", HP: " + targetMon.hp + ")");
         attack(targetMon.mapId);
         approach();
         if (currentCell == "Enter") grimskullEngaged = true;
         sleep(250);
-        return;
-    }
-
-    // 5. Boss Mechanic: Talon Twisting (100% Reflect Shield)
-    var hasTalon = hasTargetAura("Talon Twisting");
-    var hasRetaliate = hasTargetAura("Retaliate");
-    if (hasTalon && !hasRetaliate) {
-        cancelAutoAttack();
-        cancelTarget();
-        log("[Step 2] REFLECT SHIELD (Talon Twisting) active! Combat paused until Retaliate...");
-        sleep(1000);
         return;
     }
 

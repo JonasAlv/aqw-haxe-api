@@ -1,7 +1,5 @@
 package com.aqwapi.managers;
 
-import com.aqwapi.interfaces.IScriptDrops;
-
 class ScriptDrops {
     private var _game:AQWGame;
     public var pendingDrops:Array<Dynamic> = [];

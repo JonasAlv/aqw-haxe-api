@@ -1,6 +1,5 @@
 package com.aqwapi.managers;
 
-import com.aqwapi.interfaces.IScriptQuest;
 import flash.utils.Timer;
 import flash.events.TimerEvent;
 import com.aqwapi.events.ApiEvent;
@@ -8,7 +7,7 @@ import com.aqwapi.AqwApi;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
 
-class ScriptQuest implements IScriptQuest {
+class ScriptQuest {
     private var _game:AQWGame;
     private var _timer:Timer;
     private var _questIDs:Array<Dynamic> = [];
@@ -101,6 +100,13 @@ class ScriptQuest implements IScriptQuest {
         }
     }
 
+    public function acceptMultiple(questIds:Array<Int>):Void {
+        if (questIds == null || questIds.length == 0) return;
+        for (qid in questIds) {
+            if (qid > 0) accept(qid);
+        }
+    }
+
     public function complete(questId:Int, itemId:Int = -1):Void {
         if (_game != null && _game.world != null && _game.world.tryQuestComplete != null) {
             if (itemId > 0) {
@@ -109,6 +115,30 @@ class ScriptQuest implements IScriptQuest {
                 _game.world.tryQuestComplete(questId);
             }
         }
+    }
+
+    public function completeMultiple(questIds:Array<Int>):Void {
+        if (questIds == null || questIds.length == 0) return;
+        for (qid in questIds) {
+            if (qid > 0 && isAccepted(qid)) complete(qid);
+        }
+    }
+
+    public function getQuestValue(slot:Int):Int {
+        if (_game == null || _game.world == null) return 0;
+        try {
+            if (_game.world.getQuestValue != null) {
+                var val:Dynamic = _game.world.getQuestValue(slot);
+                if (val != null) return Std.int(val);
+            }
+        } catch (e:Dynamic) {}
+        try {
+            if (_game.world.questSlots != null && Reflect.field(_game.world.questSlots, Std.string(slot)) != null) {
+                var qsVal:Dynamic = Reflect.field(_game.world.questSlots, Std.string(slot));
+                if (qsVal != null) return Std.int(qsVal);
+            }
+        } catch (e:Dynamic) {}
+        return 0;
     }
 
     public function isCompleted(questId:Int):Bool {
@@ -121,23 +151,7 @@ class ScriptQuest implements IScriptQuest {
         var qval:Int = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
 
         if (qslot >= 0) {
-            try {
-                if (_game.world.getQuestValue != null) {
-                    var slotVal:Dynamic = _game.world.getQuestValue(qslot);
-                    if (slotVal != null && Std.int(slotVal) >= qval) {
-                        return true;
-                    }
-                }
-            } catch (e:Dynamic) {}
-
-            try {
-                if (_game.world.questSlots != null && Reflect.field(_game.world.questSlots, Std.string(qslot)) != null) {
-                    var qsVal:Dynamic = Reflect.field(_game.world.questSlots, Std.string(qslot));
-                    if (Std.int(qsVal) >= qval) {
-                        return true;
-                    }
-                }
-            } catch (e:Dynamic) {}
+            return getQuestValue(qslot) >= qval;
         }
 
         return false;
@@ -145,6 +159,41 @@ class ScriptQuest implements IScriptQuest {
 
     public inline function isComplete(questId:Int):Bool {
         return isCompleted(questId);
+    }
+
+    public inline function hasBeenCompleted(questId:Int):Bool {
+        return isCompleted(questId);
+    }
+
+    public function isUnlocked(questId:Int):Bool {
+        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
+        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+        if (qData == null) return false;
+        var qslot:Int = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
+        var qval:Int = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
+        if (qslot < 0) return true;
+        return getQuestValue(qslot) >= (qval - 1);
+    }
+
+    public function isDailyComplete(questId:Int):Bool {
+        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
+        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+        if (qData == null) return false;
+        if (qData.sField != null && qData.iIndex != null && _game.world.getAchievement != null) {
+            try {
+                var ach = _game.world.getAchievement(qData.sField, qData.iIndex);
+                return ach != null && Std.int(ach) > 0;
+            } catch (e:Dynamic) {}
+        }
+        return false;
+    }
+
+    public function canComplete(questId:Int):Bool {
+        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
+        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+        if (qData == null) return false;
+        if (qData.status != null && Std.string(qData.status) == "c") return true;
+        return false;
     }
 
     public inline function isAccepted(questId:Int):Bool {
@@ -164,11 +213,8 @@ class ScriptQuest implements IScriptQuest {
         var bOnce:Int = (qData.bOnce != null) ? Std.int(qData.bOnce) : 0;
         var qslot:Int = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
         var qval:Int = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
-        if (bOnce == 1) {
-            if (qslot >= 0 && world.getQuestValue != null) {
-                var curSlotVal:Int = Std.int(world.getQuestValue(qslot));
-                if (curSlotVal >= qval) return false;
-            }
+        if (bOnce == 1 && qslot >= 0) {
+            if (getQuestValue(qslot) >= qval) return false;
         }
 
         // 2. Member / Upgrade requirement
@@ -184,19 +230,14 @@ class ScriptQuest implements IScriptQuest {
         if (iLvl > pLvl) return false;
 
         // 4. Prerequisite slot requirement
-        if (qslot >= 0 && qval > 0 && world.getQuestValue != null) {
-            var curVal:Int = Std.int(world.getQuestValue(qslot));
+        if (qslot >= 0 && qval > 0) {
+            var curVal:Int = getQuestValue(qslot);
             var reqVal:Int = Std.int(Math.abs(qval)) - 1;
             if (curVal < reqVal) return false;
         }
 
         // 5. Daily or Special Achievement Flag
-        if (qData.sField != null && qData.iIndex != null && world.getAchievement != null) {
-            try {
-                var ach = world.getAchievement(qData.sField, qData.iIndex);
-                if (ach != 0) return false;
-            } catch (e:Dynamic) {}
-        }
+        if (isDailyComplete(questId)) return false;
 
         return true;
     }

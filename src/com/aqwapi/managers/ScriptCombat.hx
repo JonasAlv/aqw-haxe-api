@@ -1,6 +1,5 @@
 package com.aqwapi.managers;
 
-import com.aqwapi.interfaces.IScriptCombat;
 import com.aqwapi.modules.CombatManager;
 import com.aqwapi.AqwApi;
 
@@ -9,6 +8,40 @@ class ScriptCombat {
 
     public function new(gameReference:AQWGame) {
         _game = gameReference;
+    }
+
+    private var _infiniteRange:Bool = true;
+
+    public function applyInfiniteRange():Void {
+        if (!_infiniteRange || _game == null || _game.world == null || _game.world.actions == null) return;
+        try {
+            var active:Dynamic = _game.world.actions.active;
+            if (active != null) {
+                var len:Int = (Reflect.hasField(active, "length")) ? Std.int(active.length) : 6;
+                for (i in 0...len) {
+                    var act:Dynamic = active[i];
+                    if (act != null) {
+                        act.range = 20000;
+                    }
+                }
+            }
+        } catch (e:Dynamic) {}
+    }
+
+    public function setInfiniteRange(enabled:Bool = true):Void {
+        _infiniteRange = enabled;
+        applyInfiniteRange();
+    }
+
+    public function magnetize():Void {
+        if (_game == null || _game.world == null || _game.world.myAvatar == null) return;
+        try {
+            var myAvt:Dynamic = _game.world.myAvatar;
+            if (myAvt != null && myAvt.target != null && myAvt.target.pMC != null && myAvt.pMC != null) {
+                myAvt.target.pMC.x = myAvt.pMC.x;
+                myAvt.target.pMC.y = myAvt.pMC.y;
+            }
+        } catch (e:Dynamic) {}
     }
 
     public function attack(monsterName:String):Void {
@@ -63,9 +96,7 @@ class ScriptCombat {
                 var mc:Dynamic = Reflect.field(targetMonster, "pMC");
                 if (mc != null) {
                     if (_game.world.setTarget != null) _game.world.setTarget(targetMonster);
-                    if (Reflect.field(mc, "mcChar") != null && _game.world.approachTarget != null) {
-                        _game.world.approachTarget();
-                    }
+                    applyInfiniteRange();
                 }
             } catch (e:Dynamic) {}
         }
@@ -74,8 +105,9 @@ class ScriptCombat {
     public function approachTarget():Void {
         if (_game == null || _game.world == null) return;
         try {
+            applyInfiniteRange();
             var avt:Dynamic = _game.world.myAvatar;
-            if (avt != null && avt.target != null && avt.target.pMC != null && Reflect.field(avt.target.pMC, "mcChar") != null) {
+            if (avt != null && avt.target != null && avt.target.pMC != null) {
                 if (_game.world.approachTarget != null) _game.world.approachTarget();
             }
         } catch (e:Dynamic) {}
@@ -87,6 +119,12 @@ class ScriptCombat {
             if (_game.world.cancelAutoAttack != null) {
                 _game.world.cancelAutoAttack();
             }
+            if (_game.world.autoActionTimer != null) {
+                _game.world.autoActionTimer.reset();
+            }
+            if (_game.world.AATestTimer != null) {
+                _game.world.AATestTimer.reset();
+            }
         } catch (e:Dynamic) {}
     }
 
@@ -96,10 +134,19 @@ class ScriptCombat {
             if (_game.world.cancelTarget != null) {
                 _game.world.cancelTarget();
             }
+            if (_game.world.myAvatar != null) {
+                _game.world.myAvatar.target = null;
+            }
         } catch (e:Dynamic) {}
     }
 
+    public function pauseCombat():Void {
+        cancelAutoAttack();
+        cancelTarget();
+    }
+
     public function useSkill(index:Int):Bool {
+        applyInfiniteRange();
         return CombatManager.tryFireSkillPublic(index);
     }
 
@@ -246,4 +293,12 @@ class ScriptCombat {
     public function set_dodgeMode_prop(v:String):String { CombatManager.dodgeMode = v; return v; }
     public function get_dodgeMode():String { return CombatManager.dodgeMode; }
     public function set_dodgeMode(v:String):String { CombatManager.dodgeMode = v; return v; }
+
+    public var infiniteRange(get, set):Bool;
+    @:getter(infiniteRange)
+    public function get_infiniteRange_prop():Bool { return _infiniteRange; }
+    @:setter(infiniteRange)
+    public function set_infiniteRange_prop(v:Bool):Bool { setInfiniteRange(v); return v; }
+    public function get_infiniteRange():Bool { return _infiniteRange; }
+    public function set_infiniteRange(v:Bool):Bool { setInfiniteRange(v); return v; }
 }

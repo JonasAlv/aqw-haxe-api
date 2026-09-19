@@ -1,6 +1,5 @@
 package com.aqwapi.managers;
 
-import com.aqwapi.interfaces.IScriptInventory;
 import com.aqwapi.events.GameEvent;
 import com.aqwapi.AqwApi;
 import com.aqwapi.utils.Promise;

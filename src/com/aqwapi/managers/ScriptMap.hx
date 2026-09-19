@@ -1,7 +1,5 @@
 package com.aqwapi.managers;
 
-import com.aqwapi.interfaces.IScriptMap;
-
 class ScriptMap {
     private var _game:AQWGame;
 
@@ -39,12 +37,30 @@ class ScriptMap {
         }
     }
 
+    private var _autoDeathSpawn:Bool = false;
+    private var _lastSpawnCell:String = "";
+
+    public function checkAutoDeathSpawn():Void {
+        if (!_autoDeathSpawn || _game == null || _game.world == null) return;
+        if (AqwApi.player != null && !AqwApi.player.isAlive) return;
+        var curCell:String = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
+        var curPad:String = (_game.world.strPad != null) ? Std.string(_game.world.strPad) : "Spawn";
+        if (curCell != "" && curCell != _lastSpawnCell && curCell.toLowerCase().indexOf("cut") == -1) {
+            _lastSpawnCell = curCell;
+            AqwApi.player.setSpawnPoint(curCell, curPad);
+        }
+    }
+
     public function jump(cell:String, pad:String = "Enter"):Void {
         if (_game == null || _game.world == null) return;
         if (_game.world.moveToCell != null) {
             if (_game.world.strFrame != cell) {
                 _game.world.moveToCell(cell, pad);
             }
+        }
+        if (_autoDeathSpawn && cell != null && cell != "" && cell.toLowerCase().indexOf("cut") == -1) {
+            _lastSpawnCell = cell;
+            AqwApi.player.setSpawnPoint(cell, pad);
         }
     }
 
@@ -59,10 +75,17 @@ class ScriptMap {
 
     public function snapTo(target:Dynamic):Void {
         if (_game == null || _game.world == null || _game.world.myAvatar == null || target == null) return;
-        if (_game.world.myAvatar.pMC != null && target.pMC != null) {
-            _game.world.myAvatar.pMC.x = target.pMC.x;
-            _game.world.myAvatar.pMC.y = target.pMC.y;
-        }
+        try {
+            var myMC:Dynamic = _game.world.myAvatar.pMC;
+            var tMC:Dynamic = null;
+            if (Reflect.hasField(target, "raw") && target.raw != null) tMC = Reflect.field(target.raw, "pMC");
+            else if (Reflect.hasField(target, "pMC")) tMC = Reflect.field(target, "pMC");
+            if (myMC != null && tMC != null) {
+                myMC.x = tMC.x;
+                myMC.y = tMC.y;
+                if (_game.world.pushMove != null) _game.world.pushMove(myMC, tMC.x, tMC.y, 16);
+            }
+        } catch (e:Dynamic) {}
     }
 
     public var isLoaded(get, never):Bool;
@@ -121,4 +144,12 @@ class ScriptMap {
     public function set_privateRoomNumber_prop(v:Int):Int { _privateRoomNumber = v; return v; }
     public function get_privateRoomNumber():Int { return _privateRoomNumber; }
     public function set_privateRoomNumber(v:Int):Int { _privateRoomNumber = v; return v; }
+
+    public var autoDeathSpawn(get, set):Bool;
+    @:getter(autoDeathSpawn)
+    public function get_autoDeathSpawn_prop():Bool { return _autoDeathSpawn; }
+    @:setter(autoDeathSpawn)
+    public function set_autoDeathSpawn_prop(v:Bool):Bool { _autoDeathSpawn = v; if (v) checkAutoDeathSpawn(); return v; }
+    public function get_autoDeathSpawn():Bool { return _autoDeathSpawn; }
+    public function set_autoDeathSpawn(v:Bool):Bool { _autoDeathSpawn = v; if (v) checkAutoDeathSpawn(); return v; }
 }

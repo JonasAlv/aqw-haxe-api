@@ -130,8 +130,15 @@ class ScriptManager {
             completedThisSession = {};
         }
 
+        // Truncate bot.log to start fresh on every script run
+        com.aqwapi.utils.ApiLogger.clearLog();
+
         isRunning = true;
         waitTimer = 0;
+
+        // Scripting ergonomics: Infinite Range and Death Spawn are always ON by default during scripts
+        if (AqwApi.combat != null) AqwApi.combat.setInfiniteRange(true);
+        if (AqwApi.map != null) AqwApi.map.autoDeathSpawn = true;
 
         CombatManager.init();
         if (CombatManager.IS_ON) CombatManager.stop();

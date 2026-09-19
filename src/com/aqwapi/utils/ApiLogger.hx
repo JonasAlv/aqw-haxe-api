@@ -156,6 +156,22 @@ class ApiLogger {
 
     }
 
+    public static function clearLog():Void {
+        try {
+            var f = _resolveLogFile();
+            if (f != null) {
+                var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
+                var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
+                if (fsCls != null && fmCls != null) {
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(f, fmCls.WRITE);
+                    fs.writeUTFBytes("");
+                    fs.close();
+                }
+            }
+        } catch (e:Dynamic) {}
+    }
+
     public static function pushChat(type:String, text:String, sender:String = "API"):Void {
         if (AqwApi.game != null && AqwApi.game.chatF != null && AqwApi.game.chatF.pushMsg != null) {
             try {

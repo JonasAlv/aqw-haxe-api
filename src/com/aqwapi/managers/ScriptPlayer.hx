@@ -1,9 +1,8 @@
 package com.aqwapi.managers;
 
-import com.aqwapi.interfaces.IScriptPlayer;
 import com.aqwapi.data.EntityDTO;
 
-class ScriptPlayer implements IScriptPlayer {
+class ScriptPlayer {
 
     private var _game:AQWGame;
 
@@ -105,6 +104,14 @@ class ScriptPlayer implements IScriptPlayer {
 
     public function hasAura(auraName:String):Bool {
         return getAura(auraName) != null;
+    }
+
+    public function setSpawnPoint(cell:String = null, pad:String = null):Void {
+        if (_game != null && _game.world != null && Reflect.hasField(_game.world, "setSpawnPoint")) {
+            var c = (cell != null && cell != "") ? cell : (_game.world.strFrame != null ? Std.string(_game.world.strFrame) : "Enter");
+            var p = (pad != null && pad != "") ? pad : (_game.world.strPad != null ? Std.string(_game.world.strPad) : "Spawn");
+            try { _game.world.setSpawnPoint(c, p); } catch (e:Dynamic) {}
+        }
     }
 }
 

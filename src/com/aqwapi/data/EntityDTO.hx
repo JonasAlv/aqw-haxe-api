@@ -187,12 +187,30 @@ class EntityDTO {
             if (odAuras != null) auraSources.push(odAuras);
         }
 
+        if (AqwApi.game != null && AqwApi.game.world != null) {
+            var w:Dynamic = AqwApi.game.world;
+            if (this.mapId != "" && w.monTree != null) {
+                try {
+                    var mLeaf = Reflect.field(w.monTree, this.mapId);
+                    if (mLeaf != null && mLeaf.auras != null) auraSources.push(mLeaf.auras);
+                } catch (e:Dynamic) {}
+            }
+            if (this.name != "" && w.uoTree != null) {
+                try {
+                    var uLeaf = Reflect.field(w.uoTree, this.name.toLowerCase());
+                    if (uLeaf != null && uLeaf.auras != null) auraSources.push(uLeaf.auras);
+                } catch (e:Dynamic) {}
+            }
+        }
+
         for (src in auraSources) {
             if (src == null) continue;
             if (Std.isOfType(src, Array)) {
                 var arr:Array<Dynamic> = cast src;
                 for (a in arr) {
                     if (a == null) continue;
+                    var exp:Dynamic = _sf(a, "e");
+                    if (exp != null && (Std.string(exp) == "1" || exp == true)) continue;
                     var an:String = "";
                     var nam = _sf(a, "nam");
                     var name = _sf(a, "name");
@@ -210,6 +228,8 @@ class EntityDTO {
                 for (f in Reflect.fields(src)) {
                     var a:Dynamic = _sf(src, f);
                     if (a == null) continue;
+                    var exp:Dynamic = _sf(a, "e");
+                    if (exp != null && (Std.string(exp) == "1" || exp == true)) continue;
                     var an:String = f;
                     var nam = _sf(a, "nam");
                     var name = _sf(a, "name");

@@ -1,7 +1,5 @@
 package com.aqwapi.managers;
 
-import com.aqwapi.interfaces.IScriptShop;
-
 class ScriptShop {
     private var _game:AQWGame;
 
