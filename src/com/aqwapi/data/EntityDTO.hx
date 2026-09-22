@@ -26,7 +26,9 @@ class EntityDTO {
     }
 
     public var alive(get, never):Bool;
-    private function get_alive():Bool {
+    @:getter(alive)
+    public function get_alive_prop():Bool { return get_alive(); }
+    public function get_alive():Bool {
         if (hp <= 0) return false;
         if (state == 0 && raw != null) {
             try {
@@ -40,8 +42,15 @@ class EntityDTO {
         return true;
     }
 
+    public var isAlive(get, never):Bool;
+    @:getter(isAlive)
+    public function get_isAlive_prop():Bool { return get_alive(); }
+    public function get_isAlive():Bool { return get_alive(); }
+
     public var hasGraphic(get, never):Bool;
-    private function get_hasGraphic():Bool {
+    @:getter(hasGraphic)
+    public function get_hasGraphic_prop():Bool { return get_hasGraphic(); }
+    public function get_hasGraphic():Bool {
         if (raw == null) return false;
         try {
             var mc:Dynamic = _sf(raw, "pMC");

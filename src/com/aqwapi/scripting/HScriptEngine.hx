@@ -110,9 +110,9 @@ class HScriptEngine {
         _interp.variables.set("map", AqwApi.map);
         _interp.variables.set("quest", AqwApi.quest);
         _interp.variables.set("inventory", AqwApi.inventory);
-        _interp.variables.set("drops", AqwApi.drops);
+        _interp.variables.set("drop", AqwApi.drop);
         _interp.variables.set("shop", AqwApi.shop);
-        _interp.variables.set("monsters", AqwApi.monsters);
+        _interp.variables.set("monster", AqwApi.monster);
         _interp.variables.set("events", AqwApi.dispatcher);
 
         // Logging & Notifications
@@ -161,31 +161,31 @@ class HScriptEngine {
         });
         _interp.variables.set("getDrop", function(drops:Dynamic):Void {
             if (Std.isOfType(drops, Array)) {
-                AqwApi.drops.acceptPendingDrops(cast drops);
+                AqwApi.drop.acceptPendingDrops(cast drops);
             } else if (drops != null) {
                 var str = Std.string(drops);
                 if (str.indexOf(",") != -1) {
                     var parts:Array<Dynamic> = [];
                     for (p in str.split(",")) parts.push(StringTools.trim(p));
-                    AqwApi.drops.acceptPendingDrops(parts);
+                    AqwApi.drop.acceptPendingDrops(parts);
                 } else {
-                    AqwApi.drops.getDrop(str);
+                    AqwApi.drop.getDrop(str);
                 }
             }
         });
         _interp.variables.set("getDrops", function(drops:Dynamic = "all"):Void {
             if (drops == null || drops == "all" || drops == "any" || drops == "*") {
-                AqwApi.drops.acceptPendingDrops(["all"]);
+                AqwApi.drop.acceptPendingDrops(["all"]);
             } else if (Std.isOfType(drops, Array)) {
-                AqwApi.drops.acceptPendingDrops(cast drops);
+                AqwApi.drop.acceptPendingDrops(cast drops);
             } else {
                 var str = Std.string(drops);
                 if (str.indexOf(",") != -1) {
                     var parts:Array<Dynamic> = [];
                     for (p in str.split(",")) parts.push(StringTools.trim(p));
-                    AqwApi.drops.acceptPendingDrops(parts);
+                    AqwApi.drop.acceptPendingDrops(parts);
                 } else {
-                    AqwApi.drops.getDrop(str);
+                    AqwApi.drop.getDrop(str);
                 }
             }
         });
@@ -387,18 +387,14 @@ class HScriptEngine {
             }
         });
         _interp.variables.set("dungeonQueue", function(mapName:String, roomNum:Int = -1):Void {
-            var roomId = AqwApi.map.roomId;
-            var num = (roomNum > 0) ? roomNum : (100000 + Std.random(90000));
-            AqwApi.map.privateRoomNumber = num;
-            var targetMap = (mapName.indexOf("-") != -1) ? mapName : (mapName + "-" + num);
-            var packet = "%xt%zm%dungeonQueue%" + roomId + "%" + targetMap + "%";
-            if (AqwApi.game != null && AqwApi.game.sfc != null) {
-                AqwApi.game.sfc.sendString(packet);
-            }
+            AqwApi.map.dungeonQueue(mapName, roomNum);
         });
         _interp.variables.set("setPrivateRoom", function(enabled:Bool, roomNumber:Int = 100000):Void {
             AqwApi.map.usePrivateRoom = enabled;
             if (roomNumber > 0) AqwApi.map.privateRoomNumber = roomNumber;
+        });
+        _interp.variables.set("isPrivateRoom", function():Bool {
+            return AqwApi.map.usePrivateRoom;
         });
 
         // Target & Auras
@@ -408,8 +404,8 @@ class HScriptEngine {
         _interp.variables.set("hasTargetAura", function(auraName:String):Bool {
             var t = AqwApi.player.target;
             if (t != null && t.hasAura(auraName)) return true;
-            if (AqwApi.player != null && AqwApi.monsters != null) {
-                var cellMonsters = AqwApi.monsters.getByCell(AqwApi.player.cell);
+            if (AqwApi.player != null && AqwApi.monster != null) {
+                var cellMonsters = AqwApi.monster.getByCell(AqwApi.player.cell);
                 for (m in cellMonsters) {
                     if (m != null && m.alive && m.hasAura(auraName)) return true;
                 }
@@ -422,8 +418,8 @@ class HScriptEngine {
         _interp.variables.set("targetHasAura", function(auraName:String):Bool {
             var t = AqwApi.player.target;
             if (t != null && t.hasAura(auraName)) return true;
-            if (AqwApi.player != null && AqwApi.monsters != null) {
-                var cellMonsters = AqwApi.monsters.getByCell(AqwApi.player.cell);
+            if (AqwApi.player != null && AqwApi.monster != null) {
+                var cellMonsters = AqwApi.monster.getByCell(AqwApi.player.cell);
                 for (m in cellMonsters) {
                     if (m != null && m.alive && m.hasAura(auraName)) return true;
                 }
@@ -435,8 +431,8 @@ class HScriptEngine {
         });
         _interp.variables.set("hasMonsterAura", function(auraName:String, cell:String = null):Bool {
             var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            if (AqwApi.monsters != null) {
-                var cellMonsters = AqwApi.monsters.getByCell(c);
+            if (AqwApi.monster != null) {
+                var cellMonsters = AqwApi.monster.getByCell(c);
                 for (m in cellMonsters) {
                     if (m != null && m.alive && m.hasAura(auraName)) return true;
                 }
@@ -447,8 +443,8 @@ class HScriptEngine {
             if (!targetOnly && AqwApi.player != null && AqwApi.player.hasAura(auraName)) return true;
             var t = AqwApi.player.target;
             if (t != null && t.hasAura(auraName)) return true;
-            if (AqwApi.player != null && AqwApi.monsters != null) {
-                var cellMonsters = AqwApi.monsters.getByCell(AqwApi.player.cell);
+            if (AqwApi.player != null && AqwApi.monster != null) {
+                var cellMonsters = AqwApi.monster.getByCell(AqwApi.player.cell);
                 for (m in cellMonsters) {
                     if (m != null && m.alive && m.hasAura(auraName)) return true;
                 }
@@ -477,14 +473,14 @@ class HScriptEngine {
 
         // Monster & Cell Query
         _interp.variables.set("isMonsterAliveInCell", function(cell:String):Bool {
-            var list = AqwApi.monsters.getByCell(cell);
+            var list = AqwApi.monster.getByCell(cell);
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return true;
             }
             return false;
         });
         _interp.variables.set("getLivingMonstersInCell", function(cell:String):Array<Dynamic> {
-            var list = AqwApi.monsters.getByCell(cell);
+            var list = AqwApi.monster.getByCell(cell);
             var res:Array<Dynamic> = [];
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) res.push(m);
@@ -493,7 +489,7 @@ class HScriptEngine {
         });
         _interp.variables.set("isRoomClear", function(cell:String = null):Bool {
             var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            var list = AqwApi.monsters.getByCell(c);
+            var list = AqwApi.monster.getByCell(c);
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return false;
             }
@@ -501,7 +497,7 @@ class HScriptEngine {
         });
         _interp.variables.set("isCellClear", function(cell:String = null):Bool {
             var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            var list = AqwApi.monsters.getByCell(c);
+            var list = AqwApi.monster.getByCell(c);
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return false;
             }
@@ -509,7 +505,7 @@ class HScriptEngine {
         });
         _interp.variables.set("getMonsters", function(cell:String = null):Array<Dynamic> {
             var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            var list = AqwApi.monsters.getByCell(c);
+            var list = AqwApi.monster.getByCell(c);
             var res:Array<Dynamic> = [];
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) res.push(m);
@@ -518,7 +514,7 @@ class HScriptEngine {
         });
         _interp.variables.set("getFirstMonster", function(cell:String = null):Dynamic {
             var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            var list = AqwApi.monsters.getByCell(c);
+            var list = AqwApi.monster.getByCell(c);
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return m;
             }
@@ -580,8 +576,15 @@ class HScriptEngine {
         _interp.variables.set("StringTools", StringTools);
         _interp.variables.set("Date", Date);
         _interp.variables.set("AqwTime", AqwTime);
+        _interp.variables.set("now", function():Float {
+            return AqwTime.now();
+        });
+        _interp.variables.set("time", function():Float {
+            return AqwTime.now();
+        });
+        _interp.variables.set("AqwUtils", com.aqwapi.utils.AqwUtils);
         _interp.variables.set("isNaN", function(v:Dynamic):Bool {
-            return (untyped __global__["isNaN"])(v);
+            return com.aqwapi.utils.AqwUtils.isNaN(v);
         });
         _interp.variables.set("parseInt", function(v:Dynamic):Null<Int> {
             return com.aqwapi.utils.AqwUtils.parseInt(v);

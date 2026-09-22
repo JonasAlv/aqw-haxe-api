@@ -4,9 +4,9 @@ import com.aqwapi.modules.CombatManager;
 import com.aqwapi.AqwApi;
 
 class ScriptCombat {
-    private var _game:AQWGame;
+    private var _game:AqwGame;
 
-    public function new(gameReference:AQWGame) {
+    public function new(gameReference:AqwGame) {
         _game = gameReference;
     }
 
@@ -53,7 +53,7 @@ class ScriptCombat {
         // 1. Wildcard / any monster in current cell
         if (targetName == "*" || targetName == "any" || targetName == "") {
             var currentCell = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
-            var living = AqwApi.monsters.getByCell(currentCell);
+            var living = AqwApi.monster.getByCell(currentCell);
             for (m in living) {
                 if (m != null && m.alive && m.raw != null && Reflect.field(m.raw, "pMC") != null) {
                     targetMonster = m.raw;
@@ -77,7 +77,7 @@ class ScriptCombat {
 
         // 3. Fallback to findByMapId
         if (targetMonster == null) {
-            var ent:com.aqwapi.data.EntityDTO = AqwApi.monsters.findByMapId(sName, true);
+            var ent:com.aqwapi.data.EntityDTO = AqwApi.monster.findByMapId(sName, true);
             if (ent != null && ent.raw != null && Reflect.field(ent.raw, "pMC") != null) {
                 targetMonster = ent.raw;
             }
@@ -85,7 +85,7 @@ class ScriptCombat {
 
         // 4. Fallback to findByName
         if (targetMonster == null) {
-            var entName:com.aqwapi.data.EntityDTO = AqwApi.monsters.findByName(sName, true);
+            var entName:com.aqwapi.data.EntityDTO = AqwApi.monster.findByName(sName, true);
             if (entName != null && entName.raw != null && Reflect.field(entName.raw, "pMC") != null) {
                 targetMonster = entName.raw;
             }
@@ -169,7 +169,7 @@ class ScriptCombat {
 
     public function startSmart():Void { CombatManager.start(true, false); }
 
-    public function startCustom(rotation:String):Void {
+    public function startCustom(rotation:String, mode:String = "auto"):Void {
         if (rotation != null && rotation.length > 0) {
             var rotInts:Array<Int> = [];
             if (rotation.indexOf(",") != -1) {
@@ -184,7 +184,7 @@ class ScriptCombat {
                     if (charVal >= 0) rotInts.push(charVal);
                 }
             }
-            if (rotInts.length > 0) CombatManager.setCustomRotation(rotInts);
+            if (rotInts.length > 0) CombatManager.setCustomRotation(rotInts, mode);
         }
         CombatManager.start(false, false);
     }

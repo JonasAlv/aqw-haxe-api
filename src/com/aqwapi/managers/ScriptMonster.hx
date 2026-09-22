@@ -3,9 +3,9 @@ package com.aqwapi.managers;
 import com.aqwapi.data.EntityDTO;
 
 class ScriptMonster {
-    private var _game:AQWGame;
+    private var _game:AqwGame;
 
-    public function new(gameReference:AQWGame) {
+    public function new(gameReference:AqwGame) {
         _game = gameReference;
     }
 

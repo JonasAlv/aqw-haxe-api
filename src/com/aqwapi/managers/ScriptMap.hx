@@ -1,9 +1,9 @@
 package com.aqwapi.managers;
 
 class ScriptMap {
-    private var _game:AQWGame;
+    private var _game:AqwGame;
 
-    public function new(gameReference:AQWGame) {
+    public function new(gameReference:AqwGame) {
         _game = gameReference;
     }
 
@@ -33,8 +33,33 @@ class ScriptMap {
         } else {
             if (_game.world.gotoTown != null) {
                 _game.world.gotoTown(targetMap, cell, pad);
+            } else if (AqwApi.transport != null) {
+                AqwApi.transport.send("zm", "cmd", ["1", "tfer", username, targetMap]);
             }
         }
+    }
+
+    public function dungeonQueue(mapName:String, roomNum:Int = -1):Void {
+        if (_game == null || _game.sfc == null) return;
+        var rId:Int = roomId;
+        var targetMap:String = mapName;
+
+        if (targetMap.indexOf("-") != -1) {
+            // Already explicitly contains room number (forced overwrite)
+        } else if (roomNum > 0) {
+            _privateRoomNumber = roomNum;
+            targetMap = mapName + "-" + roomNum;
+        } else if (_usePrivateRoom) {
+            var num:Int = (_privateRoomNumber > 0) ? _privateRoomNumber : (100000 + Std.random(90000));
+            _privateRoomNumber = num;
+            targetMap = mapName + "-" + num;
+        } else {
+            // Public room queue
+            targetMap = mapName;
+        }
+
+        var packet:String = "%xt%zm%dungeonQueue%" + rId + "%" + targetMap + "%";
+        _game.sfc.sendString(packet);
     }
 
     private var _autoDeathSpawn:Bool = false;

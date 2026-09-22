@@ -8,13 +8,13 @@ import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
 
 class ScriptQuest {
-    private var _game:AQWGame;
+    private var _game:AqwGame;
     private var _timer:Timer;
     private var _questIDs:Array<Dynamic> = [];
     private var _lastTurnIns:Dynamic = {};
     private var _lastLoadRequests:Map<Int, Float> = new Map<Int, Float>();
 
-    public function new(gameReference:AQWGame) {
+    public function new(gameReference:AqwGame) {
         _game = gameReference;
     }
 

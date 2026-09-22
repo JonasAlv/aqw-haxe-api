@@ -357,7 +357,7 @@ class ScriptCommands {
 							var currentQty:Int = AqwApi.inventory.getQuestQuantity(itemName);
 							
 							var targetDrops:Array<Dynamic> = itemName.toLowerCase().split("|");
-							AqwApi.drops.targetDrops = targetDrops;
+							AqwApi.drop.targetDrops = targetDrops;
 							
 							if (cmd.lastQty != currentQty) {
 								cmd.lastQty = currentQty;
@@ -375,7 +375,7 @@ class ScriptCommands {
 									"", 
 									{ id: "farming_status" }
 								));
-								AqwApi.drops.targetDrops = [];
+								AqwApi.drop.targetDrops = [];
 								if (CombatManager.IS_ON) CombatManager.stop();
 								manager.currentIndex++;
 							} else {
@@ -383,13 +383,13 @@ class ScriptCommands {
 							
 							// Auto-pickup if the items we are farming dropped as real (non-temp) items
 							// Supports multiple items separated by '|' (e.g., "Bone Dust|Undead Essence")
-							AqwApi.drops.acceptPendingDrops(targetDrops);
+							AqwApi.drop.acceptPendingDrops(targetDrops);
 
 								if (cmd.lockedCell == null) {
-									var initialTarget:EntityDTO = mmid != null ? AqwApi.monsters.findByMapId(mmid, true) : AqwApi.monsters.findByName(monster, true);
+									var initialTarget:EntityDTO = mmid != null ? AqwApi.monster.findByMapId(mmid, true) : AqwApi.monster.findByName(monster, true);
 									ApiLogger.debug("Command", "Alive lookup for " + monster + ": " + (initialTarget != null ? initialTarget.cell : "null"));
 									if (initialTarget == null) {
-										initialTarget = mmid != null ? AqwApi.monsters.findByMapId(mmid, false) : AqwApi.monsters.findByName(monster, false);
+										initialTarget = mmid != null ? AqwApi.monster.findByMapId(mmid, false) : AqwApi.monster.findByName(monster, false);
 										ApiLogger.debug("Command", "Dead/Unknown lookup for " + monster + ": " + (initialTarget != null ? initialTarget.cell : "null"));
 									}
 									if (initialTarget != null) {
@@ -401,7 +401,7 @@ class ScriptCommands {
 									var monCell:String = cmd.lockedCell;
 									ApiLogger.debug("Command", "monCell locked to: " + monCell);
 									
-									var target:EntityDTO = foundMMID != null ? AqwApi.monsters.findByMapId(foundMMID, false) : AqwApi.monsters.findByName(monster, false);
+									var target:EntityDTO = foundMMID != null ? AqwApi.monster.findByMapId(foundMMID, false) : AqwApi.monster.findByName(monster, false);
 									var approachMon:Dynamic = target != null ? target.raw : null;
 								
 								if (monCell != null && world.strFrame != monCell && cmd.pendingTeleport == null) {
@@ -484,12 +484,12 @@ class ScriptCommands {
 							if (cmd.args.length > 0 && world != null) {
 								var dropTarget:String = cmd.args[0].toLowerCase();
 
-								var di:Int = (cast AqwApi.drops.pendingDrops : Array<Dynamic>).length - 1;
+								var di:Int = (cast AqwApi.drop.pendingDrops : Array<Dynamic>).length - 1;
 								while (di >= 0) {
-									var pDrop:Dynamic = AqwApi.drops.pendingDrops[di];
+									var pDrop:Dynamic = AqwApi.drop.pendingDrops[di];
 									if (dropTarget == "all" || Std.string(pDrop.sName).toLowerCase() == dropTarget) {
 										AqwApi.transport.sendExtensionCommand("getDrop", [pDrop.ItemID]);
-										AqwApi.drops.pendingDrops.splice(di, 1);
+										AqwApi.drop.pendingDrops.splice(di, 1);
 									}
 									di--;
 								}
@@ -957,8 +957,8 @@ class ScriptCommands {
 							var waitTarget:String = cmd.args[0].toLowerCase();
 							var foundDrop:Bool = false;
 							
-							for (pi in 0...Std.int(AqwApi.drops.pendingDrops.length)) {
-								var waitDrop:Dynamic = AqwApi.drops.pendingDrops[pi];
+							for (pi in 0...Std.int(AqwApi.drop.pendingDrops.length)) {
+								var waitDrop:Dynamic = AqwApi.drop.pendingDrops[pi];
 								if (waitDrop.sName.toLowerCase() == waitTarget) {
 									foundDrop = true;
 									break;
@@ -1161,8 +1161,8 @@ class ScriptCommands {
 			var qid:Int;
 						// Jump to the cell of a named monster: JUMPTOMOB Chaos Sp-Eye
 						if (cmd.args.length >= 1) {
-							var mobTarget:EntityDTO = AqwApi.monsters.findByName(cmd.args[0], true);
-							if (mobTarget == null) mobTarget = AqwApi.monsters.findByName(cmd.args[0], false);
+							var mobTarget:EntityDTO = AqwApi.monster.findByName(cmd.args[0], true);
+							if (mobTarget == null) mobTarget = AqwApi.monster.findByName(cmd.args[0], false);
 							
 							if (mobTarget != null && mobTarget.cell != null) {
 								AqwApi.map.jump(mobTarget.cell, "Enter");

@@ -1,7 +1,7 @@
 package com.aqwapi.managers;
 
-class ScriptDrops {
-    private var _game:AQWGame;
+class ScriptDrop {
+    private var _game:AqwGame;
     public var pendingDrops:Array<Dynamic> = [];
     public var targetDrops:Array<Dynamic> = [];
     public var interceptedDropIds:Array<String> = [];
@@ -10,7 +10,7 @@ class ScriptDrops {
     public var acceptACs:Bool = false;
     private var _isListening:Bool = false;
 
-    public function new(gameReference:AQWGame) {
+    public function new(gameReference:AqwGame) {
         _game = gameReference;
     }
 
@@ -150,7 +150,6 @@ class ScriptDrops {
     }
 
     public function isTargetDrop(item:Dynamic):Bool {
-
         if (targetDrops == null || targetDrops.length == 0 || item == null || item.sName == null) return false;
         var searchName:String = Std.string(item.sName).toLowerCase();
         var searchId:Int = com.aqwapi.utils.AqwUtils.parseInt(item.ItemID, 0);

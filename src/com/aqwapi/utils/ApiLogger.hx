@@ -25,6 +25,11 @@ class ApiLogger {
                 try {
                     var str:String = (infos != null ? infos.fileName + ":" + infos.lineNumber + ": " : "") + Std.string(v);
                     untyped __global__["trace"](str);
+                    #if flash
+                    flash.Lib.trace(str);
+                    #else
+                    untyped console.log(str);
+                    #end
                 } catch (e:Dynamic) {}
             };
         } catch (e:Dynamic) {}
@@ -54,6 +59,7 @@ class ApiLogger {
         if (_logFileInitialized) return _logFile;
         _logFileInitialized = true;
 
+        #if flash
         try {
             var fileCls:Dynamic = untyped __global__["flash.filesystem.File"];
             var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
@@ -104,6 +110,7 @@ class ApiLogger {
                 }
             } catch (e:Dynamic) {}
         } catch (e:Dynamic) {}
+        #end
 
         return null;
     }
@@ -120,10 +127,15 @@ class ApiLogger {
         };
 
         var formatted:String = "[AqwApi:" + tag + "] " + message;
+        var formatted:String = "[AqwApi:" + tag + ":" + levelStr + "] " + message;
 
         if (printToConsole) {
             try {
+                #if flash
                 flash.Lib.trace(formatted);
+                #else
+                untyped console.log(formatted);
+                #end
             } catch (e:Dynamic) {}
         }
 
@@ -131,12 +143,14 @@ class ApiLogger {
             try {
                 var f = _resolveLogFile();
                 if (f != null) {
+                    #if flash
                     var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
                     var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
                     var fs = Type.createInstance(fsCls, []);
                     fs.open(f, fmCls.APPEND);
                     fs.writeUTFBytes(formatted + "\n");
                     fs.close();
+                    #end
                 }
             } catch (e:Dynamic) {
                 _logFileInitialized = false;
@@ -160,6 +174,7 @@ class ApiLogger {
         try {
             var f = _resolveLogFile();
             if (f != null) {
+                #if flash
                 var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
                 var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
                 if (fsCls != null && fmCls != null) {
@@ -168,6 +183,7 @@ class ApiLogger {
                     fs.writeUTFBytes("");
                     fs.close();
                 }
+                #end
             }
         } catch (e:Dynamic) {}
     }

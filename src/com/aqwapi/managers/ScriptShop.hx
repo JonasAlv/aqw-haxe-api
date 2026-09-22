@@ -1,9 +1,9 @@
 package com.aqwapi.managers;
 
 class ScriptShop {
-    private var _game:AQWGame;
+    private var _game:AqwGame;
 
-    public function new(gameReference:AQWGame) {
+    public function new(gameReference:AqwGame) {
         _game = gameReference;
     }
 
@@ -83,14 +83,18 @@ class ScriptShop {
     }
 
     public var isShopLoaded(get, never):Bool;
-    private function get_isShopLoaded():Bool {
+    @:getter(isShopLoaded)
+    public function get_isShopLoaded_prop():Bool { return get_isShopLoaded(); }
+    public function get_isShopLoaded():Bool {
         if (_game != null && _game.world != null && _game.world.shopinfo != null && _game.world.shopinfo.items != null) return true;
         if (_game != null && _game.ui != null && _game.ui.mcPopup != null && _game.ui.mcPopup.currentLabel == "Shop") return true;
         return false;
     }
 
     public var loadedShopId(get, never):Int;
-    private function get_loadedShopId():Int {
+    @:getter(loadedShopId)
+    public function get_loadedShopId_prop():Int { return get_loadedShopId(); }
+    public function get_loadedShopId():Int {
         try {
             if (_game != null && _game.world != null && _game.world.shopinfo != null && _game.world.shopinfo.ShopID != null)
                 return Std.int(untyped _game.world.shopinfo.ShopID);

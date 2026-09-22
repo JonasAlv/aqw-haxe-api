@@ -15,8 +15,12 @@ class QuestDTO {
     }
 
     public var isComplete(get, never):Bool;
-    private function get_isComplete():Bool { return status == "c"; }
+    @:getter(isComplete)
+    public function get_isComplete_prop():Bool { return get_isComplete(); }
+    public function get_isComplete():Bool { return status == "c"; }
 
     public var isAccepted(get, never):Bool;
-    private function get_isAccepted():Bool { return status == "a"; }
+    @:getter(isAccepted)
+    public function get_isAccepted_prop():Bool { return get_isAccepted(); }
+    public function get_isAccepted():Bool { return status == "a"; }
 }

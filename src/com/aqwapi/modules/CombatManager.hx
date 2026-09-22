@@ -5,6 +5,7 @@ import com.aqwapi.AqwApi;
 import com.aqwapi.data.EntityDTO;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
+import com.aqwapi.utils.AqwUtils;
 import flash.events.TimerEvent;
 import flash.utils.Timer;
 
@@ -27,6 +28,8 @@ class CombatManager {
     private static var _timer:Timer;
     private static var _customRotation:Array<Int> = [4, 3, 2, 1];
     private static var _rotationIndex:Int = 0;
+    public static var customMode:String = "priority";
+    private static var _sequenceStepStartTime:Float = 0;
     private static var _skillsData:Dynamic = null;
     private static var _waitUntil:Dynamic  = {};
     private static var _lastTargetMMID:String = null;
@@ -53,6 +56,7 @@ class CombatManager {
         isSmart = smart;
         IS_ON = true;
         _rotationIndex = 0;
+        _sequenceStepStartTime = AqwTime.now();
         _waitUntil = {};
         _lastTargetMMID = null;
         _skillWaitStart = AqwTime.now();
@@ -98,8 +102,24 @@ class CombatManager {
         ApiLogger.info("Combat", "Combat Stopped");
     }
 
-    public static function setCustomRotation(rotation:Array<Int>):Void {
+    public static function setCustomRotation(rotation:Array<Int>, mode:String = "auto"):Void {
         _customRotation = rotation;
+        if (mode == "auto") {
+            var seen:Map<Int, Bool> = new Map<Int, Bool>();
+            var hasDupes:Bool = false;
+            for (r in rotation) {
+                if (seen.exists(r)) {
+                    hasDupes = true;
+                    break;
+                }
+                seen.set(r, true);
+            }
+            customMode = hasDupes ? "sequence" : "priority";
+        } else {
+            customMode = mode;
+        }
+        _rotationIndex = 0;
+        _sequenceStepStartTime = AqwTime.now();
     }
 
     public static function reloadSkills(silent:Bool = false):Void {
@@ -165,7 +185,7 @@ class CombatManager {
 
         if (target == null) {
             try {
-                var currentMonsters:Array<EntityDTO> = AqwApi.monsters.getByCell(Std.string(world.strFrame));
+                var currentMonsters:Array<EntityDTO> = AqwApi.monster.getByCell(Std.string(world.strFrame));
                 for (monsterTarget in currentMonsters) {
                     if (monsterTarget == null || !monsterTarget.alive) continue;
                     if (lockedMMID != null && monsterTarget.mapId != lockedMMID) continue;
@@ -364,6 +384,7 @@ class CombatManager {
                 var maxHp:Float = getStat(pStats, avatar, "MaxHP");
                 var hpPct:Float = (rule.isPercentage != false) ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
                 var targetVal:Float = rule.value != null ? Std.parseFloat(Std.string(rule.value)) : 0;
+                var targetVal:Float = AqwUtils.parseFloat(rule.value, 0);
                 return compare(hpPct, targetVal, Std.string(rule.comparison));
 
             case "Mana":
@@ -371,6 +392,7 @@ class CombatManager {
                 var maxMp:Float = getStat(pStats, avatar, "MaxMP");
                 var mpPct:Float = (rule.isPercentage != false) ? (maxMp > 0 ? (mp / maxMp * 100) : 0) : mp;
                 var targetVal:Float = rule.value != null ? Std.parseFloat(Std.string(rule.value)) : 0;
+                var targetVal:Float = AqwUtils.parseFloat(rule.value, 0);
                 return compare(mpPct, targetVal, Std.string(rule.comparison));
 
             case "PartyHealth":
@@ -382,6 +404,7 @@ class CombatManager {
                 var stacks:Float = getAuraStacks(auraName, auraTarget, world, avatar, target);
                 var threshold:Float = (rule.value != null) ? Std.parseFloat(Std.string(rule.value)) : 0;
                 if (Math.isNaN(threshold)) threshold = 0;
+                var threshold:Float = AqwUtils.parseFloat(rule.value, 0);
                 var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "greater";
                 if (comp == "greater") {
                     return (threshold > 0) ? (stacks >= threshold) : (stacks > 0);
@@ -399,6 +422,7 @@ class CombatManager {
     private static function evaluatePartyHealth(rule:Dynamic, world:Dynamic, avatar:Dynamic):Bool {
         if (world == null || world.players == null) return false;
         var threshold:Float = (rule.value != null) ? Std.parseFloat(Std.string(rule.value)) : 0;
+        var threshold:Float = AqwUtils.parseFloat(rule.value, 0);
         var isPct:Bool = (rule.isPercentage != false);
         var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "less";
         var myFrame:String = (world.strFrame != null) ? Std.string(world.strFrame) : "";
@@ -496,6 +520,7 @@ class CombatManager {
                     var parsedVal:Float = Std.parseFloat(Std.string(val));
                     totalStacks += Math.isNaN(parsedVal) ? 1 : parsedVal;
                 }
+                totalStacks += (val == null) ? 1 : AqwUtils.parseFloat(val, 1);
             }
         };
 
@@ -532,14 +557,31 @@ class CombatManager {
     }
 
     private static function runSimpleRotation(world:Dynamic, avatar:Dynamic):Void {
-        var valid:Array<Int> = [];
-        for (idx in _customRotation) {
-            var actObj:Dynamic = getSkillAction(idx);
-            if (actObj != null && actObj.isOK != false) valid.push(idx);
+        if (_customRotation == null || _customRotation.length == 0) return;
+
+        if (customMode == "priority") {
+            // PRIORITY MODE: On each tick, fire highest priority ready skill (e.g. CAv 3,4,2,1)
+            // Never stalls on long cooldowns (15s Flux, 20s Bulwark) and continuously spams ready fillers
+            for (idx in _customRotation) {
+                if (tryFireSkill(world, avatar, idx)) return;
+            }
+        } else {
+            // SEQUENCE MODE: Steps through combo strictly in order (e.g. DoT 3,2,1,2,4,2)
+            // Advances only when each skill successfully casts; never scrambles buffs or skips
+            if (_rotationIndex >= _customRotation.length) _rotationIndex = 0;
+            var targetSkill:Int = _customRotation[_rotationIndex];
+            if (tryFireSkill(world, avatar, targetSkill)) {
+                _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
+                _sequenceStepStartTime = AqwTime.now();
+            } else {
+                var now:Float = AqwTime.now();
+                if ((now - _sequenceStepStartTime) > 8000) {
+                    // Failsafe: if a skill is blocked for >8s (e.g. zero-mana boss drain), advance
+                    _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
+                    _sequenceStepStartTime = now;
+                }
+            }
         }
-        if (valid.length == 0) return;
-        if (_rotationIndex >= valid.length) _rotationIndex = 0;
-        if (tryFireSkill(world, avatar, valid[_rotationIndex])) _rotationIndex = (_rotationIndex + 1) % valid.length;
     }
 
     private static function tryFireSkill(world:Dynamic, avatar:Dynamic, idx:Int):Bool {
