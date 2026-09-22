@@ -49,6 +49,10 @@ class AqwApi {
         hscript = HScriptEngine.SINGLETON;
     }
 
+    public static function notify(message:String):Void {
+        com.aqwapi.ui.ApiNotificationManager.notify(message);
+    }
+
     public static var isReady(get, never):Bool;
     @:getter(isReady)
     public static function get_isReady_prop():Bool { return get_isReady(); }
