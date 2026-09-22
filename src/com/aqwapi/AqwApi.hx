@@ -1,6 +1,7 @@
 package com.aqwapi;
 
 import flash.events.EventDispatcher;
+import com.aqwapi.events.ApiEvent;
 import com.aqwapi.managers.*;
 import com.aqwapi.net.TransportAdapter;
 import com.aqwapi.scripting.HScriptEngine;
@@ -50,7 +51,10 @@ class AqwApi {
     }
 
     public static function notify(message:String):Void {
-        com.aqwapi.ui.ApiNotificationManager.notify(message);
+        if (message == null || message == "") return;
+        if (dispatcher != null) {
+            dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, message));
+        }
     }
 
     public static var isReady(get, never):Bool;
