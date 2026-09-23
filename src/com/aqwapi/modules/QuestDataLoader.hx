@@ -51,8 +51,10 @@ class QuestDataLoader {
             }
 
             if (questFile != null && questFile.exists) {
+                var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
+                var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
                 var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                stream.open(questFile, "read");
+                stream.open(questFile, readMode);
                 var raw:String = stream.readUTFBytes(stream.bytesAvailable);
                 stream.close();
 

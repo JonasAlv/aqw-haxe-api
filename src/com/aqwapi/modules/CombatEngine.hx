@@ -148,8 +148,10 @@ class CombatEngine {
             }
 
             if (bundledFile != null && bundledFile.exists) {
+                var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
+                var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
                 var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                stream.open(bundledFile, "read");
+                stream.open(bundledFile, readMode);
                 var raw:String = stream.readUTFBytes(stream.bytesAvailable);
                 stream.close();
                 _skillsData = haxe.Json.parse(raw);
@@ -165,8 +167,10 @@ class CombatEngine {
             for (customFile in customFiles) {
                 if (customFile != null && customFile.exists) {
                     try {
+                        var FileModeClass2:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
+                        var readMode2:String = (FileModeClass2 != null) ? Reflect.getProperty(FileModeClass2, "READ") : "read";
                         var cStream:Dynamic = Type.createInstance(FileStreamClass, []);
-                        cStream.open(customFile, "read");
+                        cStream.open(customFile, readMode2);
                         var cRaw:String = cStream.readUTFBytes(cStream.bytesAvailable);
                         cStream.close();
                         var customData:Dynamic = haxe.Json.parse(cRaw);
