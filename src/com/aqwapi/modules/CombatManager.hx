@@ -133,9 +133,21 @@ class CombatManager {
             }
 
             var appDir:Dynamic = Reflect.getProperty(FileClass, "applicationDirectory");
-            var bundledFile:Dynamic = appDir.resolvePath("assets/AdvancedSkills.json");
+            var storageDir:Dynamic = Reflect.getProperty(FileClass, "applicationStorageDirectory");
 
-            if (bundledFile.exists) {
+            var bundledFile:Dynamic = null;
+            if (appDir != null) {
+                bundledFile = appDir.resolvePath("assets/AdvancedSkills.json");
+                if (!bundledFile.exists) bundledFile = appDir.resolvePath("assets/advancedskills.json");
+                if (!bundledFile.exists) bundledFile = appDir.resolvePath("AdvancedSkills.json");
+                if (!bundledFile.exists) bundledFile = appDir.resolvePath("advancedskills.json");
+            }
+            if ((bundledFile == null || !bundledFile.exists) && storageDir != null) {
+                bundledFile = storageDir.resolvePath("AdvancedSkills.json");
+                if (!bundledFile.exists) bundledFile = storageDir.resolvePath("assets/AdvancedSkills.json");
+            }
+
+            if (bundledFile != null && bundledFile.exists) {
                 var stream:Dynamic = Type.createInstance(FileStreamClass, []);
                 stream.open(bundledFile, "read");
                 var raw:String = stream.readUTFBytes(stream.bytesAvailable);
@@ -146,19 +158,25 @@ class CombatManager {
                 if (!silent) ApiLogger.warn("Skills", "assets/AdvancedSkills.json missing!");
             }
 
-            var customFile:Dynamic = appDir.resolvePath("skills_custom.json");
-            if (customFile.exists) {
-                try {
-                    var cStream:Dynamic = Type.createInstance(FileStreamClass, []);
-                    cStream.open(customFile, "read");
-                    var cRaw:String = cStream.readUTFBytes(cStream.bytesAvailable);
-                    cStream.close();
-                    var customData:Dynamic = haxe.Json.parse(cRaw);
-                    for (key in Reflect.fields(customData)) {
-                        Reflect.setField(_skillsData, key, Reflect.field(customData, key));
-                    }
-                    if (!silent) ApiLogger.info("Skills", "Merged skills_custom.json override!");
-                } catch (ce:Dynamic) {}
+            var customFiles:Array<Dynamic> = [];
+            if (storageDir != null) customFiles.push(storageDir.resolvePath("skills_custom.json"));
+            if (appDir != null) customFiles.push(appDir.resolvePath("skills_custom.json"));
+
+            for (customFile in customFiles) {
+                if (customFile != null && customFile.exists) {
+                    try {
+                        var cStream:Dynamic = Type.createInstance(FileStreamClass, []);
+                        cStream.open(customFile, "read");
+                        var cRaw:String = cStream.readUTFBytes(cStream.bytesAvailable);
+                        cStream.close();
+                        var customData:Dynamic = haxe.Json.parse(cRaw);
+                        for (key in Reflect.fields(customData)) {
+                            Reflect.setField(_skillsData, key, Reflect.field(customData, key));
+                        }
+                        if (!silent) ApiLogger.info("Skills", "Merged skills_custom.json override!");
+                        break;
+                    } catch (ce:Dynamic) {}
+                }
             }
 
         } catch (e:Dynamic) {
@@ -537,7 +555,7 @@ class CombatManager {
     }
 
     public static function findClassConfig(className:String):Dynamic {
-        if (_skillsData == null) init();
+        if (_skillsData == null || Reflect.fields(_skillsData).length == 0) init();
         if (_skillsData == null || className == "") return null;
         var lower:String = className.toLowerCase();
         for (key in Reflect.fields(_skillsData)) {

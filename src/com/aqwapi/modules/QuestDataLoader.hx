@@ -36,17 +36,21 @@ class QuestDataLoader {
             }
 
             var appDir:Dynamic = Reflect.getProperty(FileClass, "applicationDirectory");
-            var questFile:Dynamic = appDir.resolvePath("assets/QuestData.json");
+            var storageDir:Dynamic = Reflect.getProperty(FileClass, "applicationStorageDirectory");
+            var questFile:Dynamic = null;
 
-            // Case-sensitivity and path fallbacks
-            if (!questFile.exists) {
-                questFile = appDir.resolvePath("assets/questdata.json");
+            if (appDir != null) {
+                questFile = appDir.resolvePath("assets/QuestData.json");
+                if (!questFile.exists) questFile = appDir.resolvePath("assets/questdata.json");
+                if (!questFile.exists) questFile = appDir.resolvePath("QuestData.json");
+                if (!questFile.exists) questFile = appDir.resolvePath("questdata.json");
             }
-            if (!questFile.exists) {
-                questFile = appDir.resolvePath("QuestData.json");
+            if ((questFile == null || !questFile.exists) && storageDir != null) {
+                questFile = storageDir.resolvePath("QuestData.json");
+                if (!questFile.exists) questFile = storageDir.resolvePath("assets/QuestData.json");
             }
 
-            if (questFile.exists) {
+            if (questFile != null && questFile.exists) {
                 var stream:Dynamic = Type.createInstance(FileStreamClass, []);
                 stream.open(questFile, "read");
                 var raw:String = stream.readUTFBytes(stream.bytesAvailable);
