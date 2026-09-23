@@ -16,13 +16,13 @@ class CombatEngine {
     public static var targetName:String   = null;
     public static var skillMode:String    = "Base";
 
-    public static var farmClass:String  = "";
+    public static var farmClass:String  = "Current";
     public static var farmMode:String   = "Base";
-    public static var soloClass:String  = "";
+    public static var soloClass:String  = "Current";
     public static var soloMode:String   = "Base";
-    public static var bossClass:String  = "";
+    public static var bossClass:String  = "Current";
     public static var bossMode:String   = "Base";
-    public static var dodgeClass:String = "";
+    public static var dodgeClass:String = "Current";
     public static var dodgeMode:String  = "Base";
 
     private static var _timer:Timer;
@@ -667,6 +667,16 @@ class CombatEngine {
     }
 
     public static function getAvailableModes(className:String):Array<String> {
+        if (className == null || className == "" || className.toLowerCase() == "current") {
+            if (AqwApi.player != null && AqwApi.player.className != "") {
+                className = AqwApi.player.className;
+            } else if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
+                var av = AqwApi.game.world.myAvatar;
+                if (av.objData != null && av.objData.strClassName != null) {
+                    className = Std.string(av.objData.strClassName);
+                }
+            }
+        }
         var config:Dynamic = findClassConfig(className);
         if (config == null) return ["Base"];
         if (Std.isOfType(config, Array)) return ["Base"];

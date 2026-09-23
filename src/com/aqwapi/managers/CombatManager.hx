@@ -202,7 +202,7 @@ class CombatManager {
         else if (type == "boss") { c = CombatEngine.bossClass; m = CombatEngine.bossMode; }
         else if (type == "dodge") { c = CombatEngine.dodgeClass; m = CombatEngine.dodgeMode; }
         else return false;
-        if (c != null && c != "") AqwApi.inventory.equip(c);
+        if (c != null && c != "" && c != "Current" && AqwApi.inventory != null) AqwApi.inventory.equip(c);
         if (m != null && m != "") CombatEngine.skillMode = m;
         return true;
     }
