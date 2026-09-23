@@ -1,6 +1,6 @@
 -cp src
 -D air
--swf-version 18
+-swf-version 40
 -debug
 -lib hscript
 -swf bin/AqwApi.swc
