@@ -14,9 +14,14 @@ class AqwUtils {
     /**
      * Cross-platform check for finite numbers.
      * Avoids Math.isFinite runtime dispatch issues on Flash SWC.
+     * Uses IEEE 754 range comparison matching Haxe PR #13048.
      */
     public static inline function isFinite(v:Float):Bool {
-        return (v == v) && (v != Math.POSITIVE_INFINITY) && (v != Math.NEGATIVE_INFINITY);
+        #if flash
+        return v > untyped __global__["Number"].NEGATIVE_INFINITY && v < untyped __global__["Number"].POSITIVE_INFINITY;
+        #else
+        return v > Math.NEGATIVE_INFINITY && v < Math.POSITIVE_INFINITY;
+        #end
     }
 
     /**
