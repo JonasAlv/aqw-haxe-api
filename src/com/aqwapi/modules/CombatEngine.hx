@@ -401,7 +401,6 @@ class CombatEngine {
                 var hp:Float = getStat(pStats, avatar, "HP");
                 var maxHp:Float = getStat(pStats, avatar, "MaxHP");
                 var hpPct:Float = (rule.isPercentage != false) ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
-                var targetVal:Float = rule.value != null ? Std.parseFloat(Std.string(rule.value)) : 0;
                 var targetVal:Float = AqwUtils.parseFloat(rule.value, 0);
                 return compare(hpPct, targetVal, Std.string(rule.comparison));
 
@@ -409,7 +408,6 @@ class CombatEngine {
                 var mp:Float = getStat(pStats, avatar, "MP");
                 var maxMp:Float = getStat(pStats, avatar, "MaxMP");
                 var mpPct:Float = (rule.isPercentage != false) ? (maxMp > 0 ? (mp / maxMp * 100) : 0) : mp;
-                var targetVal:Float = rule.value != null ? Std.parseFloat(Std.string(rule.value)) : 0;
                 var targetVal:Float = AqwUtils.parseFloat(rule.value, 0);
                 return compare(mpPct, targetVal, Std.string(rule.comparison));
 
@@ -420,8 +418,6 @@ class CombatEngine {
                 var auraName:String = (rule.auraName != null) ? Std.string(rule.auraName) : "";
                 var auraTarget:String = (rule.auraTarget != null) ? Std.string(rule.auraTarget) : "self";
                 var stacks:Float = getAuraStacks(auraName, auraTarget, world, avatar, target);
-                var threshold:Float = (rule.value != null) ? Std.parseFloat(Std.string(rule.value)) : 0;
-                if (Math.isNaN(threshold)) threshold = 0;
                 var threshold:Float = AqwUtils.parseFloat(rule.value, 0);
                 var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "greater";
                 if (comp == "greater") {
@@ -439,7 +435,6 @@ class CombatEngine {
 
     private static function evaluatePartyHealth(rule:Dynamic, world:Dynamic, avatar:Dynamic):Bool {
         if (world == null || world.players == null) return false;
-        var threshold:Float = (rule.value != null) ? Std.parseFloat(Std.string(rule.value)) : 0;
         var threshold:Float = AqwUtils.parseFloat(rule.value, 0);
         var isPct:Bool = (rule.isPercentage != false);
         var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "less";
@@ -532,12 +527,6 @@ class CombatEngine {
             var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : "");
             if (name != "" && name.toLowerCase() == search) {
                 var val:Dynamic = a.val;
-                if (val == null) {
-                    totalStacks += 1;
-                } else {
-                    var parsedVal:Float = Std.parseFloat(Std.string(val));
-                    totalStacks += Math.isNaN(parsedVal) ? 1 : parsedVal;
-                }
                 totalStacks += (val == null) ? 1 : AqwUtils.parseFloat(val, 1);
             }
         };
