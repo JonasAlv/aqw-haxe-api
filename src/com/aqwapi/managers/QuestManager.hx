@@ -221,11 +221,13 @@ class QuestManager {
 
     public function complete(questId:Int, itemId:Int = -1):Void {
         if (_game != null && _game.world != null && _game.world.tryQuestComplete != null) {
-            if (itemId > 0) {
-                _game.world.tryQuestComplete(questId, itemId);
-            } else {
-                _game.world.tryQuestComplete(questId);
-            }
+            try {
+                if (itemId > 0) {
+                    _game.world.tryQuestComplete(questId, itemId);
+                } else {
+                    _game.world.tryQuestComplete(questId);
+                }
+            } catch (e:Dynamic) {}
         }
     }
 
