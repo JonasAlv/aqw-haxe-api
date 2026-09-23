@@ -64,14 +64,52 @@ class ScriptQuest {
 
     public function hasRequirements(questId:Int):Bool {
         var q = get(questId);
-        if (q == null || q.requirements == null || q.requirements.length == 0) return true;
+        if (q == null) return false;
+
+        var reqs:Array<Dynamic> = q.requirements;
+        if ((reqs == null || reqs.length == 0) && questId > 0) {
+            var offQ = QuestDataLoader.get(questId);
+            if (offQ != null && offQ.requirements != null && offQ.requirements.length > 0) {
+                reqs = offQ.requirements;
+            }
+        }
+
+        // If quest genuinely has no requirements, it's considered met
+        if (reqs == null || reqs.length == 0) return true;
+
         if (AqwApi.inventory == null) return false;
 
-        for (req in q.requirements) {
+        for (req in reqs) {
             if (req == null) continue;
-            var itemName:String = (req.sName != null) ? Std.string(req.sName) : "";
-            var reqQty:Int = (req.iQty != null) ? Std.int(req.iQty) : 1;
-            if (itemName != "" && !AqwApi.inventory.hasItem(itemName, reqQty)) {
+            var itemId:Int = (req.ItemID != null) ? Std.int(req.ItemID) : ((req.id != null) ? Std.int(req.id) : 0);
+            var itemName:String = (req.sName != null) ? Std.string(req.sName) : ((req.name != null) ? Std.string(req.name) : "");
+            var reqQty:Int = (req.iQty != null) ? Std.int(req.iQty) : ((req.qty != null) ? Std.int(req.qty) : 1);
+
+            var curQty:Int = 0;
+
+            // 1. Check world.invTree directly by ItemID (Fastest & most accurate AQW dictionary)
+            if (_game != null && _game.world != null && _game.world.invTree != null && itemId > 0) {
+                var treeItem:Dynamic = Reflect.field(_game.world.invTree, Std.string(itemId));
+                if (treeItem != null) {
+                    curQty = (treeItem.iQty != null) ? Std.int(treeItem.iQty) : 1;
+                }
+            }
+
+            // 2. Check by ItemName if not satisfied by ID
+            if (curQty < reqQty && itemName != "") {
+                var questQty = AqwApi.inventory.getQuestQuantity(itemName);
+                var invQty = AqwApi.inventory.getQuantity(itemName);
+                var bestQty = questQty > invQty ? questQty : invQty;
+                if (bestQty > curQty) curQty = bestQty;
+            }
+
+            // 3. Fallback check by ID string
+            if (curQty < reqQty && itemId > 0) {
+                var idQty = AqwApi.inventory.getQuantity(Std.string(itemId));
+                if (idQty > curQty) curQty = idQty;
+            }
+
+            if (curQty < reqQty) {
                 return false;
             }
         }
@@ -136,8 +174,18 @@ class ScriptQuest {
     }
 
     public function isInProgress(questId:Int):Bool {
-        if (_game != null && _game.world != null && _game.world.isQuestInProgress != null) {
-            return _game.world.isQuestInProgress(questId);
+        if (_game != null && _game.world != null) {
+            if (_game.world.isQuestInProgress != null) {
+                try {
+                    return _game.world.isQuestInProgress(questId);
+                } catch (e:Dynamic) {}
+            }
+            if (_game.world.questTree != null) {
+                var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+                if (qData != null && qData.status != null && qData.status != "") {
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -301,13 +349,29 @@ class ScriptQuest {
     }
 
     public function canComplete(questId:Int):Bool {
-        if (_game != null && _game.world != null && _game.world.questTree != null) {
+        if (_game == null || _game.world == null) return false;
+
+        // Must be currently in progress
+        if (!isInProgress(questId)) return false;
+
+        // If Flash client marked it complete ("c")
+        if (_game.world.questTree != null) {
             var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
             if (qData != null && qData.status != null && Std.string(qData.status) == "c") {
                 return true;
             }
         }
-        return isInProgress(questId) && hasRequirements(questId);
+
+        // Native AQW check
+        if (_game.world.canTurnInQuest != null) {
+            try {
+                if (_game.world.canTurnInQuest(questId)) {
+                    return true;
+                }
+            } catch (e:Dynamic) {}
+        }
+
+        return hasRequirements(questId);
     }
 
     public inline function isAccepted(questId:Int):Bool {
@@ -372,6 +436,7 @@ class ScriptQuest {
 
         var parts:Array<String> = questString.split(",");
         _questIDs = [];
+        var qidsToLoad:Array<Int> = [];
         for (raw in parts) {
             var subParts:Array<String> = raw.split(":");
             var val:Int = com.aqwapi.utils.AqwUtils.parseInt(subParts[0], 0);
@@ -381,10 +446,14 @@ class ScriptQuest {
                     itemId = com.aqwapi.utils.AqwUtils.parseInt(subParts[1], -1);
                 }
                 _questIDs.push({ qid: val, itemId: itemId });
+                qidsToLoad.push(val);
             }
         }
 
         if (_questIDs.length > 0) {
+            // Preload all quest definitions immediately so world.questTree has them
+            loadMultiple(qidsToLoad);
+
             _lastTurnIns = {};
             _timer = new Timer(1500);
             _timer.addEventListener(TimerEvent.TIMER, onAutoTick, false, 0, true);
@@ -408,34 +477,48 @@ class ScriptQuest {
         if (_game == null || _game.world == null) return;
 
         try {
-            if (_game.world.questTree != null) {
-                var now:Float = AqwTime.now();
-                for (qObj in _questIDs) {
-                    var qid:Int = qObj.qid;
-                    var itemId:Int = qObj.itemId;
-                    var qKey:String = Std.string(qid);
+            var now:Float = AqwTime.now();
 
-                    var lastAttempt:Float = 0;
-                    var la:Null<Float> = Reflect.field(_lastTurnIns, qKey);
-                    if (la != null) lastAttempt = la;
+            // First: ensure all quests in _questIDs are loaded into questTree
+            var unloaded:Array<Int> = [];
+            for (qObj in _questIDs) {
+                var qid:Int = qObj.qid;
+                if (!isLoaded(qid)) unloaded.push(qid);
+            }
+            if (unloaded.length > 0) {
+                loadMultiple(unloaded);
+            }
 
-                    if (now - lastAttempt < 2000) continue;
+            // Second: check each quest
+            for (qObj in _questIDs) {
+                var qid:Int = qObj.qid;
+                var itemId:Int = qObj.itemId;
+                var qKey:String = Std.string(qid);
 
-                    var quest:Dynamic = Reflect.field(_game.world.questTree, qKey);
-                    if (quest != null) {
-                        if (quest.status == "c" || canComplete(qid)) {
-                            Reflect.setField(_lastTurnIns, qKey, now);
-                            complete(qid, itemId);
-                            break;
-                        } else if (quest.status == null || quest.status == "") {
-                            Reflect.setField(_lastTurnIns, qKey, now);
-                            accept(qid);
-                            break;
-                        }
-                    } else {
+                var lastAttempt:Float = 0;
+                var la:Null<Float> = Reflect.field(_lastTurnIns, qKey);
+                if (la != null) lastAttempt = la;
+
+                if (now - lastAttempt < 2000) continue;
+
+                var inProgress:Bool = isInProgress(qid);
+
+                if (inProgress) {
+                    // Check if ready to turn in
+                    if (canComplete(qid)) {
                         Reflect.setField(_lastTurnIns, qKey, now);
+                        ApiLogger.info("Quest", "Completing quest " + qid);
+                        complete(qid, itemId);
+                        break; // Only complete one per tick to prevent server packet flood
+                    }
+                    // Quest is in progress but requirements not yet met -> continue loop to process/accept other quests!
+                } else {
+                    // Quest not in progress -> accept it!
+                    if (isLoaded(qid)) {
+                        Reflect.setField(_lastTurnIns, qKey, now);
+                        ApiLogger.info("Quest", "Accepting quest " + qid);
                         accept(qid);
-                        break;
+                        break; // Accept one per tick for clean server handshake
                     }
                 }
             }

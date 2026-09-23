@@ -12,7 +12,23 @@ class ScriptInventory {
     }
 
     public function hasItem(itemName:String, quantity:Int = 1):Bool {
-        return getQuantity(itemName) >= quantity;
+        var qty = getQuantity(itemName);
+        if (qty < quantity) {
+            qty = getQuestQuantity(itemName);
+        }
+        return qty >= quantity;
+    }
+
+    public function hasItemById(itemId:Int, quantity:Int = 1):Bool {
+        if (itemId <= 0) return false;
+        if (_game != null && _game.world != null && _game.world.invTree != null) {
+            var treeItem:Dynamic = Reflect.field(_game.world.invTree, Std.string(itemId));
+            if (treeItem != null) {
+                var curQty:Int = (treeItem.iQty != null) ? Std.int(treeItem.iQty) : 1;
+                if (curQty >= quantity) return true;
+            }
+        }
+        return hasItem(Std.string(itemId), quantity);
     }
 
     public function isEquipped(itemNameOrId:String):Bool {

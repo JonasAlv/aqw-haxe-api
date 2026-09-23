@@ -129,12 +129,15 @@ class ScriptCommands {
 			var now:Float = AqwTime.now();
 			var qid:Int;
 						if (cmd.args.length >= 1) {
-							var qids:Array<Dynamic> = [];
+							var qids:Array<Int> = [];
 							for (i in 0...Std.int(cmd.args.length)) {
-								qids.push(_parseInt(cmd.args[i]));
+								var v:Int = _parseInt(cmd.args[i]);
+								if (v > 0) qids.push(v);
 							}
 							manager.statusText = "Loading Quests: " + qids.join(",");
-							if (com.aqwapi.AqwApi.game != null && com.aqwapi.AqwApi.game.world != null && com.aqwapi.AqwApi.game.world.getQuests != null) {
+							if (AqwApi.quest != null) {
+								AqwApi.quest.loadMultiple(qids);
+							} else if (com.aqwapi.AqwApi.game != null && com.aqwapi.AqwApi.game.world != null && com.aqwapi.AqwApi.game.world.getQuests != null) {
 								com.aqwapi.AqwApi.game.world.getQuests(qids);
 							}
 							manager.waitTimer = now + 1500; // In a full implementation, wait for QUEST_UPDATED event

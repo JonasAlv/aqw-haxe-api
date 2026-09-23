@@ -88,11 +88,79 @@ class QuestDTO {
         if (rawData.Requirements != null && Std.isOfType(rawData.Requirements, Array)) {
             this.requirements = cast rawData.Requirements;
         } else if (rawData.turnin != null && Std.isOfType(rawData.turnin, Array)) {
-            this.requirements = cast rawData.turnin;
+            var rawTurnin:Array<Dynamic> = cast rawData.turnin;
+            var reqList:Array<Dynamic> = [];
+            for (tItem in rawTurnin) {
+                if (tItem == null) continue;
+                var tId:Int = (tItem.ItemID != null) ? Std.int(tItem.ItemID) : ((tItem.id != null) ? Std.int(tItem.id) : 0);
+                var tQty:Int = (tItem.iQty != null) ? Std.int(tItem.iQty) : ((tItem.qty != null) ? Std.int(tItem.qty) : 1);
+                var tName:String = (tItem.sName != null) ? Std.string(tItem.sName) : null;
+                var tTemp:Dynamic = tItem.bTemp;
+
+                // Look up in rawData.oItems if name is missing
+                if ((tName == null || tName == "") && tId > 0 && rawData.oItems != null) {
+                    var oItem:Dynamic = Reflect.field(rawData.oItems, Std.string(tId));
+                    if (oItem != null) {
+                        if (oItem.sName != null) tName = Std.string(oItem.sName);
+                        if (oItem.bTemp != null) tTemp = oItem.bTemp;
+                    }
+                }
+
+                // If still missing, check offline QuestDataLoader
+                if ((tName == null || tName == "") && tId > 0 && this.id > 0) {
+                    var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
+                    if (offQ != null && offQ.requirements != null) {
+                        for (offReq in offQ.requirements) {
+                            var offId:Int = (offReq.ItemID != null) ? Std.int(offReq.ItemID) : ((offReq.id != null) ? Std.int(offReq.id) : 0);
+                            if (offId == tId) {
+                                if (offReq.sName != null) tName = Std.string(offReq.sName);
+                                if (offReq.bTemp != null) tTemp = offReq.bTemp;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                reqList.push({
+                    ItemID: tId,
+                    id: tId,
+                    sName: (tName != null) ? tName : "",
+                    name: (tName != null) ? tName : "",
+                    iQty: tQty,
+                    qty: tQty,
+                    bTemp: tTemp
+                });
+            }
+            this.requirements = reqList;
         } else if (rawData.oItems != null && Std.isOfType(rawData.oItems, Array)) {
             this.requirements = cast rawData.oItems;
         } else {
             this.requirements = [];
+        }
+
+        // Fallback to QuestDataLoader if requirements is empty
+        if ((this.requirements == null || this.requirements.length == 0) && this.id > 0) {
+            var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
+            if (offQ != null && offQ.requirements != null && offQ.requirements.length > 0) {
+                this.requirements = offQ.requirements;
+            }
+        }
+
+        // Fallback name if missing
+        if ((this.name == null || this.name == "") && this.id > 0) {
+            var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
+            if (offQ != null && offQ.name != null && offQ.name != "") {
+                this.name = offQ.name;
+            }
+        }
+
+        // Fallback slot & value if missing
+        if (this.slot < 0 && this.id > 0) {
+            var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
+            if (offQ != null && offQ.slot >= 0) {
+                this.slot = offQ.slot;
+                this.value = offQ.value;
+            }
         }
 
         // Rewards
@@ -102,6 +170,14 @@ class QuestDTO {
             this.rewards = cast rawData.reward;
         } else {
             this.rewards = [];
+        }
+
+        // Fallback rewards if missing
+        if ((this.rewards == null || this.rewards.length == 0) && this.id > 0) {
+            var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
+            if (offQ != null && offQ.rewards != null && offQ.rewards.length > 0) {
+                this.rewards = offQ.rewards;
+            }
         }
 
         // Simple Rewards
