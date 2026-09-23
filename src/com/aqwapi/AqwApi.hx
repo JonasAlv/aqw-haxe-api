@@ -36,17 +36,6 @@ class AqwApi {
         drop = new DropManager(game);
         shop = new ShopManager(game);
         monster = new MonsterManager(game);
-
-        #if flash
-        try {
-            if ((untyped Math).isNaN == null) {
-                (untyped Math).isNaN = function(v:Float):Bool { return v != v; };
-            }
-            if ((untyped Math).isFinite == null) {
-                (untyped Math).isFinite = function(v:Float):Bool { return (v == v) && v != Math.POSITIVE_INFINITY && v != Math.NEGATIVE_INFINITY; };
-            }
-        } catch (e:Dynamic) {}
-        #end
         hscript = HScriptEngine.SINGLETON;
     }
 
