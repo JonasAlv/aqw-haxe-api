@@ -4,6 +4,8 @@ import flash.utils.Timer;
 import flash.events.TimerEvent;
 import com.aqwapi.events.ApiEvent;
 import com.aqwapi.AqwApi;
+import com.aqwapi.data.QuestDTO;
+import com.aqwapi.modules.QuestDataLoader;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
 
@@ -17,6 +19,68 @@ class ScriptQuest {
     public function new(gameReference:AqwGame) {
         _game = gameReference;
     }
+
+    // ==========================================
+    // OFFLINE & ONLINE QUEST DATA LOOKUP
+    // ==========================================
+
+    public function get(questId:Int):QuestDTO {
+        if (_game != null && _game.world != null && _game.world.questTree != null) {
+            var liveData = Reflect.field(_game.world.questTree, Std.string(questId));
+            if (liveData != null) {
+                return new QuestDTO(liveData);
+            }
+        }
+        return QuestDataLoader.get(questId);
+    }
+
+    public inline function getQuest(questId:Int):QuestDTO {
+        return get(questId);
+    }
+
+    public function getName(questId:Int):String {
+        var q = get(questId);
+        return q != null ? q.name : "";
+    }
+
+    public function getRequirements(questId:Int):Array<Dynamic> {
+        var q = get(questId);
+        return q != null ? q.requirements : [];
+    }
+
+    public function getRewards(questId:Int):Array<Dynamic> {
+        var q = get(questId);
+        return q != null ? q.rewards : [];
+    }
+
+    public function getAcceptRequirements(questId:Int):Array<Dynamic> {
+        var q = get(questId);
+        return q != null ? q.acceptRequirements : [];
+    }
+
+    public function search(query:String, maxResults:Int = 50):Array<QuestDTO> {
+        return QuestDataLoader.search(query, maxResults);
+    }
+
+    public function hasRequirements(questId:Int):Bool {
+        var q = get(questId);
+        if (q == null || q.requirements == null || q.requirements.length == 0) return true;
+        if (AqwApi.inventory == null) return false;
+
+        for (req in q.requirements) {
+            if (req == null) continue;
+            var itemName:String = (req.sName != null) ? Std.string(req.sName) : "";
+            var reqQty:Int = (req.iQty != null) ? Std.int(req.iQty) : 1;
+            if (itemName != "" && !AqwApi.inventory.hasItem(itemName, reqQty)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // ==========================================
+    // SERVER INTERACTION & NETWORK LOADING
+    // ==========================================
 
     public function load(questId:Int):Void {
         var now:Float = AqwTime.now();
@@ -141,14 +205,30 @@ class ScriptQuest {
         return 0;
     }
 
+    // ==========================================
+    // STATUS & PROGRESS CHECKS (WITH OFFLINE FALLBACK)
+    // ==========================================
+
     public function isCompleted(questId:Int):Bool {
-        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
+        var qslot:Int = -1;
+        var qval:Int = 0;
 
-        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-        if (qData == null) return false;
+        if (_game != null && _game.world != null && _game.world.questTree != null) {
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            if (qData != null) {
+                qslot = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
+                qval = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
+            }
+        }
 
-        var qslot:Int = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
-        var qval:Int = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
+        // Offline fallback to QuestData.json
+        if (qslot < 0) {
+            var offlineQ = QuestDataLoader.get(questId);
+            if (offlineQ != null) {
+                qslot = offlineQ.slot;
+                qval = offlineQ.value;
+            }
+        }
 
         if (qslot >= 0) {
             return getQuestValue(qslot) >= qval;
@@ -166,22 +246,54 @@ class ScriptQuest {
     }
 
     public function isUnlocked(questId:Int):Bool {
-        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
-        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-        if (qData == null) return false;
-        var qslot:Int = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
-        var qval:Int = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
+        var qslot:Int = -1;
+        var qval:Int = 0;
+
+        if (_game != null && _game.world != null && _game.world.questTree != null) {
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            if (qData != null) {
+                qslot = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
+                qval = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
+            }
+        }
+
+        // Offline fallback to QuestData.json
+        if (qslot < 0) {
+            var offlineQ = QuestDataLoader.get(questId);
+            if (offlineQ != null) {
+                qslot = offlineQ.slot;
+                qval = offlineQ.value;
+            }
+        }
+
         if (qslot < 0) return true;
         return getQuestValue(qslot) >= (qval - 1);
     }
 
     public function isDailyComplete(questId:Int):Bool {
-        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
-        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-        if (qData == null) return false;
-        if (qData.sField != null && qData.iIndex != null && _game.world.getAchievement != null) {
+        var sField:String = null;
+        var iIndex:Int = 0;
+
+        if (_game != null && _game.world != null && _game.world.questTree != null) {
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            if (qData != null) {
+                sField = qData.sField;
+                iIndex = (qData.iIndex != null) ? Std.int(qData.iIndex) : 0;
+            }
+        }
+
+        // Offline fallback to QuestData.json
+        if (sField == null) {
+            var offlineQ = QuestDataLoader.get(questId);
+            if (offlineQ != null && offlineQ.field != null) {
+                sField = offlineQ.field;
+                iIndex = offlineQ.index;
+            }
+        }
+
+        if (sField != null && _game != null && _game.world != null && _game.world.getAchievement != null) {
             try {
-                var ach = _game.world.getAchievement(qData.sField, qData.iIndex);
+                var ach = _game.world.getAchievement(sField, iIndex);
                 return ach != null && Std.int(ach) > 0;
             } catch (e:Dynamic) {}
         }
@@ -189,11 +301,13 @@ class ScriptQuest {
     }
 
     public function canComplete(questId:Int):Bool {
-        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
-        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-        if (qData == null) return false;
-        if (qData.status != null && Std.string(qData.status) == "c") return true;
-        return false;
+        if (_game != null && _game.world != null && _game.world.questTree != null) {
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            if (qData != null && qData.status != null && Std.string(qData.status) == "c") {
+                return true;
+            }
+        }
+        return isInProgress(questId) && hasRequirements(questId);
     }
 
     public inline function isAccepted(questId:Int):Bool {
@@ -201,38 +315,33 @@ class ScriptQuest {
     }
 
     public function isAvailable(questId:Int):Bool {
-        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
-        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-        if (qData == null) return false;
+        var q = get(questId);
+        if (q == null) return false;
 
-        var world = _game.world;
+        var world = _game != null ? _game.world : null;
+        if (world == null) return false;
         var myAvatar = world.myAvatar;
         if (myAvatar == null || myAvatar.objData == null) return false;
 
-        // 1. One-time quest already done (bOnce == 1 && slotVal >= qval)
-        var bOnce:Int = (qData.bOnce != null) ? Std.int(qData.bOnce) : 0;
-        var qslot:Int = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
-        var qval:Int = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
-        if (bOnce == 1 && qslot >= 0) {
-            if (getQuestValue(qslot) >= qval) return false;
+        // 1. One-time quest already done
+        if (q.once && q.slot >= 0) {
+            if (getQuestValue(q.slot) >= q.value) return false;
         }
 
         // 2. Member / Upgrade requirement
-        var bUpg:Int = (qData.bUpg != null) ? Std.int(qData.bUpg) : 0;
-        if (bUpg == 1) {
+        if (q.upgrade) {
             var isUpgraded:Bool = (myAvatar.isUpgraded != null) ? myAvatar.isUpgraded() : false;
             if (!isUpgraded) return false;
         }
 
         // 3. Level requirement
-        var iLvl:Int = (qData.iLvl != null) ? Std.int(qData.iLvl) : 0;
         var pLvl:Int = (myAvatar.objData.intLevel != null) ? Std.int(myAvatar.objData.intLevel) : 0;
-        if (iLvl > pLvl) return false;
+        if (q.level > pLvl) return false;
 
         // 4. Prerequisite slot requirement
-        if (qslot >= 0 && qval > 0) {
-            var curVal:Int = getQuestValue(qslot);
-            var reqVal:Int = Std.int(Math.abs(qval)) - 1;
+        if (q.slot >= 0 && q.value > 0) {
+            var curVal:Int = getQuestValue(q.slot);
+            var reqVal:Int = Std.int(Math.abs(q.value)) - 1;
             if (curVal < reqVal) return false;
         }
 
@@ -241,6 +350,10 @@ class ScriptQuest {
 
         return true;
     }
+
+    // ==========================================
+    // AUTO QUEST BACKGROUND LOOP
+    // ==========================================
 
     public var isAutoRunning(get, never):Bool;
 
@@ -310,7 +423,7 @@ class ScriptQuest {
 
                     var quest:Dynamic = Reflect.field(_game.world.questTree, qKey);
                     if (quest != null) {
-                        if (quest.status == "c") {
+                        if (quest.status == "c" || canComplete(qid)) {
                             Reflect.setField(_lastTurnIns, qKey, now);
                             complete(qid, itemId);
                             break;
