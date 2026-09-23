@@ -4,7 +4,7 @@ import com.aqwapi.events.GameEvent;
 import com.aqwapi.AqwApi;
 import com.aqwapi.utils.Promise;
 
-class ScriptInventory {
+class InventoryManager {
     private var _game:AqwGame;
 
     public function new(gameReference:AqwGame) {

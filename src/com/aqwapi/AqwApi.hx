@@ -13,14 +13,14 @@ class AqwApi {
     public static var game(default, null):AqwGame;
 
     // All 8 Core Managers (Strictly Singular)
-    public static var map(default, null):ScriptMap;
-    public static var player(default, null):ScriptPlayer;
-    public static var quest(default, null):ScriptQuest;
-    public static var combat(default, null):ScriptCombat;
-    public static var inventory(default, null):ScriptInventory;
-    public static var drop(default, null):ScriptDrop;
-    public static var shop(default, null):ScriptShop;
-    public static var monster(default, null):ScriptMonster;
+    public static var map(default, null):MapManager;
+    public static var player(default, null):PlayerManager;
+    public static var quest(default, null):QuestManager;
+    public static var combat(default, null):CombatManager;
+    public static var inventory(default, null):InventoryManager;
+    public static var drop(default, null):DropManager;
+    public static var shop(default, null):ShopManager;
+    public static var monster(default, null):MonsterManager;
 
     public static var transport(default, null):TransportAdapter;
     public static var hscript(default, null):HScriptEngine;
@@ -28,14 +28,14 @@ class AqwApi {
     public static function init(gameReference:Dynamic):Void {
         game = cast gameReference;
         transport = new TransportAdapter(game);
-        map = new ScriptMap(game);
-        quest = new ScriptQuest(game);
-        combat = new ScriptCombat(game);
-        inventory = new ScriptInventory(game);
-        player = new ScriptPlayer(game);
-        drop = new ScriptDrop(game);
-        shop = new ScriptShop(game);
-        monster = new ScriptMonster(game);
+        map = new MapManager(game);
+        quest = new QuestManager(game);
+        combat = new CombatManager(game);
+        inventory = new InventoryManager(game);
+        player = new PlayerManager(game);
+        drop = new DropManager(game);
+        shop = new ShopManager(game);
+        monster = new MonsterManager(game);
 
         #if flash
         try {

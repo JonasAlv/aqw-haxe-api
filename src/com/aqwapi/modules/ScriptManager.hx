@@ -140,8 +140,8 @@ class ScriptManager {
         if (AqwApi.combat != null) AqwApi.combat.setInfiniteRange(true);
         if (AqwApi.map != null) AqwApi.map.autoDeathSpawn = true;
 
-        CombatManager.init();
-        if (CombatManager.IS_ON) CombatManager.stop();
+        CombatEngine.init();
+        if (CombatEngine.IS_ON) CombatEngine.stop();
 
         _timer.start();
         statusText = "Running...";
@@ -169,7 +169,7 @@ class ScriptManager {
         if (AqwApi.combat != null) {
             AqwApi.combat.stopAuto();
         } else if (AqwApi.game != null) {
-            CombatManager.stop();
+            CombatEngine.stop();
             try {
                 var world = AqwApi.game.world;
                 if (world != null && world.moveToCell != null && world.strFrame != null && world.strPad != null)
@@ -192,7 +192,7 @@ class ScriptManager {
         }
 
         if (currentIndex >= commands.length) {
-            var bgCombat = CombatManager.IS_ON;
+            var bgCombat = CombatEngine.IS_ON;
             var bgQuest = AqwApi.quest != null && AqwApi.quest.isAutoRunning;
             if (bgCombat || bgQuest) {
                 statusText = bgCombat ? "Auto-combat running" : "Auto-quest running";

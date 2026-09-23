@@ -2,7 +2,7 @@ package com.aqwapi.managers;
 
 import com.aqwapi.data.EntityDTO;
 
-class ScriptPlayer {
+class PlayerManager {
 
     private var _game:AqwGame;
 
@@ -114,4 +114,3 @@ class ScriptPlayer {
         }
     }
 }
-

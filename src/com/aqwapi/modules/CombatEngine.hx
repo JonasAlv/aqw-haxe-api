@@ -9,7 +9,7 @@ import com.aqwapi.utils.AqwUtils;
 import flash.events.TimerEvent;
 import flash.utils.Timer;
 
-class CombatManager {
+class CombatEngine {
     public static var IS_ON:Bool          = false;
     public static var isSmart:Bool        = false;
     public static var lockedMMID:String   = null;

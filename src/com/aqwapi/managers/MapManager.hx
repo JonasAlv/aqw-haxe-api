@@ -1,6 +1,6 @@
 package com.aqwapi.managers;
 
-class ScriptMap {
+class MapManager {
     private var _game:AqwGame;
 
     public function new(gameReference:AqwGame) {

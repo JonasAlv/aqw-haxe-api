@@ -9,7 +9,7 @@ import com.aqwapi.modules.QuestDataLoader;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
 
-class ScriptQuest {
+class QuestManager {
     private var _game:AqwGame;
     private var _timer:Timer;
     private var _questIDs:Array<Dynamic> = [];

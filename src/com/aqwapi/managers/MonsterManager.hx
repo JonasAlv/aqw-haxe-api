@@ -2,7 +2,7 @@ package com.aqwapi.managers;
 
 import com.aqwapi.data.EntityDTO;
 
-class ScriptMonster {
+class MonsterManager {
     private var _game:AqwGame;
 
     public function new(gameReference:AqwGame) {

@@ -1,6 +1,6 @@
 package com.aqwapi.managers;
 
-class ScriptShop {
+class ShopManager {
     private var _game:AqwGame;
 
     public function new(gameReference:AqwGame) {

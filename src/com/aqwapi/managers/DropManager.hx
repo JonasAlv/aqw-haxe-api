@@ -1,6 +1,6 @@
 package com.aqwapi.managers;
 
-class ScriptDrop {
+class DropManager {
     private var _game:AqwGame;
     public var pendingDrops:Array<Dynamic> = [];
     public var targetDrops:Array<Dynamic> = [];

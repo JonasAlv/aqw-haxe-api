@@ -3,7 +3,7 @@ package com.aqwapi.commands;
 import com.aqwapi.AqwApi;
 import com.aqwapi.data.EntityDTO;
 import com.aqwapi.modules.ScriptManager;
-import com.aqwapi.modules.CombatManager;
+import com.aqwapi.modules.CombatEngine;
 import com.aqwapi.events.ApiEvent;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
@@ -140,7 +140,7 @@ class ScriptCommands {
 							} else if (com.aqwapi.AqwApi.game != null && com.aqwapi.AqwApi.game.world != null && com.aqwapi.AqwApi.game.world.getQuests != null) {
 								com.aqwapi.AqwApi.game.world.getQuests(qids);
 							}
-							manager.waitTimer = now + 1500; // In a full implementation, wait for QUEST_UPDATED event
+							manager.waitTimer = now + 1500;
 							manager.currentIndex++;
 						}
 						return;
@@ -379,7 +379,7 @@ class ScriptCommands {
 									{ id: "farming_status" }
 								));
 								AqwApi.drop.targetDrops = [];
-								if (CombatManager.IS_ON) CombatManager.stop();
+								if (CombatEngine.IS_ON) CombatEngine.stop();
 								manager.currentIndex++;
 							} else {
 								// Still need items - show progress
@@ -418,9 +418,9 @@ class ScriptCommands {
 							if (cmd.pendingTeleport != null) {
 								if (world.strFrame == cmd.pendingTeleport && now >= cmd.teleportTimer) {
 									// Arrived and cell has fully loaded! Snap and start combat
-																		CombatManager.start(true, true);
-																		CombatManager.targetName = monster;
-																		CombatManager.lockedMMID = (foundMMID != null) ? foundMMID : mmid;
+																		CombatEngine.start(true, true);
+																		CombatEngine.targetName = monster;
+																		CombatEngine.lockedMMID = (foundMMID != null) ? foundMMID : mmid;
 									
 									var cellMons:Dynamic = (world.getMonstersByCell != null) ? world.getMonstersByCell(world.strFrame) : world.monsters;
 									for (cm in (cast cellMons : Array<Dynamic>)) {
@@ -429,7 +429,7 @@ class ScriptCommands {
 										var cmMMID:String = null;
 										if (cm.dataLeaf && cm.dataLeaf.MonMapID) cmMMID = Std.string(cm.dataLeaf.MonMapID);
 										else if (cm.objData && cm.objData.MonMapID) cmMMID = Std.string(cm.objData.MonMapID);
-										var cmMatch:Bool = CombatManager.lockedMMID != null ? (cmMMID == CombatManager.lockedMMID) : (monster == "*" || (cmName != null && cmName.indexOf(monster.toLowerCase()) != -1));
+										var cmMatch:Bool = CombatEngine.lockedMMID != null ? (cmMMID == CombatEngine.lockedMMID) : (monster == "*" || (cmName != null && cmName.indexOf(monster.toLowerCase()) != -1));
 										if (cmMatch) {
 											AqwApi.map.snapTo(cm);
 											break;
@@ -441,11 +441,11 @@ class ScriptCommands {
 									// Waiting for cell load and timer...
 									manager.waitTimer = now;
 								}
-							} else if (!CombatManager.IS_ON && world.strFrame == monCell) {
+							} else if (!CombatEngine.IS_ON && world.strFrame == monCell) {
 								// We are in the correct cell (or couldn't find the cell yet). Start combat!
-																CombatManager.start(true, true);
-																CombatManager.targetName = monster;
-																CombatManager.lockedMMID = (foundMMID != null) ? foundMMID : mmid;
+																CombatEngine.start(true, true);
+																CombatEngine.targetName = monster;
+																CombatEngine.lockedMMID = (foundMMID != null) ? foundMMID : mmid;
 								
 								// Snap directly onto the mob
 								AqwApi.map.snapTo(approachMon);
@@ -574,11 +574,11 @@ class ScriptCommands {
 			if (cmd.args != null && (cast cmd.args : Array<Dynamic>).length >= 1) {
 				var firstArg:String = StringTools.trim(Std.string(cmd.args[0])).toLowerCase();
 				if (firstArg == "stop") {
-					CombatManager.stop();
+					CombatEngine.stop();
 					manager.statusText = "Combat stopped";
 					ApiLogger.info("Combat", "Combat stopped");
 				} else if (firstArg == "smart") {
-					CombatManager.start(true, false);
+					CombatEngine.start(true, false);
 					manager.statusText = "Combat: Smart";
 					ApiLogger.info("Combat", "Combat: Smart");
 				} else if (firstArg.indexOf("custom") == 0) {
@@ -613,9 +613,9 @@ class ScriptCommands {
 					}
 
 					if (rotInts.length > 0) {
-						CombatManager.setCustomRotation(rotInts);
+						CombatEngine.setCustomRotation(rotInts);
 					}
-					CombatManager.start(false, false);
+					CombatEngine.start(false, false);
 					manager.statusText = rotInts.length > 0 ? "Combat: Custom [" + rotInts.join("-") + "]" : "Combat: Custom";
 					ApiLogger.info("Combat", manager.statusText);
 				}
@@ -637,7 +637,7 @@ class ScriptCommands {
 							} else {
 								var qStr:String = cmd.args.join(",");
 								AqwApi.quest.startAuto(qStr);
-								manager.statusText = "Background QuestManager: " + qStr;
+								manager.statusText = "Background AutoQuest: " + qStr;
 							}
 							manager.currentIndex++;
 						}

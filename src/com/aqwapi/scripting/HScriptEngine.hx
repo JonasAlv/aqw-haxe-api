@@ -3,7 +3,7 @@ package com.aqwapi.scripting;
 import com.aqwapi.AqwApi;
 import com.aqwapi.events.ApiEvent;
 import com.aqwapi.events.GameEvent;
-import com.aqwapi.modules.CombatManager;
+import com.aqwapi.modules.CombatEngine;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
 import flash.events.TimerEvent;
@@ -710,7 +710,7 @@ class HScriptEngine {
 
         if (AqwApi.quest != null) AqwApi.quest.stopAuto();
         if (AqwApi.combat != null) AqwApi.combat.stopAuto();
-        else CombatManager.stop();
+        else CombatEngine.stop();
     }
 
 
@@ -735,7 +735,7 @@ class HScriptEngine {
                 _handleScriptError("onTick error: " + Std.string(err), err);
             }
         } else {
-            var bgCombat = CombatManager.IS_ON;
+            var bgCombat = CombatEngine.IS_ON;
             var bgQuest = AqwApi.quest != null && AqwApi.quest.isAutoRunning;
             if (bgCombat || bgQuest) {
                 statusText = bgCombat ? "Auto-combat running" : "Auto-quest running";

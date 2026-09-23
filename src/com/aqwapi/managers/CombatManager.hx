@@ -1,9 +1,9 @@
 package com.aqwapi.managers;
 
-import com.aqwapi.modules.CombatManager;
+import com.aqwapi.modules.CombatEngine;
 import com.aqwapi.AqwApi;
 
-class ScriptCombat {
+class CombatManager {
     private var _game:AqwGame;
 
     public function new(gameReference:AqwGame) {
@@ -147,11 +147,11 @@ class ScriptCombat {
 
     public function useSkill(index:Int):Bool {
         applyInfiniteRange();
-        return CombatManager.tryFireSkillPublic(index);
+        return CombatEngine.tryFireSkillPublic(index);
     }
 
     public function canUseSkill(index:Int):Bool {
-        return CombatManager.canFireSkill(index);
+        return CombatEngine.canFireSkill(index);
     }
 
     public function dropCombat():Void {
@@ -167,7 +167,7 @@ class ScriptCombat {
         } catch (e:Dynamic) {}
     }
 
-    public function startSmart():Void { CombatManager.start(true, false); }
+    public function startSmart():Void { CombatEngine.start(true, false); }
 
     public function startCustom(rotation:String, mode:String = "auto"):Void {
         if (rotation != null && rotation.length > 0) {
@@ -184,115 +184,115 @@ class ScriptCombat {
                     if (charVal >= 0) rotInts.push(charVal);
                 }
             }
-            if (rotInts.length > 0) CombatManager.setCustomRotation(rotInts, mode);
+            if (rotInts.length > 0) CombatEngine.setCustomRotation(rotInts, mode);
         }
-        CombatManager.start(false, false);
+        CombatEngine.start(false, false);
     }
 
     public function stopAuto():Void {
-        CombatManager.stop();
+        CombatEngine.stop();
         cancelAutoAttack();
     }
 
     public function equipLoadout(type:String):Bool {
         var c = ""; var m = "";
         type = type.toLowerCase();
-        if (type == "farm") { c = CombatManager.farmClass; m = CombatManager.farmMode; }
-        else if (type == "solo") { c = CombatManager.soloClass; m = CombatManager.soloMode; }
-        else if (type == "boss") { c = CombatManager.bossClass; m = CombatManager.bossMode; }
-        else if (type == "dodge") { c = CombatManager.dodgeClass; m = CombatManager.dodgeMode; }
+        if (type == "farm") { c = CombatEngine.farmClass; m = CombatEngine.farmMode; }
+        else if (type == "solo") { c = CombatEngine.soloClass; m = CombatEngine.soloMode; }
+        else if (type == "boss") { c = CombatEngine.bossClass; m = CombatEngine.bossMode; }
+        else if (type == "dodge") { c = CombatEngine.dodgeClass; m = CombatEngine.dodgeMode; }
         else return false;
         if (c != null && c != "") AqwApi.inventory.equip(c);
-        if (m != null && m != "") CombatManager.skillMode = m;
+        if (m != null && m != "") CombatEngine.skillMode = m;
         return true;
     }
 
     public var isAutoRunning(get, never):Bool;
     @:getter(isAutoRunning)
-    public function get_isAutoRunning_prop():Bool { return CombatManager.IS_ON; }
-    public function get_isAutoRunning():Bool { return CombatManager.IS_ON; }
+    public function get_isAutoRunning_prop():Bool { return CombatEngine.IS_ON; }
+    public function get_isAutoRunning():Bool { return CombatEngine.IS_ON; }
 
     public var isSmartRunning(get, never):Bool;
     @:getter(isSmartRunning)
-    public function get_isSmartRunning_prop():Bool { return CombatManager.IS_ON && CombatManager.isSmart; }
-    public function get_isSmartRunning():Bool { return CombatManager.IS_ON && CombatManager.isSmart; }
+    public function get_isSmartRunning_prop():Bool { return CombatEngine.IS_ON && CombatEngine.isSmart; }
+    public function get_isSmartRunning():Bool { return CombatEngine.IS_ON && CombatEngine.isSmart; }
 
     public var isCustomRunning(get, never):Bool;
     @:getter(isCustomRunning)
-    public function get_isCustomRunning_prop():Bool { return CombatManager.IS_ON && !CombatManager.isSmart; }
-    public function get_isCustomRunning():Bool { return CombatManager.IS_ON && !CombatManager.isSmart; }
+    public function get_isCustomRunning_prop():Bool { return CombatEngine.IS_ON && !CombatEngine.isSmart; }
+    public function get_isCustomRunning():Bool { return CombatEngine.IS_ON && !CombatEngine.isSmart; }
 
     public var mode(get, set):String;
     @:getter(mode)
-    public function get_mode_prop():String { return CombatManager.skillMode; }
+    public function get_mode_prop():String { return CombatEngine.skillMode; }
     @:setter(mode)
-    public function set_mode_prop(v:String):String { CombatManager.skillMode = v; return v; }
-    public function get_mode():String { return CombatManager.skillMode; }
-    public function set_mode(v:String):String { CombatManager.skillMode = v; return v; }
+    public function set_mode_prop(v:String):String { CombatEngine.skillMode = v; return v; }
+    public function get_mode():String { return CombatEngine.skillMode; }
+    public function set_mode(v:String):String { CombatEngine.skillMode = v; return v; }
 
     public var farmClass(get, set):String;
     @:getter(farmClass)
-    public function get_farmClass_prop():String { return CombatManager.farmClass; }
+    public function get_farmClass_prop():String { return CombatEngine.farmClass; }
     @:setter(farmClass)
-    public function set_farmClass_prop(v:String):String { CombatManager.farmClass = v; return v; }
-    public function get_farmClass():String { return CombatManager.farmClass; }
-    public function set_farmClass(v:String):String { CombatManager.farmClass = v; return v; }
+    public function set_farmClass_prop(v:String):String { CombatEngine.farmClass = v; return v; }
+    public function get_farmClass():String { return CombatEngine.farmClass; }
+    public function set_farmClass(v:String):String { CombatEngine.farmClass = v; return v; }
 
     public var farmMode(get, set):String;
     @:getter(farmMode)
-    public function get_farmMode_prop():String { return CombatManager.farmMode; }
+    public function get_farmMode_prop():String { return CombatEngine.farmMode; }
     @:setter(farmMode)
-    public function set_farmMode_prop(v:String):String { CombatManager.farmMode = v; return v; }
-    public function get_farmMode():String { return CombatManager.farmMode; }
-    public function set_farmMode(v:String):String { CombatManager.farmMode = v; return v; }
+    public function set_farmMode_prop(v:String):String { CombatEngine.farmMode = v; return v; }
+    public function get_farmMode():String { return CombatEngine.farmMode; }
+    public function set_farmMode(v:String):String { CombatEngine.farmMode = v; return v; }
 
     public var soloClass(get, set):String;
     @:getter(soloClass)
-    public function get_soloClass_prop():String { return CombatManager.soloClass; }
+    public function get_soloClass_prop():String { return CombatEngine.soloClass; }
     @:setter(soloClass)
-    public function set_soloClass_prop(v:String):String { CombatManager.soloClass = v; return v; }
-    public function get_soloClass():String { return CombatManager.soloClass; }
-    public function set_soloClass(v:String):String { CombatManager.soloClass = v; return v; }
+    public function set_soloClass_prop(v:String):String { CombatEngine.soloClass = v; return v; }
+    public function get_soloClass():String { return CombatEngine.soloClass; }
+    public function set_soloClass(v:String):String { CombatEngine.soloClass = v; return v; }
 
     public var soloMode(get, set):String;
     @:getter(soloMode)
-    public function get_soloMode_prop():String { return CombatManager.soloMode; }
+    public function get_soloMode_prop():String { return CombatEngine.soloMode; }
     @:setter(soloMode)
-    public function set_soloMode_prop(v:String):String { CombatManager.soloMode = v; return v; }
-    public function get_soloMode():String { return CombatManager.soloMode; }
-    public function set_soloMode(v:String):String { CombatManager.soloMode = v; return v; }
+    public function set_soloMode_prop(v:String):String { CombatEngine.soloMode = v; return v; }
+    public function get_soloMode():String { return CombatEngine.soloMode; }
+    public function set_soloMode(v:String):String { CombatEngine.soloMode = v; return v; }
 
     public var bossClass(get, set):String;
     @:getter(bossClass)
-    public function get_bossClass_prop():String { return CombatManager.bossClass; }
+    public function get_bossClass_prop():String { return CombatEngine.bossClass; }
     @:setter(bossClass)
-    public function set_bossClass_prop(v:String):String { CombatManager.bossClass = v; return v; }
-    public function get_bossClass():String { return CombatManager.bossClass; }
-    public function set_bossClass(v:String):String { CombatManager.bossClass = v; return v; }
+    public function set_bossClass_prop(v:String):String { CombatEngine.bossClass = v; return v; }
+    public function get_bossClass():String { return CombatEngine.bossClass; }
+    public function set_bossClass(v:String):String { CombatEngine.bossClass = v; return v; }
 
     public var bossMode(get, set):String;
     @:getter(bossMode)
-    public function get_bossMode_prop():String { return CombatManager.bossMode; }
+    public function get_bossMode_prop():String { return CombatEngine.bossMode; }
     @:setter(bossMode)
-    public function set_bossMode_prop(v:String):String { CombatManager.bossMode = v; return v; }
-    public function get_bossMode():String { return CombatManager.bossMode; }
-    public function set_bossMode(v:String):String { CombatManager.bossMode = v; return v; }
+    public function set_bossMode_prop(v:String):String { CombatEngine.bossMode = v; return v; }
+    public function get_bossMode():String { return CombatEngine.bossMode; }
+    public function set_bossMode(v:String):String { CombatEngine.bossMode = v; return v; }
 
     public var dodgeClass(get, set):String;
     @:getter(dodgeClass)
-    public function get_dodgeClass_prop():String { return CombatManager.dodgeClass; }
+    public function get_dodgeClass_prop():String { return CombatEngine.dodgeClass; }
     @:setter(dodgeClass)
-    public function set_dodgeClass_prop(v:String):String { CombatManager.dodgeClass = v; return v; }
-    public function get_dodgeClass():String { return CombatManager.dodgeClass; }
-    public function set_dodgeClass(v:String):String { CombatManager.dodgeClass = v; return v; }
+    public function set_dodgeClass_prop(v:String):String { CombatEngine.dodgeClass = v; return v; }
+    public function get_dodgeClass():String { return CombatEngine.dodgeClass; }
+    public function set_dodgeClass(v:String):String { CombatEngine.dodgeClass = v; return v; }
 
     public var dodgeMode(get, set):String;
     @:getter(dodgeMode)
-    public function get_dodgeMode_prop():String { return CombatManager.dodgeMode; }
+    public function get_dodgeMode_prop():String { return CombatEngine.dodgeMode; }
     @:setter(dodgeMode)
-    public function set_dodgeMode_prop(v:String):String { CombatManager.dodgeMode = v; return v; }
-    public function get_dodgeMode():String { return CombatManager.dodgeMode; }
-    public function set_dodgeMode(v:String):String { CombatManager.dodgeMode = v; return v; }
+    public function set_dodgeMode_prop(v:String):String { CombatEngine.dodgeMode = v; return v; }
+    public function get_dodgeMode():String { return CombatEngine.dodgeMode; }
+    public function set_dodgeMode(v:String):String { CombatEngine.dodgeMode = v; return v; }
 
     public var infiniteRange(get, set):Bool;
     @:getter(infiniteRange)
@@ -301,4 +301,35 @@ class ScriptCombat {
     public function set_infiniteRange_prop(v:Bool):Bool { setInfiniteRange(v); return v; }
     public function get_infiniteRange():Bool { return _infiniteRange; }
     public function set_infiniteRange(v:Bool):Bool { setInfiniteRange(v); return v; }
+
+    // ==========================================
+    // STATIC ENGINE PROXIES (Convenience & Backward Compatibility)
+    // ==========================================
+    public static inline function init():Void { CombatEngine.init(); }
+    public static inline function reloadSkills(silent:Bool = false):Void { CombatEngine.reloadSkills(silent); }
+    public static inline function toggleSmart():Void { CombatEngine.toggleSmart(); }
+    public static inline function toggleCustom():Void { CombatEngine.toggleCustom(); }
+    public static inline function start(smart:Bool, silent:Bool = false):Void { CombatEngine.start(smart, silent); }
+    public static inline function stop():Void { CombatEngine.stop(); }
+    public static inline function getAvailableModes(className:String):Array<String> { return CombatEngine.getAvailableModes(className); }
+
+    public static var IS_ON(get, set):Bool;
+    private static inline function get_IS_ON():Bool { return CombatEngine.IS_ON; }
+    private static inline function set_IS_ON(v:Bool):Bool { return CombatEngine.IS_ON = v; }
+
+    public static var isSmart(get, set):Bool;
+    private static inline function get_isSmart():Bool { return CombatEngine.isSmart; }
+    private static inline function set_isSmart(v:Bool):Bool { return CombatEngine.isSmart = v; }
+
+    public static var skillMode(get, set):String;
+    private static inline function get_skillMode():String { return CombatEngine.skillMode; }
+    private static inline function set_skillMode(v:String):String { return CombatEngine.skillMode = v; }
+
+    public static var customMode(get, set):String;
+    private static inline function get_customMode():String { return CombatEngine.customMode; }
+    private static inline function set_customMode(v:String):String { return CombatEngine.customMode = v; }
+
+    public static var staticFarmClass(get, set):String;
+    private static inline function get_staticFarmClass():String { return CombatEngine.farmClass; }
+    private static inline function set_staticFarmClass(v:String):String { return CombatEngine.farmClass = v; }
 }
