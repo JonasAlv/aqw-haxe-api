@@ -34,8 +34,10 @@ class CombatEngine {
     private static var _waitUntil:Dynamic  = {};
     private static var _lastTargetMMID:String = null;
     private static var _skillWaitStart:Float = 0;
+    private static var _skillsLoaded:Bool = false;
 
     public static function init():Void {
+        _skillsLoaded = true;
         reloadSkills();
     }
 
@@ -123,6 +125,7 @@ class CombatEngine {
     }
 
     public static function reloadSkills(silent:Bool = false):Void {
+        _skillsLoaded = true;
         try {
             var FileClass:Dynamic = Type.resolveClass("flash.filesystem.File");
             var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
@@ -154,7 +157,8 @@ class CombatEngine {
                 stream.open(bundledFile, readMode);
                 var raw:String = stream.readUTFBytes(stream.bytesAvailable);
                 stream.close();
-                _skillsData = haxe.Json.parse(raw);
+                _skillsData = com.aqwapi.utils.AqwJson.parse(raw);
+                if (_skillsData == null) _skillsData = {};
             } else {
                 _skillsData = {};
                 if (!silent) ApiLogger.warn("Skills", "assets/AdvancedSkills.json missing!");
@@ -173,18 +177,31 @@ class CombatEngine {
                         cStream.open(customFile, readMode2);
                         var cRaw:String = cStream.readUTFBytes(cStream.bytesAvailable);
                         cStream.close();
-                        var customData:Dynamic = haxe.Json.parse(cRaw);
-                        for (key in Reflect.fields(customData)) {
-                            Reflect.setField(_skillsData, key, Reflect.field(customData, key));
+                        var customData:Dynamic = com.aqwapi.utils.AqwJson.parse(cRaw);
+                        if (customData != null) {
+                            for (key in Reflect.fields(customData)) {
+                                Reflect.setField(_skillsData, key, Reflect.field(customData, key));
+                            }
+                            if (!silent) ApiLogger.info("Skills", "Merged skills_custom.json override!");
                         }
-                        if (!silent) ApiLogger.info("Skills", "Merged skills_custom.json override!");
                         break;
                     } catch (ce:Dynamic) {}
                 }
             }
 
         } catch (e:Dynamic) {
-            if (!silent) ApiLogger.error("Skills", "AdvancedSkills.json error: " + Std.string(e));
+            _skillsData = {};
+            var msg:String = Std.string(e);
+            #if flash
+            try {
+                if (Std.isOfType(e, flash.errors.Error)) {
+                    var err:flash.errors.Error = cast e;
+                    var st:String = err.getStackTrace();
+                    if (st != null && st != "") msg += " @ " + st;
+                }
+            } catch (_:Dynamic) {}
+            #end
+            if (!silent) ApiLogger.error("Skills", "AdvancedSkills.json error: " + msg);
         }
     }
 
@@ -548,7 +565,7 @@ class CombatEngine {
     }
 
     public static function findClassConfig(className:String):Dynamic {
-        if (_skillsData == null || Reflect.fields(_skillsData).length == 0) init();
+        if (!_skillsLoaded) init();
         if (_skillsData == null || className == "") return null;
         var lower:String = className.toLowerCase();
         for (key in Reflect.fields(_skillsData)) {

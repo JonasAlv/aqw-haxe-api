@@ -58,12 +58,13 @@ class QuestDataLoader {
                 var raw:String = stream.readUTFBytes(stream.bytesAvailable);
                 stream.close();
 
-                var rawList:Array<Dynamic> = haxe.Json.parse(raw);
+                var rawList:Dynamic = com.aqwapi.utils.AqwJson.parse(raw);
                 _quests = new Map<Int, QuestDTO>();
 
                 var loadedCount:Int = 0;
-                if (rawList != null) {
-                    for (item in rawList) {
+                if (rawList != null && Std.isOfType(rawList, Array)) {
+                    var arr:Array<Dynamic> = cast rawList;
+                    for (item in arr) {
                         if (item != null) {
                             var dto = new QuestDTO(item);
                             if (dto.id > 0) {
@@ -87,7 +88,17 @@ class QuestDataLoader {
             _quests = new Map<Int, QuestDTO>();
             _loaded = true;
             _loading = false;
-            if (!silent) ApiLogger.error("Quest", "Failed to load QuestData.json: " + Std.string(e));
+            var msg:String = Std.string(e);
+            #if flash
+            try {
+                if (Std.isOfType(e, flash.errors.Error)) {
+                    var flashErr:flash.errors.Error = cast e;
+                    var st:String = flashErr.getStackTrace();
+                    if (st != null && st != "") msg += " @ " + st;
+                }
+            } catch (_:Dynamic) {}
+            #end
+            if (!silent) ApiLogger.error("Quest", "Failed to load QuestData.json: " + msg);
         }
     }
 

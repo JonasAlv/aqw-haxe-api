@@ -25,7 +25,30 @@ class AqwApi {
     public static var transport(default, null):TransportAdapter;
     public static var hscript(default, null):HScriptEngine;
 
+    static function __init__():Void {
+        ensureMathShims();
+    }
+
+    public static function ensureMathShims():Void {
+        #if flash
+        try {
+            var m:Dynamic = untyped __global__["Math"];
+            if (m != null) {
+                if (m.isNaN == null) {
+                    m.isNaN = function(v:Float):Bool { return v != v; };
+                }
+                if (m.isFinite == null) {
+                    m.isFinite = function(v:Float):Bool {
+                        return (v == v) && v != untyped __global__["Number"].POSITIVE_INFINITY && v != untyped __global__["Number"].NEGATIVE_INFINITY;
+                    };
+                }
+            }
+        } catch (_:Dynamic) {}
+        #end
+    }
+
     public static function init(gameReference:Dynamic):Void {
+        ensureMathShims();
         game = cast gameReference;
         transport = new TransportAdapter(game);
         map = new MapManager(game);

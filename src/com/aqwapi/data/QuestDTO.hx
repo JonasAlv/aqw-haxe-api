@@ -107,7 +107,7 @@ class QuestDTO {
                 }
 
                 // If still missing, check offline QuestDataLoader
-                if ((tName == null || tName == "") && tId > 0 && this.id > 0) {
+                if ((tName == null || tName == "") && tId > 0 && this.id > 0 && com.aqwapi.modules.QuestDataLoader.isLoaded()) {
                     var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
                     if (offQ != null && offQ.requirements != null) {
                         for (offReq in offQ.requirements) {
@@ -139,7 +139,7 @@ class QuestDTO {
         }
 
         // Fallback to QuestDataLoader if requirements is empty
-        if ((this.requirements == null || this.requirements.length == 0) && this.id > 0) {
+        if ((this.requirements == null || this.requirements.length == 0) && this.id > 0 && com.aqwapi.modules.QuestDataLoader.isLoaded()) {
             var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
             if (offQ != null && offQ.requirements != null && offQ.requirements.length > 0) {
                 this.requirements = offQ.requirements;
@@ -147,7 +147,7 @@ class QuestDTO {
         }
 
         // Fallback name if missing
-        if ((this.name == null || this.name == "") && this.id > 0) {
+        if ((this.name == null || this.name == "") && this.id > 0 && com.aqwapi.modules.QuestDataLoader.isLoaded()) {
             var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
             if (offQ != null && offQ.name != null && offQ.name != "") {
                 this.name = offQ.name;
@@ -155,7 +155,7 @@ class QuestDTO {
         }
 
         // Fallback slot & value if missing
-        if (this.slot < 0 && this.id > 0) {
+        if (this.slot < 0 && this.id > 0 && com.aqwapi.modules.QuestDataLoader.isLoaded()) {
             var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
             if (offQ != null && offQ.slot >= 0) {
                 this.slot = offQ.slot;

@@ -525,7 +525,17 @@ class QuestManager {
                 }
             }
         } catch (err:Dynamic) {
-            ApiLogger.error("Quest", "AutoQuest Error: " + Std.string(err));
+            var msg:String = Std.string(err);
+            #if flash
+            try {
+                if (Std.isOfType(err, flash.errors.Error)) {
+                    var flashErr:flash.errors.Error = cast err;
+                    var st:String = flashErr.getStackTrace();
+                    if (st != null && st != "") msg += " @ " + st;
+                }
+            } catch (_:Dynamic) {}
+            #end
+            ApiLogger.error("Quest", "AutoQuest Error: " + msg);
         }
     }
 }
