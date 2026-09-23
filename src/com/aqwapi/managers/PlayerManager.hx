@@ -113,4 +113,31 @@ class PlayerManager {
             try { _game.world.setSpawnPoint(c, p); } catch (e:Dynamic) {}
         }
     }
+
+    public var className(get, never):String;
+    @:getter(className)
+    public function get_className_prop():String { return get_className(); }
+    public function get_className():String {
+        var a = _avatar();
+        if (a != null) {
+            if (a.objData != null && a.objData.strClassName != null) {
+                var c:String = Std.string(a.objData.strClassName);
+                if (c != "" && c != "null") return c;
+            }
+            if (a.items != null && Std.isOfType(a.items, Array)) {
+                var arr:Array<Dynamic> = cast a.items;
+                for (it in arr) {
+                    if (it != null && (it.bEquip == 1 || it.bEquip == "1" || it.bEquip == true)) {
+                        if (it.sES == "ar" || it.sType == "Class") {
+                            if (it.sName != null) {
+                                var s:String = Std.string(it.sName);
+                                if (s != "" && s != "null") return s;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return "";
+    }
 }
