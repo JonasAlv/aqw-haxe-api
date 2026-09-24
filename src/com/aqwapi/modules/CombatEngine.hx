@@ -243,7 +243,17 @@ class CombatEngine {
             UserSkillsManager.ensureStorageInitialized();
         } catch (e:Dynamic) {
             _skillsData = {};
-            if (!silent) ApiLogger.error("Skills", "skills.txt load error: " + e);
+            var msg:String = Std.string(e);
+            #if flash
+            try {
+                if (Std.isOfType(e, flash.errors.Error)) {
+                    var fe:flash.errors.Error = cast e;
+                    var st:String = fe.getStackTrace();
+                    if (st != null && st != "") msg += " @ " + st;
+                }
+            } catch (_:Dynamic) {}
+            #end
+            if (!silent) ApiLogger.error("Skills", "skills.txt load error: " + msg);
         }
     }
 
