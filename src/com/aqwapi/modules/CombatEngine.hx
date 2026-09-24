@@ -821,6 +821,15 @@ class CombatEngine {
     }
 
     private static function getSkillAction(idx:Int):Dynamic {
+        if (AqwApi.game != null && AqwApi.game.world != null) {
+            var world:Dynamic = AqwApi.game.world;
+            try {
+                if (world.actionMap != null && world.actionMap[idx] != null && world.getActionByRef != null) {
+                    var act:Dynamic = world.getActionByRef(Std.string(world.actionMap[idx]));
+                    if (act != null) return act;
+                }
+            } catch (e:Dynamic) {}
+        }
         var icon:Dynamic = getIcon(idx);
         if (icon != null && icon.actObj != null) return icon.actObj;
         if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.actions != null && AqwApi.game.world.actions.active != null) {
