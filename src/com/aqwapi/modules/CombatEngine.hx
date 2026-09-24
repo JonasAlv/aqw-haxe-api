@@ -208,10 +208,21 @@ class CombatEngine {
                 var parsedCustom:Dynamic = com.aqwapi.utils.SkillDslParser.parse(customTxt);
                 if (parsedCustom != null) {
                     for (cKey in Reflect.fields(parsedCustom)) {
+                        var targetKey:String = cKey;
                         var targetClass:Dynamic = Reflect.field(_skillsData, cKey);
                         if (targetClass == null) {
+                            var cleanC:String = cleanClassName(cKey);
+                            for (existingKey in Reflect.fields(_skillsData)) {
+                                if (existingKey.toLowerCase() == cKey.toLowerCase() || (cleanC != "" && cleanClassName(existingKey) == cleanC)) {
+                                    targetKey = existingKey;
+                                    targetClass = Reflect.field(_skillsData, existingKey);
+                                    break;
+                                }
+                            }
+                        }
+                        if (targetClass == null) {
                             targetClass = {};
-                            Reflect.setField(_skillsData, cKey, targetClass);
+                            Reflect.setField(_skillsData, targetKey, targetClass);
                         }
                         var srcClass:Dynamic = Reflect.field(parsedCustom, cKey);
                         for (mKey in Reflect.fields(srcClass)) {
