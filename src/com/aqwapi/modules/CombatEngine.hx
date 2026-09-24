@@ -16,6 +16,7 @@ class CombatEngine {
     public static var targetName:String   = null;
     public static var skillMode:String    = "Base";
 
+    public static var smartClass:String = "Current";
     public static var farmClass:String  = "Current";
     public static var farmMode:String   = "Base";
     public static var soloClass:String  = "Current";
@@ -24,6 +25,17 @@ class CombatEngine {
     public static var bossMode:String   = "Base";
     public static var dodgeClass:String = "Current";
     public static var dodgeMode:String  = "Base";
+
+    private static function getSettingString(key:String, def:String):String {
+        try {
+            var cls:Dynamic = Type.resolveClass("util.HelperSetting");
+            if (cls != null && cls.getString != null) {
+                var val:Dynamic = cls.getString(key, def);
+                if (val != null) return Std.string(val);
+            }
+        } catch (e:Dynamic) {}
+        return def;
+    }
 
     private static var _timer:Timer;
     private static var _customRotation:Array<Int> = [4, 3, 2, 1];
@@ -56,6 +68,20 @@ class CombatEngine {
         stop();
         reloadSkills(silent);
         isSmart = smart;
+        if (isSmart) {
+            var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : getSettingString("api_smart_class", "Current");
+            if (confClass != null && confClass != "" && confClass != "Current") {
+                if (AqwApi.inventory != null) {
+                    AqwApi.inventory.equip(confClass);
+                }
+            }
+            var confMode = getSettingString("api_smart_mode", "");
+            if (confMode != null && confMode != "") {
+                skillMode = confMode;
+            } else if (skillMode == null || skillMode == "") {
+                skillMode = "Base";
+            }
+        }
         IS_ON = true;
         _rotationIndex = 0;
         _sequenceStepStartTime = AqwTime.now();
@@ -281,11 +307,16 @@ class CombatEngine {
             runSimpleRotation(world, avatar);
         }
     }
-
     private static function runAdvancedRotation(world:Dynamic, avatar:Dynamic, target:Dynamic):Void {
-        var className:String = (avatar.objData != null && avatar.objData.strClassName != null) ? Std.string(avatar.objData.strClassName) : "";
-        if (className == "" && AqwApi.player != null) {
-            className = AqwApi.player.className;
+        var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : getSettingString("api_smart_class", "Current");
+        var className:String = "";
+        if (confClass != null && confClass != "" && confClass != "Current") {
+            className = confClass;
+        } else {
+            className = getCurrentClassName();
+            if (className == "" && avatar.objData != null && avatar.objData.strClassName != null) {
+                className = Std.string(avatar.objData.strClassName);
+            }
         }
         var config:Dynamic = findClassConfig(className);
 
@@ -336,26 +367,6 @@ class CombatEngine {
             if (skillTimeout > 0 && (now - _skillWaitStart) >= skillTimeout) {
                 _rotationIndex = (_rotationIndex + 1) % skills.length;
                 _skillWaitStart = now;
-            } else {
-                // Ensure auto attack is running while waiting for cooldown if not in rotation
-                var hasAA:Bool = false;
-                for (s in skills) {
-                    if (com.aqwapi.utils.AqwUtils.parseInt(s.skillId, 1) == 0) {
-                        hasAA = true;
-                        break;
-                    }
-                }
-                if (!hasAA) {
-                    var autoRunning:Bool = false;
-                    try {
-                        if (world.autoActionTimer != null && world.autoActionTimer.running == true) {
-                            autoRunning = true;
-                        }
-                    } catch (e:Dynamic) {}
-                    if (!autoRunning) {
-                        tryFireSkill(world, avatar, 0);
-                    }
-                }
             }
         }
     }
@@ -366,26 +377,6 @@ class CombatEngine {
             var skillId:Int = com.aqwapi.utils.AqwUtils.parseInt(skill.skillId, 1);
             if (!evaluateSkillRules(skill, world, avatar, target, skillId)) continue;
             if (tryFireSkill(world, avatar, skillId)) return;
-        }
-
-        // Fallback: If no rotation skills fired, ensure auto attack (skill 0) is running
-        var hasAA:Bool = false;
-        for (s in skills) {
-            if (com.aqwapi.utils.AqwUtils.parseInt(s.skillId, 1) == 0) {
-                hasAA = true;
-                break;
-            }
-        }
-        if (!hasAA) {
-            var autoRunning:Bool = false;
-            try {
-                if (world.autoActionTimer != null && world.autoActionTimer.running == true) {
-                    autoRunning = true;
-                }
-            } catch (e:Dynamic) {}
-            if (!autoRunning) {
-                tryFireSkill(world, avatar, 0);
-            }
         }
     }
 
@@ -620,9 +611,33 @@ class CombatEngine {
         return result.toString();
     }
 
+    public static function getCurrentClassName():String {
+        try {
+            if (AqwApi.player != null && AqwApi.player.className != null && AqwApi.player.className != "") {
+                return AqwApi.player.className;
+            }
+            if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
+                var av = AqwApi.game.world.myAvatar;
+                if (av.objData != null && av.objData.strClassName != null) {
+                    var c = Std.string(av.objData.strClassName);
+                    if (c != "" && c != "null") return c;
+                }
+            }
+        } catch (e:Dynamic) {}
+        return "";
+    }
+
     public static function findClassConfig(className:String):Dynamic {
         if (!_skillsLoaded) init();
         if (_skillsData == null || className == null || className == "") return null;
+
+        if (className.toLowerCase() == "current") {
+            var cur:String = getCurrentClassName();
+            if (cur != "" && cur.toLowerCase() != "current") {
+                return findClassConfig(cur);
+            }
+            return null;
+        }
 
         var lower:String = className.toLowerCase();
         for (key in Reflect.fields(_skillsData)) {
@@ -668,13 +683,9 @@ class CombatEngine {
 
     public static function getAvailableModes(className:String):Array<String> {
         if (className == null || className == "" || className.toLowerCase() == "current") {
-            if (AqwApi.player != null && AqwApi.player.className != "") {
-                className = AqwApi.player.className;
-            } else if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
-                var av = AqwApi.game.world.myAvatar;
-                if (av.objData != null && av.objData.strClassName != null) {
-                    className = Std.string(av.objData.strClassName);
-                }
+            var cur:String = getCurrentClassName();
+            if (cur != "" && cur.toLowerCase() != "current") {
+                className = cur;
             }
         }
         var config:Dynamic = findClassConfig(className);
@@ -745,7 +756,7 @@ class CombatEngine {
                 }
                 var skillReady:Bool = false;
                 if (world.actionTimeCheck != null) {
-                    try { skillReady = (Reflect.callMethod(world, Reflect.field(world, "actionTimeCheck"), [actObj, true]) == true); } catch (e:Dynamic) {}
+                    try { skillReady = (untyped world.actionTimeCheck(actObj, true) == true); } catch (e:Dynamic) {}
                 }
                 if (!skillReady && world.ActionResults != null && Reflect.field(world.ActionResults, actObj.ref) != null) {
                     var ar:Dynamic = Reflect.field(world.ActionResults, actObj.ref);
@@ -778,8 +789,8 @@ class CombatEngine {
         if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return false;
         var actObj:Dynamic = getSkillAction(idx);
         if (actObj == null || actObj.isOK == false) return false;
-        var world = AqwApi.game.world;
-        var avatar = world.myAvatar;
+        var world:Dynamic = AqwApi.game.world;
+        var avatar:Dynamic = world.myAvatar;
         var pStats:Dynamic = getPlayerStats(world, avatar);
         var dl:Dynamic     = avatar.dataLeaf;
         if (dl != null && dl.intState == 0) return false;
@@ -808,7 +819,7 @@ class CombatEngine {
                 }
                 var skillReady:Bool = false;
                 if (world.actionTimeCheck != null) {
-                    try { skillReady = (Reflect.callMethod(world, Reflect.field(world, "actionTimeCheck"), [actObj, true]) == true); } catch (e:Dynamic) {}
+                    try { skillReady = (untyped world.actionTimeCheck(actObj, true) == true); } catch (e:Dynamic) {}
                 }
                 if (!skillReady && world.ActionResults != null && Reflect.field(world.ActionResults, actObj.ref) != null) {
                     var ar:Dynamic = Reflect.field(world.ActionResults, actObj.ref);
@@ -824,23 +835,30 @@ class CombatEngine {
         if (AqwApi.game != null && AqwApi.game.world != null) {
             var world:Dynamic = AqwApi.game.world;
             try {
+                if (world.getActionByRef != null) {
+                    var ref:String = (idx == 0) ? "aa" : ("a" + idx);
+                    var act:Dynamic = world.getActionByRef(ref);
+                    if (act != null) return act;
+                }
+            } catch (e:Dynamic) {}
+            try {
                 if (world.actionMap != null && world.actionMap[idx] != null && world.getActionByRef != null) {
                     var act:Dynamic = world.getActionByRef(Std.string(world.actionMap[idx]));
                     if (act != null) return act;
                 }
             } catch (e:Dynamic) {}
+            if (world.actions != null && world.actions.active != null) {
+                try {
+                    var actList:Array<Dynamic> = cast world.actions.active;
+                    if (idx >= 0 && idx < actList.length) {
+                        var act:Dynamic = actList[idx];
+                        if (act != null) return act;
+                    }
+                } catch (e:Dynamic) {}
+            }
         }
         var icon:Dynamic = getIcon(idx);
         if (icon != null && icon.actObj != null) return icon.actObj;
-        if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.actions != null && AqwApi.game.world.actions.active != null) {
-            try {
-                var actList:Array<Dynamic> = cast AqwApi.game.world.actions.active;
-                if (idx >= 0 && idx < actList.length) {
-                    var act:Dynamic = actList[idx];
-                    if (act != null) return act;
-                }
-            } catch (e:Dynamic) {}
-        }
         return null;
     }
 

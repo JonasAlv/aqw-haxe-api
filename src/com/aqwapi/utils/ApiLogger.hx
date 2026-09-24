@@ -24,11 +24,13 @@ class ApiLogger {
             haxe.Log.trace = function(v:Dynamic, ?infos:haxe.PosInfos):Void {
                 try {
                     var str:String = (infos != null ? infos.fileName + ":" + infos.lineNumber + ": " : "") + Std.string(v);
-                    untyped __global__["trace"](str);
                     #if flash
+                    try { untyped __global__["trace"](str); } catch (_:Dynamic) {}
                     flash.Lib.trace(str);
+                    #elseif sys
+                    Sys.println(str);
                     #else
-                    untyped console.log(str);
+                    try { untyped console.log(str); } catch (_:Dynamic) {}
                     #end
                 } catch (e:Dynamic) {}
             };
@@ -133,8 +135,10 @@ class ApiLogger {
             try {
                 #if flash
                 flash.Lib.trace(formatted);
+                #elseif sys
+                Sys.println(formatted);
                 #else
-                untyped console.log(formatted);
+                try { untyped console.log(formatted); } catch (_:Dynamic) {}
                 #end
             } catch (e:Dynamic) {}
         }
