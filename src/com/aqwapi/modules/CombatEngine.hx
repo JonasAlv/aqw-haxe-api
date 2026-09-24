@@ -46,6 +46,7 @@ class CombatEngine {
     private static var _waitUntil:Dynamic  = {};
     private static var _lastTargetMMID:String = null;
     private static var _skillWaitStart:Float = 0;
+    private static var _stepFirstFailTime:Float = -1;  // when current step first failed to fire (GCD/CD block)
     private static var _skillsLoaded:Bool = false;
 
     public static function init():Void {
@@ -88,6 +89,7 @@ class CombatEngine {
         _waitUntil = {};
         _lastTargetMMID = null;
         _skillWaitStart = AqwTime.now();
+        _stepFirstFailTime = -1;
 
         if (lockedMMID == null && AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
             var avatar:Dynamic = AqwApi.game.world.myAvatar;
@@ -105,7 +107,7 @@ class CombatEngine {
         if (!silent) ApiLogger.info("Combat", isSmart ? "Smart Combat Activated" : "Custom Combat Activated");
 
         if (_timer == null) {
-            _timer = new Timer(500);
+            _timer = new Timer(100);
             _timer.addEventListener(TimerEvent.TIMER, onTick, false, 0, true);
         }
         _timer.start();
@@ -361,8 +363,9 @@ class CombatEngine {
 
         var advancedSkills:Array<Dynamic> = cast modeConfig.skills;
         var useMode:String = modeConfig.skillUseMode != null ? Std.string(modeConfig.skillUseMode) : "WaitForCooldown";
-        var skillTimeout:Float = (modeConfig.skillTimeout != null) ? com.aqwapi.utils.AqwUtils.parseInt(modeConfig.skillTimeout, 1000) : 1000;
-        if (skillTimeout <= 0) skillTimeout = 1000;
+        var skillTimeout:Float = (modeConfig.skillTimeout != null) ? com.aqwapi.utils.AqwUtils.parseInt(modeConfig.skillTimeout, 5000) : 5000;
+        // skillTimeout <= 0 means "wait indefinitely" for GCD/CD-blocked skills (only rules can skip)
+        // skillTimeout > 0 means "skip this step if stuck for N ms" (safety net for truly stuck skills)
 
         if (useMode == "UseIfAvailable") {
             runUseIfAvailable(world, avatar, target, advancedSkills);
@@ -376,21 +379,30 @@ class CombatEngine {
         var skill:Dynamic = skills[_rotationIndex];
         var skillId:Int = com.aqwapi.utils.AqwUtils.parseInt(skill.skillId, 1);
 
+        // Rule failure → skip this step immediately, reset fail tracker
         if (!evaluateSkillRules(skill, world, avatar, target, skillId)) {
             _rotationIndex = (_rotationIndex + 1) % skills.length;
             _skillWaitStart = AqwTime.now();
+            _stepFirstFailTime = -1;
             return;
         }
 
         if (tryFireSkill(world, avatar, skillId)) {
+            // Skill fired successfully → advance to next step
             _rotationIndex = (_rotationIndex + 1) % skills.length;
             _skillWaitStart = AqwTime.now();
+            _stepFirstFailTime = -1;
         } else {
+            // Skill is GCD/CD blocked → track time since first failure on this step
             var now:Float = AqwTime.now();
-            if (skillTimeout > 0 && (now - _skillWaitStart) >= skillTimeout) {
+            if (_stepFirstFailTime < 0) _stepFirstFailTime = now;  // first fail on this step
+            // Only skip if a positive timeout is set AND we've been stuck that long
+            if (skillTimeout > 0 && (now - _stepFirstFailTime) >= skillTimeout) {
                 _rotationIndex = (_rotationIndex + 1) % skills.length;
                 _skillWaitStart = now;
+                _stepFirstFailTime = -1;
             }
+            // Otherwise just wait — next tick (100ms) will try again
         }
     }
 
