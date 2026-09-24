@@ -381,43 +381,58 @@ class CombatEngine {
     }
 
     private static function runWaitForCooldown(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float):Void {
-        if (_rotationIndex >= skills.length) _rotationIndex = 0;
+        var len:Int = skills.length;
+        if (len == 0) return;
+        if (_rotationIndex >= len) _rotationIndex = 0;
         var skill:Dynamic = skills[_rotationIndex];
-        var skillId:Int = com.aqwapi.utils.AqwUtils.parseInt(skill.skillId, 1);
+        var skillId:Int = AqwUtils.parseInt(skill.skillId, 1);
 
-        // Rule failure → skip this step immediately, reset fail tracker
+        // ── Rule check ────────────────────────────────────────────────
+        // If the skill's condition isn't met, skip immediately (no wait).
         if (!evaluateSkillRules(skill, world, avatar, target, skillId)) {
-            _rotationIndex = (_rotationIndex + 1) % skills.length;
-            _skillWaitStart = AqwTime.now();
-            _stepFirstFailTime = -1;
+            advanceStep(len);
             return;
         }
 
-        if (tryFireSkill(world, avatar, skillId)) {
-            // Skill fired successfully → advance to next step
-            _rotationIndex = (_rotationIndex + 1) % skills.length;
-            _skillWaitStart = AqwTime.now();
-            _stepFirstFailTime = -1;
-        } else {
-            // Skill is GCD/CD blocked → track time since first failure on this step
-            var now:Float = AqwTime.now();
-            if (_stepFirstFailTime < 0) _stepFirstFailTime = now;  // first fail on this step
-            // Only skip if a positive timeout is set AND we've been stuck that long
-            if (skillTimeout > 0 && (now - _stepFirstFailTime) >= skillTimeout) {
-                _rotationIndex = (_rotationIndex + 1) % skills.length;
-                _skillWaitStart = now;
-                _stepFirstFailTime = -1;
-            }
-            // Otherwise just wait — next tick (100ms) will try again
+        // ── Fire attempt ──────────────────────────────────────────────
+        var result:Int = fireSkill(world, avatar, skillId);
+
+        switch (result) {
+            case SR_FIRED:
+                // Skill sent — advance to next step
+                advanceStep(len);
+
+            case SR_RESOURCE:
+                // MP/HP/state blocks this skill permanently until something external changes.
+                // Skip immediately so the rotation can reach the next step (e.g. Corvak at 0 MP).
+                advanceStep(len);
+
+            case SR_TIMING:
+                // GCD or per-skill CD not ready — wait, retry next tick (100ms).
+                // Safety-net: if stuck on this step for longer than skillTimeout, force-advance.
+                if (skillTimeout > 0) {
+                    var now:Float = AqwTime.now();
+                    if (_stepFirstFailTime < 0) _stepFirstFailTime = now;
+                    if ((now - _stepFirstFailTime) >= skillTimeout) advanceStep(len);
+                }
+                // skillTimeout == 0 → wait indefinitely (only rules or resource-block can advance)
         }
     }
 
+    /** Advance _rotationIndex to the next step and reset per-step state. */
+    private static inline function advanceStep(len:Int):Void {
+        _rotationIndex = (_rotationIndex + 1) % len;
+        _stepFirstFailTime = -1;
+    }
+
     private static function runUseIfAvailable(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>):Void {
+        // Scan from index 0 every tick — fire the first skill whose rules pass AND timing is ready.
+        // Resource-blocked and timing-blocked skills are both skipped (try the next one).
         for (i in 0...skills.length) {
             var skill:Dynamic = skills[i];
-            var skillId:Int = com.aqwapi.utils.AqwUtils.parseInt(skill.skillId, 1);
+            var skillId:Int = AqwUtils.parseInt(skill.skillId, 1);
             if (!evaluateSkillRules(skill, world, avatar, target, skillId)) continue;
-            if (tryFireSkill(world, avatar, skillId)) return;
+            if (fireSkill(world, avatar, skillId) == SR_FIRED) return;
         }
     }
 
@@ -759,23 +774,23 @@ class CombatEngine {
         if (_customRotation == null || _customRotation.length == 0) return;
 
         if (customMode == "priority") {
-            // PRIORITY MODE: On each tick, fire highest priority ready skill (e.g. CAv 3,4,2,1)
-            // Never stalls on long cooldowns (15s Flux, 20s Bulwark) and continuously spams ready fillers
+            // PRIORITY: scan in order, fire the first skill that's timing-ready
             for (idx in _customRotation) {
-                if (tryFireSkill(world, avatar, idx)) return;
+                if (fireSkill(world, avatar, idx) == SR_FIRED) return;
             }
         } else {
-            // SEQUENCE MODE: Steps through combo strictly in order (e.g. DoT 3,2,1,2,4,2)
-            // Advances only when each skill successfully casts; never scrambles buffs or skips
+            // SEQUENCE: step through in order, one skill per attempt
             if (_rotationIndex >= _customRotation.length) _rotationIndex = 0;
-            var targetSkill:Int = _customRotation[_rotationIndex];
-            if (tryFireSkill(world, avatar, targetSkill)) {
+            var targetIdx:Int = _customRotation[_rotationIndex];
+            var res:Int = fireSkill(world, avatar, targetIdx);
+            if (res == SR_FIRED || res == SR_RESOURCE) {
+                // Advance on fire OR resource-block (skip stuck skills, don't hang forever)
                 _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
                 _sequenceStepStartTime = AqwTime.now();
             } else {
+                // TimingBlocked — safety-net: if stuck > 8s, force advance
                 var now:Float = AqwTime.now();
                 if ((now - _sequenceStepStartTime) > 8000) {
-                    // Failsafe: if a skill is blocked for >8s (e.g. zero-mana boss drain), advance
                     _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
                     _sequenceStepStartTime = now;
                 }
@@ -783,35 +798,54 @@ class CombatEngine {
         }
     }
 
-    private static function tryFireSkill(world:Dynamic, avatar:Dynamic, idx:Int):Bool {
+    // ─────────────────────────────────────────────────────────────────
+    //  Skill fire result — three mutually exclusive outcomes
+    // ─────────────────────────────────────────────────────────────────
+    //  Fired          : skill was sent to the game → advance rotation step
+    //  TimingBlocked  : GCD or per-skill CD not ready → WAIT, retry next tick
+    //  ResourceBlocked: not enough MP/HP, dead, or skill not found
+    //                   → SKIP this step immediately (won't resolve by waiting)
+    // ─────────────────────────────────────────────────────────────────
+    private static inline var SR_FIRED:Int    = 0;  // Fired
+    private static inline var SR_TIMING:Int   = 1;  // TimingBlocked
+    private static inline var SR_RESOURCE:Int = 2;  // ResourceBlocked
+
+    /**
+     * Try to fire skill `idx` right now.
+     * Returns one of the SR_* constants.
+     */
+    private static function fireSkill(world:Dynamic, avatar:Dynamic, idx:Int):Int {
+        // 1. Resolve the action object for this skill slot
         var actObj:Dynamic = getSkillAction(idx);
-        if (actObj == null || actObj.isOK == false) return false;
+        if (actObj == null || actObj.isOK == false) return SR_RESOURCE;
 
+        // 2. Player must be alive
         var dl:Dynamic = avatar.dataLeaf;
-        if (dl != null && dl.intState == 0) return false;
+        if (dl != null && dl.intState == 0) return SR_RESOURCE;
 
-        // MP / HP cost guards
+        // 3. Resource guards (MP / HP cost)
+        //    These are permanent blockers — waiting won't help → ResourceBlocked
         var pStats:Dynamic = getPlayerStats(world, avatar);
-        var mpCost:Int = actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.mp, 0) : 0;
+        var mpCost:Int = actObj.mp != null ? AqwUtils.parseInt(actObj.mp, 0) : 0;
         if (mpCost > 0) {
-            var curMp:Int = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
-            if (curMp < mpCost) return false;
+            var curMp:Int = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP)
+                            : (dl != null ? Std.int(dl.intMP) : 0);
+            if (curMp < mpCost) return SR_RESOURCE;
         }
-        var hpCost:Int = actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.hp, 0) : 0;
+        var hpCost:Int = actObj.hp != null ? AqwUtils.parseInt(actObj.hp, 0) : 0;
         if (hpCost > 0) {
-            var curHp:Int = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
-            if (curHp <= hpCost) return false;
+            var curHp:Int = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP)
+                            : (dl != null ? Std.int(dl.intHP) : 0);
+            if (curHp <= hpCost) return SR_RESOURCE;
         }
 
-        // GCD + per-skill CD — delegate entirely to the game's own check (includes haste scaling)
-        var ready:Bool = false;
-        try {
-            ready = (world.actionTimeCheck(actObj) == true);
-        } catch (e:Dynamic) {}
+        // 4. Timing guard — GCD + per-skill CD (game-native, haste-scaled)
+        //    This is temporary → TimingBlocked
+        var timingReady:Bool = false;
+        try { timingReady = (world.actionTimeCheck(actObj) == true); } catch (e:Dynamic) {}
+        if (!timingReady) return SR_TIMING;
 
-        if (!ready) return false;
-
-        // Apply infinite range if enabled (read field directly to avoid cross-package getter)
+        // 5. Infinite range (scripting toggle)
         try {
             var infRange:Bool = false;
             var helperCls:Dynamic = Type.resolveClass("util.HelperSetting");
@@ -820,38 +854,29 @@ class CombatEngine {
             if (infRange) actObj.range = 20000;
         } catch (e:Dynamic) {}
 
+        // 6. Fire
         world.testAction(actObj);
-        return true;
+        return SR_FIRED;
+    }
+
+    // ── Backwards-compat wrappers used by external callers ─────────────
+
+    /** @deprecated — use fireSkill() internally; kept for external API callers */
+    private static function tryFireSkill(world:Dynamic, avatar:Dynamic, idx:Int):Bool {
+        return fireSkill(world, avatar, idx) == SR_FIRED;
     }
 
     public static function tryFireSkillPublic(idx:Int):Bool {
         if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return false;
-        return tryFireSkill(AqwApi.game.world, AqwApi.game.world.myAvatar, idx);
+        return fireSkill(AqwApi.game.world, AqwApi.game.world.myAvatar, idx) == SR_FIRED;
     }
 
     public static function canFireSkill(idx:Int):Bool {
         if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return false;
-        var actObj:Dynamic = getSkillAction(idx);
-        if (actObj == null || actObj.isOK == false) return false;
-        var world:Dynamic = AqwApi.game.world;
-        var avatar:Dynamic = world.myAvatar;
-        var dl:Dynamic = avatar.dataLeaf;
-        if (dl != null && dl.intState == 0) return false;
-
-        var pStats:Dynamic = getPlayerStats(world, avatar);
-        var mpCost:Int = actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.mp, 0) : 0;
-        if (mpCost > 0) {
-            var curMp:Int = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
-            if (curMp < mpCost) return false;
-        }
-        var hpCost:Int = actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.hp, 0) : 0;
-        if (hpCost > 0) {
-            var curHp:Int = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
-            if (curHp <= hpCost) return false;
-        }
-
-        try { return (world.actionTimeCheck(actObj) == true); } catch (e:Dynamic) {}
-        return false;
+        // ResourceBlocked or TimingBlocked both mean "can't fire right now",
+        // but only TimingBlocked means "will be able to soon"
+        var res = fireSkill(AqwApi.game.world, AqwApi.game.world.myAvatar, idx);
+        return res == SR_FIRED || res == SR_TIMING; // reachable (not dead/missing)
     }
 
     private static function getSkillAction(idx:Int):Dynamic {
