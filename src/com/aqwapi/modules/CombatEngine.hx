@@ -47,6 +47,7 @@ class CombatEngine {
     private static var _lastTargetMMID:String = null;
     private static var _skillWaitStart:Float = 0;
     private static var _stepFirstFailTime:Float = -1;  // when current step first failed to fire (GCD/CD block)
+    private static var _lastLoggedMode:String = null;
     private static var _skillsLoaded:Bool = false;
 
     public static function init():Void {
@@ -90,6 +91,7 @@ class CombatEngine {
         _lastTargetMMID = null;
         _skillWaitStart = AqwTime.now();
         _stepFirstFailTime = -1;
+        _lastLoggedMode = null;
 
         if (lockedMMID == null && AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
             var avatar:Dynamic = AqwApi.game.world.myAvatar;
@@ -104,7 +106,14 @@ class CombatEngine {
         }
 
         AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.COMBAT_TOGGLED, isSmart ? "Smart Combat Activated" : "Custom Combat Activated"));
-        if (!silent) ApiLogger.info("Combat", isSmart ? "Smart Combat Activated" : "Custom Combat Activated");
+        if (!silent) {
+            if (isSmart) {
+                var cName = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : "Current";
+                ApiLogger.info("Combat", "Smart Combat Activated [" + cName + " : " + skillMode + "]");
+            } else {
+                ApiLogger.info("Combat", "Custom Combat Activated");
+            }
+        }
 
         if (_timer == null) {
             _timer = new Timer(100);
@@ -121,6 +130,7 @@ class CombatEngine {
         targetName = null;
         _lastTargetMMID = null;
         _skillWaitStart = 0;
+        _lastLoggedMode = null;
         if (AqwApi.game != null && AqwApi.game.world != null) {
             try {
                 if (AqwApi.game.world.cancelAutoAttack != null) {
@@ -152,124 +162,118 @@ class CombatEngine {
         _sequenceStepStartTime = AqwTime.now();
     }
 
-    public static function reloadSkills(silent:Bool = false):Void {
-        _skillsLoaded = true;
+    private static function readSkillsAsset():String {
         try {
             var FileClass:Dynamic = Type.resolveClass("flash.filesystem.File");
             var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-
-            if (FileClass == null || FileStreamClass == null) {
-                _skillsData = {};
-                return;
-            }
-
-            var appDir:Dynamic = Reflect.getProperty(FileClass, "applicationDirectory");
-            var storageDir:Dynamic = Reflect.getProperty(FileClass, "applicationStorageDirectory");
-            var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-            var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
-
-            var readFileText = function(file:Dynamic):String {
-                if (file == null) return null;
-                try {
-                    var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                    stream.open(file, readMode);
-                    var content:String = stream.readUTFBytes(stream.bytesAvailable);
-                    stream.close();
-                    return content;
-                } catch (e:Dynamic) {
-                    return null;
+            if (FileClass != null && FileStreamClass != null) {
+                var appDir:Dynamic = Reflect.getProperty(FileClass, "applicationDirectory");
+                var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
+                var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
+                if (appDir != null) {
+                    var f = appDir.resolvePath("assets/skills.txt");
+                    if (f != null && f.exists) {
+                        var stream:Dynamic = Type.createInstance(FileStreamClass, []);
+                        stream.open(f, readMode);
+                        var txt:String = stream.readUTFBytes(stream.bytesAvailable);
+                        stream.close();
+                        return txt;
+                    }
                 }
-            };
+            }
+        } catch (_:Dynamic) {}
+        return null;
+    }
 
-            // 1. Load bundled skills.txt
-            var rawTxt:String = null;
-            if (appDir != null) {
-                rawTxt = readFileText(appDir.resolvePath("assets/skills.txt"));
-                if (rawTxt == null) rawTxt = readFileText(appDir.resolvePath("skills.txt"));
+    private static function backupCustomModes():Array<Dynamic> {
+        var list:Array<Dynamic> = [];
+        if (_skillsData == null) return list;
+        for (cKey in Reflect.fields(_skillsData)) {
+            var cObj:Dynamic = Reflect.field(_skillsData, cKey);
+            if (cObj != null && !Std.isOfType(cObj, Array)) {
+                for (mKey in Reflect.fields(cObj)) {
+                    if (mKey.toLowerCase() != "base") {
+                        list.push({
+                            className: cKey,
+                            modeName: mKey,
+                            data: Reflect.field(cObj, mKey)
+                        });
+                    }
+                }
             }
-            if (rawTxt == null && storageDir != null) {
-                rawTxt = readFileText(storageDir.resolvePath("skills.txt"));
-                if (rawTxt == null) rawTxt = readFileText(storageDir.resolvePath("assets/skills.txt"));
-            }
-            // 1b. Embedded resource fallback (guaranteed on all platforms including Android APK)
+        }
+        return list;
+    }
+
+    public static function reloadSkills(silent:Bool = false):Void {
+        _skillsLoaded = true;
+        try {
+            var rawTxt:String = readSkillsAsset();
             if (rawTxt == null || rawTxt.length == 0) {
-                try {
-                    rawTxt = haxe.Resource.getString("default_skills");
-                } catch (re:Dynamic) {}
+                rawTxt = DefaultSkillsData.getDefaultSkills();
             }
+
+            var inMemoryCustom:Array<Dynamic> = backupCustomModes();
 
             if (rawTxt != null && rawTxt.length > 0) {
                 _skillsData = com.aqwapi.utils.SkillDslParser.parse(rawTxt);
                 if (!silent) ApiLogger.info("Skills", "Loaded skills.txt successfully!");
             } else {
                 _skillsData = {};
-                if (!silent) ApiLogger.warn("Skills", "assets/skills.txt not found!");
+                if (!silent) ApiLogger.warn("Skills", "skills.txt not found!");
             }
 
             if (_skillsData == null) _skillsData = {};
 
-            // 2. User custom overrides: userSkills.txt (and legacy skills_custom.txt)
-            var mergeCustom = function(customTxt:String, sourceName:String):Void {
-                if (customTxt == null || customTxt.length == 0) return;
-                var parsedCustom:Dynamic = com.aqwapi.utils.SkillDslParser.parse(customTxt);
-                if (parsedCustom != null) {
-                    for (cKey in Reflect.fields(parsedCustom)) {
-                        var targetKey:String = cKey;
-                        var targetClass:Dynamic = Reflect.field(_skillsData, cKey);
-                        if (targetClass == null) {
-                            var cleanC:String = cleanClassName(cKey);
-                            for (existingKey in Reflect.fields(_skillsData)) {
-                                if (existingKey.toLowerCase() == cKey.toLowerCase() || (cleanC != "" && cleanClassName(existingKey) == cleanC)) {
-                                    targetKey = existingKey;
-                                    targetClass = Reflect.field(_skillsData, existingKey);
-                                    break;
-                                }
-                            }
-                        }
-                        if (targetClass == null) {
-                            targetClass = {};
-                            Reflect.setField(_skillsData, targetKey, targetClass);
-                        }
-                        var srcClass:Dynamic = Reflect.field(parsedCustom, cKey);
-                        for (mKey in Reflect.fields(srcClass)) {
-                            Reflect.setField(targetClass, mKey, Reflect.field(srcClass, mKey));
-                        }
-                    }
-                    if (!silent) ApiLogger.info("Skills", "Merged " + sourceName + " modes!");
+            // Restore in-memory custom modes
+            for (item in inMemoryCustom) {
+                var targetClass:Dynamic = Reflect.field(_skillsData, item.className);
+                if (targetClass == null) {
+                    targetClass = {};
+                    Reflect.setField(_skillsData, item.className, targetClass);
                 }
-            };
+                Reflect.setField(targetClass, item.modeName, item.data);
+            }
 
-            var checkCustom = function(dir:Dynamic, isStorage:Bool = false):Void {
-                if (dir == null) return;
-                var uTxt = readFileText(dir.resolvePath("userSkills.txt"));
-                if (uTxt == null && !isStorage) uTxt = readFileText(dir.resolvePath("assets/userSkills.txt"));
-                if (uTxt != null && uTxt.length > 0) mergeCustom(uTxt, isStorage ? "storage userSkills.txt" : "bundled userSkills.txt");
+            var userSkillsTxt:String = UserSkillsManager.readUserSkills();
+            if (userSkillsTxt != null && userSkillsTxt.length > 0) {
+                mergeSkillsCustom(_skillsData, userSkillsTxt, "userSkills.txt", silent);
+            }
 
-                var cTxt = readFileText(dir.resolvePath("skills_custom.txt"));
-                if (cTxt != null && cTxt.length > 0) mergeCustom(cTxt, "skills_custom.txt");
-            };
-
-            checkCustom(appDir, false);
-            // Embedded user skills fallback
-            try {
-                var defUser = haxe.Resource.getString("default_user_skills");
-                if (defUser != null && defUser.length > 0) mergeCustom(defUser, "embedded userSkills.txt");
-            } catch (ue:Dynamic) {}
-            checkCustom(storageDir, true);
-
+            UserSkillsManager.ensureStorageInitialized();
         } catch (e:Dynamic) {
             _skillsData = {};
-            var msg:String = Std.string(e);
-            #if flash
-            try {
-                if (Std.isOfType(e, flash.errors.Error)) {
-                    var err:flash.errors.Error = cast e;
-                    var st:String = err.getStackTrace();
-                    if (st != null && st != "") msg += " @ " + st;
+            if (!silent) ApiLogger.error("Skills", "skills.txt load error: " + e);
+        }
+    }
+
+    private static function mergeSkillsCustom(skillsData:Dynamic, customTxt:String, sourceName:String, silent:Bool):Void {
+        if (skillsData == null || customTxt == null || customTxt.length == 0) return;
+        var parsedCustom:Dynamic = com.aqwapi.utils.SkillDslParser.parse(customTxt);
+        if (parsedCustom != null) {
+            for (cKey in Reflect.fields(parsedCustom)) {
+                var targetKey:String = cKey;
+                var targetClass:Dynamic = Reflect.field(skillsData, cKey);
+                if (targetClass == null) {
+                    var cleanC:String = cleanClassName(cKey);
+                    for (existingKey in Reflect.fields(skillsData)) {
+                        if (existingKey.toLowerCase() == cKey.toLowerCase() || (cleanC != "" && cleanClassName(existingKey) == cleanC)) {
+                            targetKey = existingKey;
+                            targetClass = Reflect.field(skillsData, existingKey);
+                            break;
+                        }
+                    }
                 }
-            } catch (_:Dynamic) {}
-            #end
-            if (!silent) ApiLogger.error("Skills", "skills.txt load error: " + msg);
+                if (targetClass == null) {
+                    targetClass = {};
+                    Reflect.setField(skillsData, targetKey, targetClass);
+                }
+                var srcClass:Dynamic = Reflect.field(parsedCustom, cKey);
+                for (mKey in Reflect.fields(srcClass)) {
+                    Reflect.setField(targetClass, mKey, Reflect.field(srcClass, mKey));
+                }
+            }
+            if (!silent) ApiLogger.info("Skills", "Merged " + sourceName + " modes!");
         }
     }
 
@@ -388,12 +392,73 @@ class CombatEngine {
         if (config == null) { runSimpleRotation(world, avatar); return; }
 
         var modeConfig:Dynamic = null;
-        if (Reflect.field(config, skillMode) != null) {
+        var activeModeName:String = skillMode;
+
+        // 1. Direct field match
+        if (skillMode != null && skillMode != "" && Reflect.hasField(config, skillMode)) {
             modeConfig = Reflect.field(config, skillMode);
-        } else if (Reflect.field(config, "Base") != null) {
-            modeConfig = Reflect.field(config, "Base");
-        } else {
-            for (key in Reflect.fields(config)) { modeConfig = Reflect.field(config, key); break; }
+            activeModeName = skillMode;
+        }
+
+        // 2. Case-insensitive field match in config
+        if (modeConfig == null && skillMode != null && skillMode != "") {
+            for (key in Reflect.fields(config)) {
+                if (key.toLowerCase() == skillMode.toLowerCase()) {
+                    modeConfig = Reflect.field(config, key);
+                    activeModeName = key;
+                    break;
+                }
+            }
+        }
+
+        // 3. UserSkillsManager lookup (guarantees retrieval even before reload/disk sync)
+        if (modeConfig == null && skillMode != null && skillMode != "") {
+            var details = UserSkillsManager.getModeDetails(className, skillMode);
+            if (details != null && details.combo != null && details.combo != "") {
+                var parsedSkills = com.aqwapi.utils.SkillDslParser.parseCombo(details.combo);
+                if (parsedSkills != null && parsedSkills.length > 0) {
+                    modeConfig = {
+                        skillUseMode: details.skillUseMode,
+                        skillTimeout: details.timeout,
+                        skills: parsedSkills
+                    };
+                    Reflect.setField(config, skillMode, modeConfig);
+                    activeModeName = skillMode;
+                }
+            }
+        }
+
+        // 4. Fallback to Base mode
+        if (modeConfig == null) {
+            if (Reflect.field(config, "Base") != null) {
+                modeConfig = Reflect.field(config, "Base");
+                activeModeName = "Base";
+            } else {
+                for (key in Reflect.fields(config)) {
+                    if (key.toLowerCase() == "base") {
+                        modeConfig = Reflect.field(config, key);
+                        activeModeName = key;
+                        break;
+                    }
+                }
+            }
+            if (modeConfig != null && skillMode != "Base" && skillMode != "") {
+                ApiLogger.warn("Combat", "Mode [" + skillMode + "] not found for [" + className + "], falling back to Base");
+            }
+        }
+
+        // 5. Fallback to first available mode
+        if (modeConfig == null) {
+            for (key in Reflect.fields(config)) {
+                modeConfig = Reflect.field(config, key);
+                activeModeName = key;
+                break;
+            }
+        }
+
+        if (_lastLoggedMode != activeModeName) {
+            _lastLoggedMode = activeModeName;
+            ApiLogger.info("Combat", "Executing [" + className + " : " + activeModeName + "]");
         }
 
         if (modeConfig == null || modeConfig.skills == null || !Std.isOfType(modeConfig.skills, Array) || (cast modeConfig.skills : Array<Dynamic>).length == 0) {
@@ -810,6 +875,32 @@ class CombatEngine {
             }
         }
 
+        // Also check UserSkillsManager if class was not found in _skillsData
+        try {
+            var userModes = UserSkillsManager.getUserModesForClass(className);
+            if (userModes != null && userModes.length > 0) {
+                var dynamicClass:Dynamic = {};
+                for (m in userModes) {
+                    var d = UserSkillsManager.getModeDetails(className, m);
+                    if (d != null && d.combo != null && d.combo != "") {
+                        var parsedSkills = com.aqwapi.utils.SkillDslParser.parseCombo(d.combo);
+                        if (parsedSkills != null && parsedSkills.length > 0) {
+                            Reflect.setField(dynamicClass, m, {
+                                skillUseMode: d.skillUseMode,
+                                skillTimeout: d.timeout,
+                                skills: parsedSkills
+                            });
+                        }
+                    }
+                }
+                if (Reflect.fields(dynamicClass).length > 0) {
+                    if (_skillsData == null) _skillsData = {};
+                    Reflect.setField(_skillsData, className, dynamicClass);
+                    return dynamicClass;
+                }
+            }
+        } catch (_:Dynamic) {}
+
         return null;
     }
 
@@ -882,12 +973,32 @@ class CombatEngine {
                 className = cur;
             }
         }
-        var config:Dynamic = findClassConfig(className);
-        if (config == null) return ["Base"];
-        if (Std.isOfType(config, Array)) return ["Base"];
         var modes:Array<String> = [];
-        for (mode in Reflect.fields(config)) modes.push(mode);
-        if (modes.length == 0) return ["Base"];
+        var config:Dynamic = findClassConfig(className);
+        if (config != null && !Std.isOfType(config, Array)) {
+            for (mode in Reflect.fields(config)) {
+                if (mode != null && mode != "" && modes.indexOf(mode) == -1) {
+                    modes.push(mode);
+                }
+            }
+        }
+
+        // Always query UserSkillsManager to guarantee custom user modes are included
+        try {
+            var userModes = UserSkillsManager.getUserModesForClass(className);
+            if (userModes != null) {
+                for (um in userModes) {
+                    if (um != null && um != "" && modes.indexOf(um) == -1) {
+                        modes.push(um);
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        if (modes.indexOf("Base") == -1) {
+            modes.unshift("Base");
+        }
+
         modes.sort(function(a:String, b:String):Int {
             if (a.toLowerCase() == "base") return -1;
             if (b.toLowerCase() == "base") return 1;
