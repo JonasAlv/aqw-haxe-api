@@ -364,8 +364,14 @@ class CombatEngine {
         var advancedSkills:Array<Dynamic> = cast modeConfig.skills;
         var useMode:String = modeConfig.skillUseMode != null ? Std.string(modeConfig.skillUseMode) : "WaitForCooldown";
         var skillTimeout:Float = (modeConfig.skillTimeout != null) ? com.aqwapi.utils.AqwUtils.parseInt(modeConfig.skillTimeout, 5000) : 5000;
-        // skillTimeout <= 0 means "wait indefinitely" for GCD/CD-blocked skills (only rules can skip)
-        // skillTimeout > 0 means "skip this step if stuck for N ms" (safety net for truly stuck skills)
+        // skillTimeout == 0  → wait indefinitely (only rule failure or successful fire advances the step)
+        // skillTimeout >  0  → skip after N ms of being stuck (safety net)
+        // For WaitForCooldown: clamp to at least 2000ms so legacy skillTimeout:100 configs
+        // don't skip skills that are simply waiting on the GCD (1500ms).
+        // UseIfAvailable has no timeout logic so this only applies to WaitForCooldown.
+        if (useMode != "UseIfAvailable" && skillTimeout > 0 && skillTimeout < 2000) {
+            skillTimeout = 2000;
+        }
 
         if (useMode == "UseIfAvailable") {
             runUseIfAvailable(world, avatar, target, advancedSkills);
