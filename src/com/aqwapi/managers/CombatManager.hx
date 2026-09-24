@@ -105,7 +105,6 @@ class CombatManager {
     public function approachTarget():Void {
         if (_game == null || _game.world == null) return;
         try {
-            applyInfiniteRange();
             var avt:Dynamic = _game.world.myAvatar;
             if (avt != null && avt.target != null && avt.target.pMC != null) {
                 if (_game.world.approachTarget != null) _game.world.approachTarget();

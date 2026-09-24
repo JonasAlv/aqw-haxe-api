@@ -302,6 +302,29 @@ class CombatEngine {
         }
 
         if (isSmart) {
+            // Always auto-attack / approach — respects infinite range toggle
+            try {
+                var infRange:Bool = false;
+                try {
+                    // Read directly from HelperSetting to avoid any cross-package getter issues
+                    var helperCls:Dynamic = Type.resolveClass("util.HelperSetting");
+                    if (helperCls != null) infRange = (helperCls.getBool("api_infinite_range", false) == true);
+                } catch (re:Dynamic) {
+                    // Fallback: read from CombatManager field via untyped
+                    if (AqwApi.combat != null) infRange = (untyped AqwApi.combat._infiniteRange == true);
+                }
+
+                if (infRange) {
+                    // Infinite range ON: fire AA directly (skill 0) without range check
+                    tryFireSkill(world, avatar, 0);
+                } else {
+                    // Normal: let world.approachTarget handle range check, walking, and AA firing
+                    if (world.approachTarget != null) {
+                        try { untyped world.approachTarget(); } catch (ae:Dynamic) {}
+                    }
+                }
+            } catch (e:Dynamic) {}
+
             runAdvancedRotation(world, avatar, target);
         } else {
             runSimpleRotation(world, avatar);
@@ -613,14 +636,31 @@ class CombatEngine {
 
     public static function getCurrentClassName():String {
         try {
-            if (AqwApi.player != null && AqwApi.player.className != null && AqwApi.player.className != "") {
-                return AqwApi.player.className;
-            }
             if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
-                var av = AqwApi.game.world.myAvatar;
+                var av:Dynamic = AqwApi.game.world.myAvatar;
+                // Primary: objData.strClassName (fastest, always set when a class is equipped)
                 if (av.objData != null && av.objData.strClassName != null) {
-                    var c = Std.string(av.objData.strClassName);
+                    var c:String = Std.string(av.objData.strClassName);
                     if (c != "" && c != "null") return c;
+                }
+                // Fallback: scan equipped items for class (sType=="Class" / bClass==1 / sES=="ar")
+                if (av.items != null) {
+                    try {
+                        var items:Array<Dynamic> = cast av.items;
+                        for (it in items) {
+                            if (it == null) continue;
+                            var equipped:Bool = (it.bEquip == 1 || it.bEquip == "1" || it.bEquip == true);
+                            if (!equipped) continue;
+                            var isClass:Bool = false;
+                            if (it.sType != null && Std.string(it.sType).toLowerCase() == "class") isClass = true;
+                            else if (it.bClass == 1 || it.bClass == true) isClass = true;
+                            else if (it.sES != null && Std.string(it.sES).toLowerCase() == "ar") isClass = true;
+                            if (isClass && it.sName != null) {
+                                var s:String = Std.string(it.sName);
+                                if (s != "" && s != "null") return s;
+                            }
+                        }
+                    } catch (ie:Dynamic) {}
                 }
             }
         } catch (e:Dynamic) {}
