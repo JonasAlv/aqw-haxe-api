@@ -169,7 +169,7 @@ class CombatEngine {
             var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
 
             var readFileText = function(file:Dynamic):String {
-                if (file == null || !file.exists) return null;
+                if (file == null) return null;
                 try {
                     var stream:Dynamic = Type.createInstance(FileStreamClass, []);
                     stream.open(file, readMode);
@@ -190,6 +190,12 @@ class CombatEngine {
             if (rawTxt == null && storageDir != null) {
                 rawTxt = readFileText(storageDir.resolvePath("skills.txt"));
                 if (rawTxt == null) rawTxt = readFileText(storageDir.resolvePath("assets/skills.txt"));
+            }
+            // 1b. Embedded resource fallback (guaranteed on all platforms including Android APK)
+            if (rawTxt == null || rawTxt.length == 0) {
+                try {
+                    rawTxt = haxe.Resource.getString("default_skills");
+                } catch (re:Dynamic) {}
             }
 
             if (rawTxt != null && rawTxt.length > 0) {
@@ -233,18 +239,23 @@ class CombatEngine {
                 }
             };
 
-            var checkCustom = function(dir:Dynamic):Void {
+            var checkCustom = function(dir:Dynamic, isStorage:Bool = false):Void {
                 if (dir == null) return;
                 var uTxt = readFileText(dir.resolvePath("userSkills.txt"));
-                if (uTxt == null) uTxt = readFileText(dir.resolvePath("assets/userSkills.txt"));
-                if (uTxt != null && uTxt.length > 0) mergeCustom(uTxt, "userSkills.txt");
+                if (uTxt == null && !isStorage) uTxt = readFileText(dir.resolvePath("assets/userSkills.txt"));
+                if (uTxt != null && uTxt.length > 0) mergeCustom(uTxt, isStorage ? "storage userSkills.txt" : "bundled userSkills.txt");
 
                 var cTxt = readFileText(dir.resolvePath("skills_custom.txt"));
                 if (cTxt != null && cTxt.length > 0) mergeCustom(cTxt, "skills_custom.txt");
             };
 
-            checkCustom(appDir);
-            checkCustom(storageDir);
+            checkCustom(appDir, false);
+            // Embedded user skills fallback
+            try {
+                var defUser = haxe.Resource.getString("default_user_skills");
+                if (defUser != null && defUser.length > 0) mergeCustom(defUser, "embedded userSkills.txt");
+            } catch (ue:Dynamic) {}
+            checkCustom(storageDir, true);
 
         } catch (e:Dynamic) {
             _skillsData = {};
@@ -821,6 +832,49 @@ class CombatEngine {
         return list;
     }
 
+    public static function registerCustomMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String):Void {
+        if (className == null || className == "" || modeName == null || modeName == "") return;
+        if (!_skillsLoaded) init();
+        if (_skillsData == null) _skillsData = {};
+
+        var targetKey:String = className;
+        var targetClass:Dynamic = Reflect.field(_skillsData, className);
+        if (targetClass == null) {
+            var cleanC:String = cleanClassName(className);
+            for (existingKey in Reflect.fields(_skillsData)) {
+                if (existingKey.toLowerCase() == className.toLowerCase() || (cleanC != "" && cleanClassName(existingKey) == cleanC)) {
+                    targetKey = existingKey;
+                    targetClass = Reflect.field(_skillsData, existingKey);
+                    break;
+                }
+            }
+        }
+        if (targetClass == null) {
+            targetClass = {};
+            Reflect.setField(_skillsData, targetKey, targetClass);
+        }
+
+        var parsedCombo:Array<Dynamic> = com.aqwapi.utils.SkillDslParser.parseCombo(combo);
+        var modeObj:Dynamic = {
+            skillUseMode: skillUseMode,
+            skillTimeout: timeout,
+            skills: parsedCombo
+        };
+        Reflect.setField(targetClass, modeName, modeObj);
+        ApiLogger.info("Skills", "Registered custom mode [" + targetKey + " : " + modeName + "] in memory!");
+    }
+
+    public static function unregisterCustomMode(className:String, modeName:String):Void {
+        if (className == null || className == "" || modeName == null || modeName == "") return;
+        if (_skillsData == null) return;
+
+        var targetClass:Dynamic = findClassConfig(className);
+        if (targetClass != null && Reflect.hasField(targetClass, modeName)) {
+            Reflect.deleteField(targetClass, modeName);
+            ApiLogger.info("Skills", "Unregistered custom mode [" + className + " : " + modeName + "] from memory!");
+        }
+    }
+
     public static function getAvailableModes(className:String):Array<String> {
         if (className == null || className == "" || className.toLowerCase() == "current") {
             var cur:String = getCurrentClassName();
@@ -834,6 +888,15 @@ class CombatEngine {
         var modes:Array<String> = [];
         for (mode in Reflect.fields(config)) modes.push(mode);
         if (modes.length == 0) return ["Base"];
+        modes.sort(function(a:String, b:String):Int {
+            if (a.toLowerCase() == "base") return -1;
+            if (b.toLowerCase() == "base") return 1;
+            var la:String = a.toLowerCase();
+            var lb:String = b.toLowerCase();
+            if (la < lb) return -1;
+            if (la > lb) return 1;
+            return 0;
+        });
         return modes;
     }
 
