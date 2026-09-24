@@ -59,6 +59,15 @@ class QuestDataLoader {
                 rawJson = readFileText(appDir.resolvePath("assets/quests.json"));
                 if (rawJson == null) rawJson = readFileText(appDir.resolvePath("quests.json"));
             }
+            if (rawJson == null) {
+                try {
+                    var docDir:Dynamic = Reflect.getProperty(FileClass, "documentsDirectory");
+                    if (docDir != null) {
+                        rawJson = readFileText(docDir.resolvePath("quests.json"));
+                        if (rawJson == null) rawJson = readFileText(docDir.resolvePath("assets/quests.json"));
+                    }
+                } catch (_:Dynamic) {}
+            }
             if (rawJson == null && storageDir != null) {
                 rawJson = readFileText(storageDir.resolvePath("quests.json"));
                 if (rawJson == null) rawJson = readFileText(storageDir.resolvePath("assets/quests.json"));
