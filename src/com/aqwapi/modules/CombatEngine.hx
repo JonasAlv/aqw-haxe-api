@@ -537,7 +537,7 @@ class CombatEngine {
     }
 
     private static function compare(val:Float, threshold:Float, comp:String):Bool {
-        return comp == "greater" ? val > threshold : val < threshold;
+        return comp == "greater" ? val >= threshold : val <= threshold;
     }
 
     private static function evaluatePartyHealth(rule:Dynamic, world:Dynamic, avatar:Dynamic):Bool {
@@ -571,12 +571,12 @@ class CombatEngine {
     }
 
     private static function getStat(pStats:Dynamic, avatar:Dynamic, stat:String):Float {
-        var dl:Dynamic = avatar.dataLeaf;
+        var dl:Dynamic = (avatar != null) ? avatar.dataLeaf : null;
         switch (stat) {
-            case "HP":    return (pStats != null && pStats.intHP != null)    ? pStats.intHP    : (dl != null ? dl.intHP    : 0);
-            case "MaxHP": return (pStats != null && pStats.intHPMax != null) ? pStats.intHPMax : (dl != null ? dl.intHPMax : 1);
-            case "MP":    return (pStats != null && pStats.intMP != null)    ? pStats.intMP    : (dl != null ? dl.intMP    : 0);
-            case "MaxMP": return (pStats != null && pStats.intMPMax != null) ? pStats.intMPMax : (dl != null ? dl.intMPMax : 1);
+            case "HP":    return (dl != null && dl.intHP != null)    ? dl.intHP    : ((pStats != null && pStats.intHP != null) ? pStats.intHP : 0);
+            case "MaxHP": return (dl != null && dl.intHPMax != null) ? dl.intHPMax : ((pStats != null && pStats.intHPMax != null) ? pStats.intHPMax : 1);
+            case "MP":    return (dl != null && dl.intMP != null)    ? dl.intMP    : ((pStats != null && pStats.intMP != null) ? pStats.intMP : 0);
+            case "MaxMP": return (dl != null && dl.intMPMax != null) ? dl.intMPMax : ((pStats != null && pStats.intMPMax != null) ? pStats.intMPMax : 1);
         }
         return 0;
     }
@@ -820,32 +820,43 @@ class CombatEngine {
         if (actObj == null || actObj.isOK == false) return SR_RESOURCE;
 
         // 2. Player must be alive
-        var dl:Dynamic = avatar.dataLeaf;
+        var dl:Dynamic = (avatar != null) ? avatar.dataLeaf : null;
         if (dl != null && dl.intState == 0) return SR_RESOURCE;
 
-        // 3. Resource guards (MP / HP cost)
-        //    These are permanent blockers — waiting won't help → ResourceBlocked
-        var pStats:Dynamic = getPlayerStats(world, avatar);
-        var mpCost:Int = actObj.mp != null ? AqwUtils.parseInt(actObj.mp, 0) : 0;
-        if (mpCost > 0) {
-            var curMp:Int = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP)
-                            : (dl != null ? Std.int(dl.intMP) : 0);
-            if (curMp < mpCost) return SR_RESOURCE;
-        }
-        var hpCost:Int = actObj.hp != null ? AqwUtils.parseInt(actObj.hp, 0) : 0;
-        if (hpCost > 0) {
-            var curHp:Int = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP)
-                            : (dl != null ? Std.int(dl.intHP) : 0);
-            if (curHp <= hpCost) return SR_RESOURCE;
-        }
-
-        // 4. Timing guard — GCD + per-skill CD (game-native, haste-scaled)
-        //    This is temporary → TimingBlocked
+        // 3. Timing guard — GCD + per-skill CD (game-native, haste-scaled)
+        // Checked first: if on GCD or CD, this is temporary → TimingBlocked (wait)
         var timingReady:Bool = false;
         try { timingReady = (world.actionTimeCheck(actObj) == true); } catch (e:Dynamic) {}
         if (!timingReady) return SR_TIMING;
 
-        // 5. Infinite range (scripting toggle)
+        // 4. Crowd control guard (stun, stone, paralyze, disable)
+        // If disabled, wait for CC to expire rather than skipping combo steps
+        if (dl != null && dl.auras != null && world.auraCatOf != null) {
+            try {
+                var auras:Array<Dynamic> = cast dl.auras;
+                for (aura in auras) {
+                    var cat:String = world.auraCatOf(aura);
+                    if (cat == "stun" || cat == "stone" || cat == "paralyze" || cat == "disable" || cat == "disabled") {
+                        return SR_TIMING;
+                    }
+                }
+            } catch (e:Dynamic) {}
+        }
+
+        // 5. Resource guard (MP cost scaled by class multiplier sta.$cmc)
+        // Exactly matches World.as L8606: Math.round(actionObj.mp * cLeaf.sta["$cmc"]) > cLeaf.intMP
+        var rawMp:Int = actObj.mp != null ? AqwUtils.parseInt(actObj.mp, 0) : 0;
+        if (rawMp > 0 && dl != null) {
+            var cmc:Float = 1.0;
+            if (dl.sta != null && Reflect.field(dl.sta, "$cmc") != null) {
+                cmc = AqwUtils.parseFloat(Reflect.field(dl.sta, "$cmc"), 1.0);
+            }
+            var effectiveMpCost:Int = Math.round(rawMp * cmc);
+            var curMp:Int = (dl.intMP != null) ? Std.int(dl.intMP) : 0;
+            if (curMp < effectiveMpCost) return SR_RESOURCE;
+        }
+
+        // 6. Infinite range (scripting toggle)
         try {
             var infRange:Bool = false;
             var helperCls:Dynamic = Type.resolveClass("util.HelperSetting");
@@ -854,7 +865,7 @@ class CombatEngine {
             if (infRange) actObj.range = 20000;
         } catch (e:Dynamic) {}
 
-        // 6. Fire
+        // 7. Fire
         world.testAction(actObj);
         return SR_FIRED;
     }
@@ -873,15 +884,21 @@ class CombatEngine {
 
     public static function canFireSkill(idx:Int):Bool {
         if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return false;
-        // ResourceBlocked or TimingBlocked both mean "can't fire right now",
-        // but only TimingBlocked means "will be able to soon"
         var res = fireSkill(AqwApi.game.world, AqwApi.game.world.myAvatar, idx);
-        return res == SR_FIRED || res == SR_TIMING; // reachable (not dead/missing)
+        return res == SR_FIRED || res == SR_TIMING;
     }
 
     private static function getSkillAction(idx:Int):Dynamic {
         if (AqwApi.game != null && AqwApi.game.world != null) {
             var world:Dynamic = AqwApi.game.world;
+            // 1. Native actionMap: exact slot-to-action mapping as used by Game.as keyboard dispatch
+            try {
+                if (world.actionMap != null && world.actionMap[idx] != null && world.getActionByRef != null) {
+                    var act:Dynamic = world.getActionByRef(Std.string(world.actionMap[idx]));
+                    if (act != null) return act;
+                }
+            } catch (e:Dynamic) {}
+            // 2. Ref convention fallback ("aa" for 0, "a1".."a5" for 1..5)
             try {
                 if (world.getActionByRef != null) {
                     var ref:String = (idx == 0) ? "aa" : ("a" + idx);
@@ -889,12 +906,7 @@ class CombatEngine {
                     if (act != null) return act;
                 }
             } catch (e:Dynamic) {}
-            try {
-                if (world.actionMap != null && world.actionMap[idx] != null && world.getActionByRef != null) {
-                    var act:Dynamic = world.getActionByRef(Std.string(world.actionMap[idx]));
-                    if (act != null) return act;
-                }
-            } catch (e:Dynamic) {}
+            // 3. active actions array fallback
             if (world.actions != null && world.actions.active != null) {
                 try {
                     var actList:Array<Dynamic> = cast world.actions.active;
