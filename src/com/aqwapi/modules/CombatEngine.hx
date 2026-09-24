@@ -768,56 +768,42 @@ class CombatEngine {
     private static function tryFireSkill(world:Dynamic, avatar:Dynamic, idx:Int):Bool {
         var actObj:Dynamic = getSkillAction(idx);
         if (actObj == null || actObj.isOK == false) return false;
-        var pStats:Dynamic = getPlayerStats(world, avatar);
-        var dl:Dynamic     = avatar.dataLeaf;
+
+        var dl:Dynamic = avatar.dataLeaf;
         if (dl != null && dl.intState == 0) return false;
 
+        // MP / HP cost guards
+        var pStats:Dynamic = getPlayerStats(world, avatar);
         var mpCost:Int = actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.mp, 0) : 0;
-        var curMp:Int  = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
-        if (curMp < mpCost) return false;
-
+        if (mpCost > 0) {
+            var curMp:Int = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
+            if (curMp < mpCost) return false;
+        }
         var hpCost:Int = actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.hp, 0) : 0;
-        var curHp:Int  = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
-        if (hpCost > 0 && curHp <= hpCost) return false;
+        if (hpCost > 0) {
+            var curHp:Int = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
+            if (curHp <= hpCost) return false;
+        }
 
+        // GCD + per-skill CD — delegate entirely to the game's own check (includes haste scaling)
         var ready:Bool = false;
-        if (world.actionTimeCheck != null) {
-            try {
-                ready = (world.actionTimeCheck(actObj) == true);
-            } catch (e:Dynamic) {}
-        }
-        if (!ready) {
-            try {
-                var gcdReady:Bool = true;
-                if (world.GCDTS != null && world.GCD != null) {
-                    var gcdTS:Float = AqwUtils.parseFloat(world.GCDTS, 0);
-                    var gcd:Float = AqwUtils.parseFloat(world.GCD, 1500);
-                    gcdReady = (AqwTime.now() - gcdTS) >= gcd;
-                }
-                var skillReady:Bool = false;
-                if (world.actionTimeCheck != null) {
-                    try { skillReady = (untyped world.actionTimeCheck(actObj, true) == true); } catch (e:Dynamic) {}
-                }
-                if (!skillReady && world.ActionResults != null && Reflect.field(world.ActionResults, actObj.ref) != null) {
-                    var ar:Dynamic = Reflect.field(world.ActionResults, actObj.ref);
-                    skillReady = (AqwTime.now() - ar.ts) >= actObj.cd;
-                }
-                ready = gcdReady && skillReady;
-            } catch (e:Dynamic) {}
-        }
-        if (ready) {
-            try {
-                if (AqwApi.combat != null) {
-                    var sc:Dynamic = AqwApi.combat;
-                    if (sc.infiniteRange == true) {
-                        actObj.range = 20000;
-                    }
-                }
-            } catch (e:Dynamic) {}
-            world.testAction(actObj);
-            return true;
-        }
-        return false;
+        try {
+            ready = (world.actionTimeCheck(actObj) == true);
+        } catch (e:Dynamic) {}
+
+        if (!ready) return false;
+
+        // Apply infinite range if enabled (read field directly to avoid cross-package getter)
+        try {
+            var infRange:Bool = false;
+            var helperCls:Dynamic = Type.resolveClass("util.HelperSetting");
+            if (helperCls != null) infRange = (helperCls.getBool("api_infinite_range", false) == true);
+            else if (AqwApi.combat != null) infRange = (untyped AqwApi.combat._infiniteRange == true);
+            if (infRange) actObj.range = 20000;
+        } catch (e:Dynamic) {}
+
+        world.testAction(actObj);
+        return true;
     }
 
     public static function tryFireSkillPublic(idx:Int):Bool {
@@ -831,44 +817,23 @@ class CombatEngine {
         if (actObj == null || actObj.isOK == false) return false;
         var world:Dynamic = AqwApi.game.world;
         var avatar:Dynamic = world.myAvatar;
-        var pStats:Dynamic = getPlayerStats(world, avatar);
-        var dl:Dynamic     = avatar.dataLeaf;
+        var dl:Dynamic = avatar.dataLeaf;
         if (dl != null && dl.intState == 0) return false;
 
+        var pStats:Dynamic = getPlayerStats(world, avatar);
         var mpCost:Int = actObj.mp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.mp, 0) : 0;
-        var curMp:Int  = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
-        if (curMp < mpCost) return false;
-
+        if (mpCost > 0) {
+            var curMp:Int = (pStats != null && pStats.intMP != null) ? Std.int(pStats.intMP) : (dl != null ? Std.int(dl.intMP) : 0);
+            if (curMp < mpCost) return false;
+        }
         var hpCost:Int = actObj.hp != null ? com.aqwapi.utils.AqwUtils.parseInt(actObj.hp, 0) : 0;
-        var curHp:Int  = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
-        if (hpCost > 0 && curHp <= hpCost) return false;
+        if (hpCost > 0) {
+            var curHp:Int = (pStats != null && pStats.intHP != null) ? Std.int(pStats.intHP) : (dl != null ? Std.int(dl.intHP) : 0);
+            if (curHp <= hpCost) return false;
+        }
 
-        var ready:Bool = false;
-        if (world.actionTimeCheck != null) {
-            try {
-                ready = (world.actionTimeCheck(actObj) == true);
-            } catch (e:Dynamic) {}
-        }
-        if (!ready) {
-            try {
-                var gcdReady:Bool = true;
-                if (world.GCDTS != null && world.GCD != null) {
-                    var gcdTS:Float = AqwUtils.parseFloat(world.GCDTS, 0);
-                    var gcd:Float = AqwUtils.parseFloat(world.GCD, 1500);
-                    gcdReady = (AqwTime.now() - gcdTS) >= gcd;
-                }
-                var skillReady:Bool = false;
-                if (world.actionTimeCheck != null) {
-                    try { skillReady = (untyped world.actionTimeCheck(actObj, true) == true); } catch (e:Dynamic) {}
-                }
-                if (!skillReady && world.ActionResults != null && Reflect.field(world.ActionResults, actObj.ref) != null) {
-                    var ar:Dynamic = Reflect.field(world.ActionResults, actObj.ref);
-                    skillReady = (AqwTime.now() - ar.ts) >= actObj.cd;
-                }
-                ready = gcdReady && skillReady;
-            } catch (e:Dynamic) {}
-        }
-        return ready;
+        try { return (world.actionTimeCheck(actObj) == true); } catch (e:Dynamic) {}
+        return false;
     }
 
     private static function getSkillAction(idx:Int):Dynamic {
