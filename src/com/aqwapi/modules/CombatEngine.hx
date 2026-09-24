@@ -409,16 +409,50 @@ class CombatEngine {
         }
     }
 
+    public static function isGcdActive(world:Dynamic):Bool {
+        if (world == null) return false;
+        try {
+            if (world.GCDTS != null && world.GCD != null) {
+                var now:Float = Date.now().getTime();
+                var gcdTs:Float = AqwUtils.parseFloat(world.GCDTS, 0);
+                var gcd:Float = AqwUtils.parseFloat(world.GCD, 1500);
+                if (gcdTs > 0 && (now - gcdTs) < gcd) return true;
+            }
+        } catch (e:Dynamic) {}
+        return false;
+    }
+
     private static function runWaitForCooldown(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float):Void {
         var len:Int = skills.length;
         if (len == 0) return;
         if (_rotationIndex >= len) _rotationIndex = 0;
+
+        // 1. If currently on Global Cooldown (GCD), do NOT evaluate rules or advance!
+        // Actions take ~1.5s GCD; state updates (heals, damage, mana refill packets) arrive during GCD.
+        if (isGcdActive(world)) {
+            return;
+        }
+
         var skill:Dynamic = skills[_rotationIndex];
         var skillId:Int = AqwUtils.parseInt(skill.skillId, 1);
 
+        // Check if skill has a Wait rule
+        var hasWaitRule:Bool = false;
+        if (skill.rules != null && Std.isOfType(skill.rules, Array)) {
+            for (r in (cast skill.rules : Array<Dynamic>)) {
+                if (r != null && Std.string(r.type) == "Wait") {
+                    hasWaitRule = true;
+                    break;
+                }
+            }
+        }
+
         // ── Rule check ────────────────────────────────────────────────
-        // If the skill's condition isn't met, skip immediately (no wait).
         if (!evaluateSkillRules(skill, world, avatar, target, skillId)) {
+            if (skillTimeout == 0 || hasWaitRule) {
+                // skillTimeout == 0 or Wait rule → wait indefinitely for condition (e.g. King's Echo [mp >= 90])
+                return;
+            }
             advanceStep(len);
             return;
         }
@@ -437,7 +471,7 @@ class CombatEngine {
                 advanceStep(len);
 
             case SR_TIMING:
-                // GCD or per-skill CD not ready — wait, retry next tick (100ms).
+                // Per-skill CD not ready — wait, retry next tick (100ms).
                 // Safety-net: if stuck on this step for longer than skillTimeout, force-advance.
                 if (skillTimeout > 0) {
                     var now:Float = AqwTime.now();
