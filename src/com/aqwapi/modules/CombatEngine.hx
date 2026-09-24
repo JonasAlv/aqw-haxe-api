@@ -165,57 +165,89 @@ class CombatEngine {
 
             var appDir:Dynamic = Reflect.getProperty(FileClass, "applicationDirectory");
             var storageDir:Dynamic = Reflect.getProperty(FileClass, "applicationStorageDirectory");
+            var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
+            var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
 
-            var bundledFile:Dynamic = null;
+            var readFileText = function(file:Dynamic):String {
+                if (file == null || !file.exists) return null;
+                try {
+                    var stream:Dynamic = Type.createInstance(FileStreamClass, []);
+                    stream.open(file, readMode);
+                    var content:String = stream.readUTFBytes(stream.bytesAvailable);
+                    stream.close();
+                    return content;
+                } catch (e:Dynamic) {
+                    return null;
+                }
+            };
+
+            // 1. Primary: load AdvancedSkills.txt (1-liner DSL)
+            var rawTxt:String = null;
             if (appDir != null) {
-                bundledFile = appDir.resolvePath("assets/AdvancedSkills.json");
-                if (!bundledFile.exists) bundledFile = appDir.resolvePath("assets/advancedskills.json");
-                if (!bundledFile.exists) bundledFile = appDir.resolvePath("AdvancedSkills.json");
-                if (!bundledFile.exists) bundledFile = appDir.resolvePath("advancedskills.json");
+                rawTxt = readFileText(appDir.resolvePath("assets/AdvancedSkills.txt"));
+                if (rawTxt == null) rawTxt = readFileText(appDir.resolvePath("AdvancedSkills.txt"));
             }
-            if ((bundledFile == null || !bundledFile.exists) && storageDir != null) {
-                bundledFile = storageDir.resolvePath("AdvancedSkills.json");
-                if (!bundledFile.exists) bundledFile = storageDir.resolvePath("assets/AdvancedSkills.json");
+            if (rawTxt == null && storageDir != null) {
+                rawTxt = readFileText(storageDir.resolvePath("AdvancedSkills.txt"));
+                if (rawTxt == null) rawTxt = readFileText(storageDir.resolvePath("assets/AdvancedSkills.txt"));
             }
 
-            if (bundledFile != null && bundledFile.exists) {
-                var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-                var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
-                var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                stream.open(bundledFile, readMode);
-                var raw:String = stream.readUTFBytes(stream.bytesAvailable);
-                stream.close();
-                _skillsData = com.aqwapi.utils.AqwJson.parse(raw);
-                if (_skillsData == null) _skillsData = {};
+            if (rawTxt != null && rawTxt.length > 0) {
+                _skillsData = com.aqwapi.utils.SkillDslParser.parse(rawTxt);
+                if (!silent) ApiLogger.info("Skills", "Loaded AdvancedSkills.txt (DSL format) successfully!");
             } else {
-                _skillsData = {};
-                if (!silent) ApiLogger.warn("Skills", "assets/AdvancedSkills.json missing!");
-            }
+                // 2. Fallback: load AdvancedSkills.json
+                var rawJson:String = null;
+                if (appDir != null) {
+                    rawJson = readFileText(appDir.resolvePath("assets/AdvancedSkills.json"));
+                    if (rawJson == null) rawJson = readFileText(appDir.resolvePath("AdvancedSkills.json"));
+                }
+                if (rawJson == null && storageDir != null) {
+                    rawJson = readFileText(storageDir.resolvePath("AdvancedSkills.json"));
+                    if (rawJson == null) rawJson = readFileText(storageDir.resolvePath("assets/AdvancedSkills.json"));
+                }
 
-            var customFiles:Array<Dynamic> = [];
-            if (storageDir != null) customFiles.push(storageDir.resolvePath("skills_custom.json"));
-            if (appDir != null) customFiles.push(appDir.resolvePath("skills_custom.json"));
-
-            for (customFile in customFiles) {
-                if (customFile != null && customFile.exists) {
-                    try {
-                        var FileModeClass2:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-                        var readMode2:String = (FileModeClass2 != null) ? Reflect.getProperty(FileModeClass2, "READ") : "read";
-                        var cStream:Dynamic = Type.createInstance(FileStreamClass, []);
-                        cStream.open(customFile, readMode2);
-                        var cRaw:String = cStream.readUTFBytes(cStream.bytesAvailable);
-                        cStream.close();
-                        var customData:Dynamic = com.aqwapi.utils.AqwJson.parse(cRaw);
-                        if (customData != null) {
-                            for (key in Reflect.fields(customData)) {
-                                Reflect.setField(_skillsData, key, Reflect.field(customData, key));
-                            }
-                            if (!silent) ApiLogger.info("Skills", "Merged skills_custom.json override!");
-                        }
-                        break;
-                    } catch (ce:Dynamic) {}
+                if (rawJson != null && rawJson.length > 0) {
+                    _skillsData = com.aqwapi.utils.AqwJson.parse(rawJson);
+                    if (!silent) ApiLogger.info("Skills", "Loaded AdvancedSkills.json (JSON fallback) successfully!");
+                } else {
+                    _skillsData = {};
+                    if (!silent) ApiLogger.warn("Skills", "No AdvancedSkills file (.txt or .json) found!");
                 }
             }
+
+            if (_skillsData == null) _skillsData = {};
+
+            // 3. User custom overrides: skills_custom.txt or skills_custom.json
+            var checkCustom = function(dir:Dynamic):Void {
+                if (dir == null) return;
+                // Check .txt first
+                var cTxt = readFileText(dir.resolvePath("skills_custom.txt"));
+                if (cTxt != null && cTxt.length > 0) {
+                    var parsedCustom:Dynamic = com.aqwapi.utils.SkillDslParser.parse(cTxt);
+                    if (parsedCustom != null) {
+                        for (key in Reflect.fields(parsedCustom)) {
+                            Reflect.setField(_skillsData, key, Reflect.field(parsedCustom, key));
+                        }
+                        if (!silent) ApiLogger.info("Skills", "Merged skills_custom.txt overrides!");
+                    }
+                    return;
+                }
+                // Check .json
+                var cJson = readFileText(dir.resolvePath("skills_custom.json"));
+                if (cJson != null && cJson.length > 0) {
+                    var parsedCustom:Dynamic = com.aqwapi.utils.AqwJson.parse(cJson);
+                    if (parsedCustom != null) {
+                        for (key in Reflect.fields(parsedCustom)) {
+                            Reflect.setField(_skillsData, key, Reflect.field(parsedCustom, key));
+                        }
+                        if (!silent) ApiLogger.info("Skills", "Merged skills_custom.json overrides!");
+                    }
+                }
+            };
+
+            checkCustom(storageDir);
+            checkCustom(appDir);
 
         } catch (e:Dynamic) {
             _skillsData = {};
@@ -229,7 +261,7 @@ class CombatEngine {
                 }
             } catch (_:Dynamic) {}
             #end
-            if (!silent) ApiLogger.error("Skills", "AdvancedSkills.json error: " + msg);
+            if (!silent) ApiLogger.error("Skills", "AdvancedSkills load error: " + msg);
         }
     }
 
