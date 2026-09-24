@@ -181,47 +181,30 @@ class CombatEngine {
                 }
             };
 
-            // 1. Primary: load AdvancedSkills.txt (1-liner DSL)
+            // 1. Load bundled skills.txt
             var rawTxt:String = null;
             if (appDir != null) {
-                rawTxt = readFileText(appDir.resolvePath("assets/AdvancedSkills.txt"));
-                if (rawTxt == null) rawTxt = readFileText(appDir.resolvePath("AdvancedSkills.txt"));
+                rawTxt = readFileText(appDir.resolvePath("assets/skills.txt"));
+                if (rawTxt == null) rawTxt = readFileText(appDir.resolvePath("skills.txt"));
             }
             if (rawTxt == null && storageDir != null) {
-                rawTxt = readFileText(storageDir.resolvePath("AdvancedSkills.txt"));
-                if (rawTxt == null) rawTxt = readFileText(storageDir.resolvePath("assets/AdvancedSkills.txt"));
+                rawTxt = readFileText(storageDir.resolvePath("skills.txt"));
+                if (rawTxt == null) rawTxt = readFileText(storageDir.resolvePath("assets/skills.txt"));
             }
 
             if (rawTxt != null && rawTxt.length > 0) {
                 _skillsData = com.aqwapi.utils.SkillDslParser.parse(rawTxt);
-                if (!silent) ApiLogger.info("Skills", "Loaded AdvancedSkills.txt (DSL format) successfully!");
+                if (!silent) ApiLogger.info("Skills", "Loaded skills.txt successfully!");
             } else {
-                // 2. Fallback: load AdvancedSkills.json
-                var rawJson:String = null;
-                if (appDir != null) {
-                    rawJson = readFileText(appDir.resolvePath("assets/AdvancedSkills.json"));
-                    if (rawJson == null) rawJson = readFileText(appDir.resolvePath("AdvancedSkills.json"));
-                }
-                if (rawJson == null && storageDir != null) {
-                    rawJson = readFileText(storageDir.resolvePath("AdvancedSkills.json"));
-                    if (rawJson == null) rawJson = readFileText(storageDir.resolvePath("assets/AdvancedSkills.json"));
-                }
-
-                if (rawJson != null && rawJson.length > 0) {
-                    _skillsData = com.aqwapi.utils.AqwJson.parse(rawJson);
-                    if (!silent) ApiLogger.info("Skills", "Loaded AdvancedSkills.json (JSON fallback) successfully!");
-                } else {
-                    _skillsData = {};
-                    if (!silent) ApiLogger.warn("Skills", "No AdvancedSkills file (.txt or .json) found!");
-                }
+                _skillsData = {};
+                if (!silent) ApiLogger.warn("Skills", "assets/skills.txt not found!");
             }
 
             if (_skillsData == null) _skillsData = {};
 
-            // 3. User custom overrides: skills_custom.txt or skills_custom.json
+            // 2. User custom overrides: skills_custom.txt
             var checkCustom = function(dir:Dynamic):Void {
                 if (dir == null) return;
-                // Check .txt first
                 var cTxt = readFileText(dir.resolvePath("skills_custom.txt"));
                 if (cTxt != null && cTxt.length > 0) {
                     var parsedCustom:Dynamic = com.aqwapi.utils.SkillDslParser.parse(cTxt);
@@ -230,18 +213,6 @@ class CombatEngine {
                             Reflect.setField(_skillsData, key, Reflect.field(parsedCustom, key));
                         }
                         if (!silent) ApiLogger.info("Skills", "Merged skills_custom.txt overrides!");
-                    }
-                    return;
-                }
-                // Check .json
-                var cJson = readFileText(dir.resolvePath("skills_custom.json"));
-                if (cJson != null && cJson.length > 0) {
-                    var parsedCustom:Dynamic = com.aqwapi.utils.AqwJson.parse(cJson);
-                    if (parsedCustom != null) {
-                        for (key in Reflect.fields(parsedCustom)) {
-                            Reflect.setField(_skillsData, key, Reflect.field(parsedCustom, key));
-                        }
-                        if (!silent) ApiLogger.info("Skills", "Merged skills_custom.json overrides!");
                     }
                 }
             };
@@ -261,7 +232,7 @@ class CombatEngine {
                 }
             } catch (_:Dynamic) {}
             #end
-            if (!silent) ApiLogger.error("Skills", "AdvancedSkills load error: " + msg);
+            if (!silent) ApiLogger.error("Skills", "skills.txt load error: " + msg);
         }
     }
 
