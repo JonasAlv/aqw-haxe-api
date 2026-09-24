@@ -180,12 +180,17 @@ class SkillDslParser {
             };
         }
 
-        // 2. Health: hp > 70% or hp < 50
+        // 2. Party Health: party:hp < 50% or party_hp < 50%
+        if (StringTools.startsWith(lower, "party:hp") || StringTools.startsWith(lower, "party_hp")) {
+            return parseStatRule("PartyHealth", StringTools.trim(r.substring(8)));
+        }
+
+        // 3. Health: hp > 70% or hp < 50
         if (StringTools.startsWith(lower, "hp")) {
             return parseStatRule("Health", StringTools.trim(r.substring(2)));
         }
 
-        // 3. Mana: mp < 70% or mp > 30%
+        // 4. Mana: mp < 70% or mp > 30%
         if (StringTools.startsWith(lower, "mp")) {
             return parseStatRule("Mana", StringTools.trim(r.substring(2)));
         }
@@ -273,5 +278,71 @@ class SkillDslParser {
             value: val,
             isPercentage: isPercentage
         };
+    }
+
+    public static function formatCombo(skills:Array<Dynamic>):String {
+        if (skills == null || skills.length == 0) return "";
+        var parts:Array<String> = [];
+        for (s in skills) {
+            parts.push(formatSkill(s));
+        }
+        return parts.join(" > ");
+    }
+
+    public static function formatSkill(s:Dynamic):String {
+        if (s == null) return "1";
+        var sid:Int = (s.skillId != null) ? AqwUtils.parseInt(s.skillId, 1) : 1;
+        var rules:Array<Dynamic> = (s.rules != null && Std.isOfType(s.rules, Array)) ? cast s.rules : [];
+        if (rules.length == 0) return Std.string(sid);
+
+        var ruleStrs:Array<String> = [];
+        for (r in rules) {
+            var formatted = formatRule(r);
+            if (formatted != null && formatted.length > 0) ruleStrs.push(formatted);
+        }
+        if (ruleStrs.length == 0) return Std.string(sid);
+
+        var op:String = (s.multiAuraOperator == "OR") ? " | " : " & ";
+        return sid + "[" + ruleStrs.join(op) + "]";
+    }
+
+    public static function formatRule(r:Dynamic):String {
+        if (r == null) return "";
+        var rtype:String = (r.type != null) ? Std.string(r.type) : "";
+        if (rtype == "None" || rtype == "") return "";
+        if (rtype == "Wait") {
+            var to:Int = (r.timeout != null) ? AqwUtils.parseInt(r.timeout, 0) : 0;
+            return "wait(" + to + "ms)";
+        }
+        if (rtype == "PartyHealth") {
+            var val:Float = (r.value != null) ? AqwUtils.parseFloat(r.value, 0) : 0;
+            var isPct:Bool = (r.isPercentage != false);
+            var comp:String = (r.comparison == "greater") ? ">" : "<";
+            var unit:String = isPct ? "%" : "";
+            return "party:hp " + comp + " " + val + unit;
+        }
+        if (rtype == "Health" || rtype == "Mana") {
+            var stat:String = (rtype == "Health") ? "hp" : "mp";
+            var val:Float = (r.value != null) ? AqwUtils.parseFloat(r.value, 0) : 0;
+            var isPct:Bool = (r.isPercentage != false);
+            var comp:String = (r.comparison == "greater") ? ">" : "<";
+            var unit:String = isPct ? "%" : "";
+            return stat + " " + comp + " " + val + unit;
+        }
+        if (rtype == "Aura" || rtype == "MultiAura") {
+            var target:String = (r.auraTarget != null && r.auraTarget != "") ? Std.string(r.auraTarget) : "self";
+            var name:String = (r.auraName != null) ? Std.string(r.auraName) : "";
+            var val:Float = (r.value != null) ? AqwUtils.parseFloat(r.value, 0) : 0;
+            var comp:String = (r.comparison != null) ? Std.string(r.comparison) : "greater";
+            if (comp == "less" && val <= 0.5) {
+                return "!aura(" + target + ":" + name + ")";
+            } else if (comp == "greater" && val <= 0.5) {
+                return "aura(" + target + ":" + name + ")";
+            } else {
+                var c:String = (comp == "greater") ? ">=" : "<=";
+                return "aura(" + target + ":" + name + ") " + c + " " + val;
+            }
+        }
+        return "";
     }
 }

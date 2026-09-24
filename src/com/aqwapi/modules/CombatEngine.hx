@@ -202,23 +202,38 @@ class CombatEngine {
 
             if (_skillsData == null) _skillsData = {};
 
-            // 2. User custom overrides: skills_custom.txt
-            var checkCustom = function(dir:Dynamic):Void {
-                if (dir == null) return;
-                var cTxt = readFileText(dir.resolvePath("skills_custom.txt"));
-                if (cTxt != null && cTxt.length > 0) {
-                    var parsedCustom:Dynamic = com.aqwapi.utils.SkillDslParser.parse(cTxt);
-                    if (parsedCustom != null) {
-                        for (key in Reflect.fields(parsedCustom)) {
-                            Reflect.setField(_skillsData, key, Reflect.field(parsedCustom, key));
+            // 2. User custom overrides: userSkills.txt (and legacy skills_custom.txt)
+            var mergeCustom = function(customTxt:String, sourceName:String):Void {
+                if (customTxt == null || customTxt.length == 0) return;
+                var parsedCustom:Dynamic = com.aqwapi.utils.SkillDslParser.parse(customTxt);
+                if (parsedCustom != null) {
+                    for (cKey in Reflect.fields(parsedCustom)) {
+                        var targetClass:Dynamic = Reflect.field(_skillsData, cKey);
+                        if (targetClass == null) {
+                            targetClass = {};
+                            Reflect.setField(_skillsData, cKey, targetClass);
                         }
-                        if (!silent) ApiLogger.info("Skills", "Merged skills_custom.txt overrides!");
+                        var srcClass:Dynamic = Reflect.field(parsedCustom, cKey);
+                        for (mKey in Reflect.fields(srcClass)) {
+                            Reflect.setField(targetClass, mKey, Reflect.field(srcClass, mKey));
+                        }
                     }
+                    if (!silent) ApiLogger.info("Skills", "Merged " + sourceName + " modes!");
                 }
             };
 
-            checkCustom(storageDir);
+            var checkCustom = function(dir:Dynamic):Void {
+                if (dir == null) return;
+                var uTxt = readFileText(dir.resolvePath("userSkills.txt"));
+                if (uTxt == null) uTxt = readFileText(dir.resolvePath("assets/userSkills.txt"));
+                if (uTxt != null && uTxt.length > 0) mergeCustom(uTxt, "userSkills.txt");
+
+                var cTxt = readFileText(dir.resolvePath("skills_custom.txt"));
+                if (cTxt != null && cTxt.length > 0) mergeCustom(cTxt, "skills_custom.txt");
+            };
+
             checkCustom(appDir);
+            checkCustom(storageDir);
 
         } catch (e:Dynamic) {
             _skillsData = {};
