@@ -180,19 +180,39 @@ class SkillDslParser {
             };
         }
 
-        // 2. Party Health: party:hp < 50% or party_hp < 50%
-        if (StringTools.startsWith(lower, "party:hp") || StringTools.startsWith(lower, "party_hp")) {
-            return parseStatRule("PartyHealth", StringTools.trim(r.substring(8)));
+        // 2. Party Health: party:hp, party_hp, party.hp, party:health
+        if (StringTools.startsWith(lower, "party:hp") || StringTools.startsWith(lower, "party_hp") || StringTools.startsWith(lower, "party.hp")) {
+            var sub:String = StringTools.trim(r.substring(8));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("PartyHealth", sub);
+        } else if (StringTools.startsWith(lower, "party:health")) {
+            var sub:String = StringTools.trim(r.substring(12));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("PartyHealth", sub);
         }
 
-        // 3. Health: hp > 70% or hp < 50
+        // 3. Health: hp > 70%, hp < 2000, health < 50%
+        if (StringTools.startsWith(lower, "health")) {
+            var sub:String = StringTools.trim(r.substring(6));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("Health", sub);
+        }
         if (StringTools.startsWith(lower, "hp")) {
-            return parseStatRule("Health", StringTools.trim(r.substring(2)));
+            var sub:String = StringTools.trim(r.substring(2));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("Health", sub);
         }
 
-        // 4. Mana: mp < 70% or mp > 30%
+        // 4. Mana: mp < 70%, mp > 30, mana < 20%
+        if (StringTools.startsWith(lower, "mana")) {
+            var sub:String = StringTools.trim(r.substring(4));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("Mana", sub);
+        }
         if (StringTools.startsWith(lower, "mp")) {
-            return parseStatRule("Mana", StringTools.trim(r.substring(2)));
+            var sub:String = StringTools.trim(r.substring(2));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("Mana", sub);
         }
 
         // 4. Aura: !aura(self:Name) or aura(target:Name) >= 22 or aura(Name)
@@ -263,14 +283,25 @@ class SkillDslParser {
         } else if (StringTools.startsWith(trimmed, "<")) {
             comp = "less";
             valStr = StringTools.trim(trimmed.substring(1));
+        } else if (StringTools.startsWith(trimmed, "==")) {
+            comp = "equal";
+            valStr = StringTools.trim(trimmed.substring(2));
+        } else if (StringTools.startsWith(trimmed, "=")) {
+            comp = "equal";
+            valStr = StringTools.trim(trimmed.substring(1));
         }
 
         var isPercentage:Bool = (valStr.indexOf("%") != -1);
-        if (isPercentage) {
-            valStr = StringTools.replace(valStr, "%", "");
-        }
+        var cleanStr:String = StringTools.replace(valStr, "%", "");
+        cleanStr = StringTools.replace(cleanStr.toLowerCase(), "hp", "");
+        cleanStr = StringTools.replace(cleanStr.toLowerCase(), "mp", "");
 
-        var val:Float = AqwUtils.parseFloat(StringTools.trim(valStr), 0);
+        var val:Float = AqwUtils.parseFloat(StringTools.trim(cleanStr), 0);
+
+        // Values over 100 cannot be percentages (e.g. hp < 2500)
+        if (val > 100) {
+            isPercentage = false;
+        }
 
         return {
             type: type,
@@ -316,18 +347,20 @@ class SkillDslParser {
         }
         if (rtype == "PartyHealth") {
             var val:Float = (r.value != null) ? AqwUtils.parseFloat(r.value, 0) : 0;
-            var isPct:Bool = (r.isPercentage != false);
-            var comp:String = (r.comparison == "greater") ? ">" : "<";
+            var isPct:Bool = (r.isPercentage == true);
+            var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<");
             var unit:String = isPct ? "%" : "";
-            return "party:hp " + comp + " " + val + unit;
+            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
+            return "party:hp " + comp + " " + valStr + unit;
         }
         if (rtype == "Health" || rtype == "Mana") {
             var stat:String = (rtype == "Health") ? "hp" : "mp";
             var val:Float = (r.value != null) ? AqwUtils.parseFloat(r.value, 0) : 0;
-            var isPct:Bool = (r.isPercentage != false);
-            var comp:String = (r.comparison == "greater") ? ">" : "<";
+            var isPct:Bool = (r.isPercentage == true);
+            var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<");
             var unit:String = isPct ? "%" : "";
-            return stat + " " + comp + " " + val + unit;
+            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
+            return stat + " " + comp + " " + valStr + unit;
         }
         if (rtype == "Aura" || rtype == "MultiAura") {
             var target:String = (r.auraTarget != null && r.auraTarget != "") ? Std.string(r.auraTarget) : "self";

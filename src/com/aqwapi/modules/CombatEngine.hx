@@ -536,16 +536,19 @@ class CombatEngine {
             case "Health":
                 var hp:Float = getStat(pStats, avatar, "HP");
                 var maxHp:Float = getStat(pStats, avatar, "MaxHP");
-                var hpPct:Float = (rule.isPercentage != false) ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
                 var targetVal:Float = AqwUtils.parseFloat(rule.value, 0);
-                return compare(hpPct, targetVal, Std.string(rule.comparison));
+                var isPct:Bool = (rule.isPercentage == true);
+                if (rule.isPercentage == null) isPct = (targetVal <= 100);
+                var currentVal:Float = isPct ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
+                return compare(currentVal, targetVal, Std.string(rule.comparison));
 
             case "Mana":
                 var mp:Float = getStat(pStats, avatar, "MP");
                 var maxMp:Float = getStat(pStats, avatar, "MaxMP");
-                var mpPct:Float = (rule.isPercentage != false) ? (maxMp > 0 ? (mp / maxMp * 100) : 0) : mp;
                 var targetVal:Float = AqwUtils.parseFloat(rule.value, 0);
-                return compare(mpPct, targetVal, Std.string(rule.comparison));
+                var isPct:Bool = (rule.isPercentage == true);
+                var currentVal:Float = isPct ? (maxMp > 0 ? (mp / maxMp * 100) : 0) : mp;
+                return compare(currentVal, targetVal, Std.string(rule.comparison));
 
             case "PartyHealth":
                 return evaluatePartyHealth(rule, world, avatar);
@@ -566,13 +569,14 @@ class CombatEngine {
     }
 
     private static function compare(val:Float, threshold:Float, comp:String):Bool {
+        if (comp == "equal" || comp == "==" || comp == "=") return val == threshold;
         return comp == "greater" ? val >= threshold : val <= threshold;
     }
 
     private static function evaluatePartyHealth(rule:Dynamic, world:Dynamic, avatar:Dynamic):Bool {
         if (world == null || world.players == null) return false;
         var threshold:Float = AqwUtils.parseFloat(rule.value, 0);
-        var isPct:Bool = (rule.isPercentage != false);
+        var isPct:Bool = (rule.isPercentage == true || (rule.isPercentage == null && threshold <= 100));
         var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "less";
         var myFrame:String = (world.strFrame != null) ? Std.string(world.strFrame) : "";
 
@@ -585,7 +589,7 @@ class CombatEngine {
                 var dl:Dynamic = p.dataLeaf;
                 if (dl == null || dl.intHP == null) continue;
                 var hp:Float = Std.int(dl.intHP);
-                var maxHp:Float = (dl.intHPMax != null) ? Std.int(dl.intHPMax) : 1;
+                var maxHp:Float = (dl.intHPMax != null && dl.intHPMax > 0) ? Std.int(dl.intHPMax) : 100;
                 if (hp <= 0) continue;
                 var val:Float = isPct ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
                 if (compare(val, threshold, comp)) return true;
@@ -603,9 +607,9 @@ class CombatEngine {
         var dl:Dynamic = (avatar != null) ? avatar.dataLeaf : null;
         switch (stat) {
             case "HP":    return (dl != null && dl.intHP != null)    ? dl.intHP    : ((pStats != null && pStats.intHP != null) ? pStats.intHP : 0);
-            case "MaxHP": return (dl != null && dl.intHPMax != null) ? dl.intHPMax : ((pStats != null && pStats.intHPMax != null) ? pStats.intHPMax : 1);
+            case "MaxHP": return (dl != null && dl.intHPMax != null && dl.intHPMax > 0) ? dl.intHPMax : ((pStats != null && pStats.intHPMax != null && pStats.intHPMax > 0) ? pStats.intHPMax : 100);
             case "MP":    return (dl != null && dl.intMP != null)    ? dl.intMP    : ((pStats != null && pStats.intMP != null) ? pStats.intMP : 0);
-            case "MaxMP": return (dl != null && dl.intMPMax != null) ? dl.intMPMax : ((pStats != null && pStats.intMPMax != null) ? pStats.intMPMax : 1);
+            case "MaxMP": return (dl != null && dl.intMPMax != null && dl.intMPMax > 0) ? dl.intMPMax : ((pStats != null && pStats.intMPMax != null && pStats.intMPMax > 0) ? pStats.intMPMax : 100);
         }
         return 0;
     }
