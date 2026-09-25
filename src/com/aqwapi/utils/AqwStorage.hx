@@ -110,29 +110,18 @@ class AqwStorage {
                 }
             }
 
-            // 2. Desktop: look for "assets" in applicationDirectory
+            // 2. Desktop: use applicationStorageDirectory (guaranteed writable across Windows / macOS)
             try {
-                var appDir:Dynamic = getStaticProp(FileClass, "applicationDirectory");
-                if (appDir != null) {
-                    var assetsDir = appDir.resolvePath("assets");
-                    if (assetsDir != null && assetsDir.exists) {
-                        _dataDir = assetsDir;
-                        var p:String = "";
-                        try { p = assetsDir.nativePath; } catch (_:Dynamic) {}
-                        ApiLogger.info("Storage", "Using Desktop assets folder: " + p);
-                        return _dataDir;
-                    }
-                    var loaderAssets = appDir.resolvePath("loader/assets");
-                    if (loaderAssets != null && loaderAssets.exists) {
-                        _dataDir = loaderAssets;
-                        var p:String = "";
-                        try { p = loaderAssets.nativePath; } catch (_:Dynamic) {}
-                        ApiLogger.info("Storage", "Using Desktop loader/assets folder: " + p);
-                        return _dataDir;
-                    }
+                var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
+                if (appStorage != null) {
+                    _dataDir = appStorage;
+                    var p:String = "";
+                    try { p = appStorage.nativePath; } catch (_:Dynamic) {}
+                    ApiLogger.info("Storage", "Using applicationStorageDirectory: " + p);
+                    return _dataDir;
                 }
             } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "applicationDirectory access failed: " + e);
+                ApiLogger.warn("Storage", "applicationStorageDirectory access failed: " + e);
             }
 
             // 3. Fallback: documentsDirectory
@@ -140,15 +129,6 @@ class AqwStorage {
                 var docDir:Dynamic = getStaticProp(FileClass, "documentsDirectory");
                 if (docDir != null) {
                     _dataDir = docDir;
-                    return _dataDir;
-                }
-            } catch (_:Dynamic) {}
-
-            // 4. Fallback: applicationStorageDirectory
-            try {
-                var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
-                if (appStorage != null) {
-                    _dataDir = appStorage;
                     return _dataDir;
                 }
             } catch (_:Dynamic) {}
@@ -301,10 +281,12 @@ class AqwStorage {
                 var fsCls:Dynamic = getFileStreamClass();
                 if (fsCls != null) {
                     var stream:Dynamic = Type.createInstance(fsCls, []);
-                    stream.open(pkg, "read");
-                    var txt:String = stream.readUTFBytes(stream.bytesAvailable);
-                    stream.close();
-                    if (txt != null && txt.length > 0) return txt;
+                    if (stream != null && Reflect.field(stream, "open") != null) {
+                        stream.open(pkg, "read");
+                        var txt:String = stream.readUTFBytes(stream.bytesAvailable);
+                        stream.close();
+                        if (txt != null && txt.length > 0) return txt;
+                    }
                 }
             }
         } catch (e:Dynamic) {
@@ -314,18 +296,20 @@ class AqwStorage {
         // Fallback 2: read from documentsDirectory / applicationStorageDirectory if written there
         try {
             var FileClass:Dynamic = getFileClass();
-            var fallbackDir = getStaticProp(FileClass, "documentsDirectory");
-            if (fallbackDir == null) fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
+            var fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
+            if (fallbackDir == null) fallbackDir = getStaticProp(FileClass, "documentsDirectory");
             if (fallbackDir != null) {
                 var f = fallbackDir.resolvePath(clean);
                 if (f != null && f.exists) {
                     var fsCls:Dynamic = getFileStreamClass();
                     if (fsCls != null) {
                         var stream:Dynamic = Type.createInstance(fsCls, []);
-                        stream.open(f, "read");
-                        var txt:String = stream.readUTFBytes(stream.bytesAvailable);
-                        stream.close();
-                        if (txt != null && txt.length > 0) return txt;
+                        if (stream != null && Reflect.field(stream, "open") != null) {
+                            stream.open(f, "read");
+                            var txt:String = stream.readUTFBytes(stream.bytesAvailable);
+                            stream.close();
+                            if (txt != null && txt.length > 0) return txt;
+                        }
                     }
                 }
             }
