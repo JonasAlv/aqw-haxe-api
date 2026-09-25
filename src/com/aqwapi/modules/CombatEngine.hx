@@ -164,23 +164,9 @@ class CombatEngine {
 
     private static function readSkillsAsset():String {
         try {
-            var FileClass:Dynamic = Type.resolveClass("flash.filesystem.File");
-            var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-            if (FileClass != null && FileStreamClass != null) {
-                var appDir:Dynamic = Reflect.getProperty(FileClass, "applicationDirectory");
-                var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-                var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
-                if (appDir != null) {
-                    var f = appDir.resolvePath("assets/skills.txt");
-                    if (f != null && f.exists) {
-                        var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                        stream.open(f, readMode);
-                        var txt:String = stream.readUTFBytes(stream.bytesAvailable);
-                        stream.close();
-                        return txt;
-                    }
-                }
-            }
+            com.aqwapi.utils.AqwStorage.ensureFiles();
+            var txt = com.aqwapi.utils.AqwStorage.readText("skills.txt");
+            if (txt != null && txt.length > 0) return txt;
         } catch (_:Dynamic) {}
         return null;
     }

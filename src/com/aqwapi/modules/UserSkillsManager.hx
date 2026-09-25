@@ -8,238 +8,39 @@ class UserSkillsManager {
     private static var _userModesCache:Map<String, Array<String>> = null;
 
     /**
-     * Returns candidate storage locations on Android and Desktop.
-     * Includes Android/data/air.com.aqw.pocket/files/userSkills.txt so users can see/edit files directly.
-     */
-    /**
-     * Returns candidate storage locations on Android and Desktop.
-     * Includes Android/data/air.com.aqw.pocket/files/userSkills.txt so users can see/edit files directly.
-     */
-    private static function getStorageFiles():Array<Dynamic> {
-        var files:Array<Dynamic> = [];
-        var seenPaths:Map<String, Bool> = new Map<String, Bool>();
-
-        var addFile = function(f:Dynamic):Void {
-            if (f == null) return;
-            try {
-                var path:String = null;
-                try { path = f.nativePath; } catch (_:Dynamic) {}
-                if (path == null || path == "") {
-                    try { path = f.url; } catch (_:Dynamic) {}
-                }
-                if (path != null && path != "") {
-                    if (!seenPaths.exists(path)) {
-                        seenPaths.set(path, true);
-                        files.push(f);
-                    }
-                } else {
-                    files.push(f);
-                }
-            } catch (_:Dynamic) {
-                files.push(f);
-            }
-        };
-
-        try {
-            var FileClass:Dynamic = Type.resolveClass("flash.filesystem.File");
-            if (FileClass == null) return files;
-
-            // 1. Android/data/<app-id>/files/userSkills.txt (via documentsDirectory)
-            try {
-                var docDir:Dynamic = Reflect.getProperty(FileClass, "documentsDirectory");
-                if (docDir != null) {
-                    addFile(docDir.resolvePath("userSkills.txt"));
-                }
-            } catch (_:Dynamic) {}
-
-            // 2. Direct external Android/data paths (/storage/emulated/0/Android/data/air.com.aqw.pocket/files)
-            try {
-                var userDir:Dynamic = Reflect.getProperty(FileClass, "userDirectory");
-                if (userDir != null) {
-                    addFile(userDir.resolvePath("Android/data/air.com.aqw.pocket/files/userSkills.txt"));
-                    addFile(userDir.resolvePath("Android/data/com.aqw.pocket/files/userSkills.txt"));
-                }
-            } catch (_:Dynamic) {}
-
-            // 3. applicationStorageDirectory (sandboxed local store)
-            try {
-                var storageDir:Dynamic = Reflect.getProperty(FileClass, "applicationStorageDirectory");
-                if (storageDir != null) {
-                    addFile(storageDir.resolvePath("userSkills.txt"));
-                }
-            } catch (_:Dynamic) {}
-        } catch (_:Dynamic) {}
-        return files;
-    }
-
-    /**
      * Ensures userSkills.txt is created on disk if not already present.
      */
     public static function ensureStorageInitialized():Void {
-        try {
-            var existsOnDisk:Bool = false;
-            for (sFile in getStorageFiles()) {
-                if (sFile != null && sFile.exists) {
-                    existsOnDisk = true;
-                    break;
-                }
-            }
-            if (!existsOnDisk) {
-                var def = DefaultSkillsData.getDefaultUserSkills();
-                if (def != null && def.length > 0) {
-                    writeUserSkills(def);
-                }
-            }
-        } catch (_:Dynamic) {}
+        com.aqwapi.utils.AqwStorage.ensureFiles();
     }
 
     /**
-     * Reads userSkills content from external/app storage, falling back to SharedObject or embedded template.
+     * Reads userSkills content from the unified data directory (or embedded default template).
      */
     public static function readUserSkills():String {
         try {
-            var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-            var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-
-            // 1. First pass: look for a file that contains actual user-saved combos (not just empty comments)
-            if (FileStreamClass != null && FileModeClass != null) {
-                var readMode:String = Reflect.getProperty(FileModeClass, "READ");
-                for (sFile in getStorageFiles()) {
-                    if (sFile != null && sFile.exists) {
-                        try {
-                            var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                            stream.open(sFile, readMode);
-                            var txt:String = stream.readUTFBytes(stream.bytesAvailable);
-                            stream.close();
-                            if (txt != null && StringTools.trim(txt).length > 0) {
-                                var trimmed = StringTools.trim(txt);
-                                if (trimmed.indexOf("[") != -1 && trimmed.indexOf("combo") != -1) {
-                                    return txt;
-                                }
-                            }
-                        } catch (e:Dynamic) {}
-                    }
-                }
+            com.aqwapi.utils.AqwStorage.ensureFiles();
+            var txt:String = com.aqwapi.utils.AqwStorage.readText("userSkills.txt");
+            if (txt != null && StringTools.trim(txt).length > 0) {
+                return txt;
             }
-
-            // 2. SharedObject backup (if it has user-saved combos)
-            try {
-                var soClass:Dynamic = Type.resolveClass("flash.net.SharedObject");
-                if (soClass != null) {
-                    var so = soClass.getLocal("aqw_user_skills");
-                    if (so != null && so.data != null && so.data.content != null) {
-                        var soTxt:String = Std.string(so.data.content);
-                        if (soTxt != null && StringTools.trim(soTxt).length > 0) {
-                            var trimmedSO = StringTools.trim(soTxt);
-                            if (trimmedSO.indexOf("[") != -1 && trimmedSO.indexOf("combo") != -1) {
-                                return soTxt;
-                            }
-                        }
-                    }
-                }
-            } catch (_:Dynamic) {}
-
-            // 3. Second pass: return any file that exists even if only template
-            if (FileStreamClass != null && FileModeClass != null) {
-                var readMode:String = Reflect.getProperty(FileModeClass, "READ");
-                for (sFile in getStorageFiles()) {
-                    if (sFile != null && sFile.exists) {
-                        try {
-                            var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                            stream.open(sFile, readMode);
-                            var txt:String = stream.readUTFBytes(stream.bytesAvailable);
-                            stream.close();
-                            if (txt != null && StringTools.trim(txt).length > 0) {
-                                return txt;
-                            }
-                        } catch (e:Dynamic) {}
-                    }
-                }
-            }
-
-            // 4. Any content in SharedObject
-            try {
-                var soClass:Dynamic = Type.resolveClass("flash.net.SharedObject");
-                if (soClass != null) {
-                    var so = soClass.getLocal("aqw_user_skills");
-                    if (so != null && so.data != null && so.data.content != null) {
-                        var soTxt:String = Std.string(so.data.content);
-                        if (soTxt != null && StringTools.trim(soTxt).length > 0) return soTxt;
-                    }
-                }
-            } catch (_:Dynamic) {}
-
-            // 5. Default bundled fallback
-            try {
-                var def = DefaultSkillsData.getDefaultUserSkills();
-                if (def != null && def.length > 0) return def;
-            } catch (_:Dynamic) {}
-
-        } catch (e:Dynamic) {}
-        return "";
+        } catch (_:Dynamic) {}
+        return DefaultSkillsData.getDefaultUserSkills();
     }
 
     /**
-     * Writes userSkills to all accessible storage locations (Android/data/..., app storage, SharedObject).
+     * Writes userSkills to the unified data directory.
      */
     public static function writeUserSkills(content:String):Bool {
-        var wrote:Bool = false;
-        try {
-            var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-            var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-
-            if (FileStreamClass != null && FileModeClass != null) {
-                var writeMode:String = Reflect.getProperty(FileModeClass, "WRITE");
-                for (sFile in getStorageFiles()) {
-                    if (sFile == null) continue;
-                    try {
-                        if (sFile.parent != null && !sFile.parent.exists) {
-                            try { sFile.parent.createDirectory(); } catch (_:Dynamic) {}
-                        }
-                        var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                        stream.open(sFile, writeMode);
-                        stream.writeUTFBytes(content);
-                        stream.close();
-                        wrote = true;
-                        var pName:String = null;
-                        try { pName = sFile.nativePath; } catch (_:Dynamic) {}
-                        if (pName == null || pName == "") {
-                            try { pName = sFile.url; } catch (_:Dynamic) {}
-                        }
-                        ApiLogger.info("UserSkills", "Saved userSkills.txt to: " + (pName != null ? pName : "storage"));
-                    } catch (fe:Dynamic) {
-                        var pName:String = null;
-                        try { pName = sFile.nativePath; } catch (_:Dynamic) {}
-                        if (pName == null || pName == "") {
-                            try { pName = sFile.url; } catch (_:Dynamic) {}
-                        }
-                        ApiLogger.warn("UserSkills", "File write failed for " + (pName != null ? pName : "storage") + ": " + fe);
-                    }
-                }
-            }
-
-            // SharedObject backup (guaranteed on all platforms, zero permissions needed)
-            try {
-                var soClass:Dynamic = Type.resolveClass("flash.net.SharedObject");
-                if (soClass != null) {
-                    var so = soClass.getLocal("aqw_user_skills");
-                    if (so != null && so.data != null) {
-                        so.data.content = content;
-                        try { so.flush(); } catch (_:Dynamic) {}
-                        wrote = true;
-                        ApiLogger.info("UserSkills", "Saved userSkills to SharedObject backup!");
-                    }
-                }
-            } catch (soe:Dynamic) {
-                ApiLogger.warn("UserSkills", "SharedObject write failed: " + soe);
-            }
-
-            _userModesCache = null;
-            return wrote;
-        } catch (e:Dynamic) {
-            ApiLogger.error("UserSkills", "Error writing userSkills.txt: " + e);
-            return false;
+        com.aqwapi.utils.AqwStorage.ensureFiles();
+        var ok:Bool = com.aqwapi.utils.AqwStorage.writeText("userSkills.txt", content);
+        if (ok) {
+            ApiLogger.info("UserSkills", "Saved userSkills.txt to data folder");
+        } else {
+            ApiLogger.warn("UserSkills", "Failed to save userSkills.txt to data folder");
         }
+        _userModesCache = null;
+        return ok;
     }
 
     /**

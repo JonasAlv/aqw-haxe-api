@@ -47,8 +47,13 @@ class AqwApi {
         #end
     }
 
+    public static function ensureStorage():Void {
+        com.aqwapi.utils.AqwStorage.ensureFiles();
+    }
+
     public static function init(gameReference:Dynamic):Void {
         ensureMathShims();
+        ensureStorage();
         game = cast gameReference;
         transport = new TransportAdapter(game);
         map = new MapManager(game);

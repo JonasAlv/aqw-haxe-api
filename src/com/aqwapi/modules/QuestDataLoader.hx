@@ -26,52 +26,8 @@ class QuestDataLoader {
         _loading = true;
 
         try {
-            var FileClass:Dynamic = Type.resolveClass("flash.filesystem.File");
-            var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-
-            if (FileClass == null || FileStreamClass == null) {
-                _quests = new Map<Int, QuestDTO>();
-                _loaded = true;
-                _loading = false;
-                return;
-            }
-
-            var appDir:Dynamic = Reflect.getProperty(FileClass, "applicationDirectory");
-            var storageDir:Dynamic = Reflect.getProperty(FileClass, "applicationStorageDirectory");
-            var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-            var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
-
-            var readFileText = function(file:Dynamic):String {
-                if (file == null || !file.exists) return null;
-                try {
-                    var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                    stream.open(file, readMode);
-                    var content:String = stream.readUTFBytes(stream.bytesAvailable);
-                    stream.close();
-                    return content;
-                } catch (e:Dynamic) {
-                    return null;
-                }
-            };
-
-            var rawJson:String = null;
-            if (appDir != null) {
-                rawJson = readFileText(appDir.resolvePath("assets/quests.json"));
-                if (rawJson == null) rawJson = readFileText(appDir.resolvePath("quests.json"));
-            }
-            if (rawJson == null) {
-                try {
-                    var docDir:Dynamic = Reflect.getProperty(FileClass, "documentsDirectory");
-                    if (docDir != null) {
-                        rawJson = readFileText(docDir.resolvePath("quests.json"));
-                        if (rawJson == null) rawJson = readFileText(docDir.resolvePath("assets/quests.json"));
-                    }
-                } catch (_:Dynamic) {}
-            }
-            if (rawJson == null && storageDir != null) {
-                rawJson = readFileText(storageDir.resolvePath("quests.json"));
-                if (rawJson == null) rawJson = readFileText(storageDir.resolvePath("assets/quests.json"));
-            }
+            com.aqwapi.utils.AqwStorage.ensureFiles();
+            var rawJson:String = com.aqwapi.utils.AqwStorage.readText("quests.json");
 
             _quests = new Map<Int, QuestDTO>();
 
