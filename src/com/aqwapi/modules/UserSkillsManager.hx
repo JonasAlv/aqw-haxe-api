@@ -268,30 +268,61 @@ class UserSkillsManager {
     public static function getModeDetails(className:String, modeName:String):Dynamic {
         if (className == null || className == "" || modeName == null || modeName == "") return null;
 
+        var resolvedClass = className;
+        if (resolvedClass.toLowerCase() == "current") {
+            var cur = CombatEngine.getCurrentClassName();
+            if (cur != null && cur != "" && cur.toLowerCase() != "current") {
+                resolvedClass = cur;
+            } else if (CombatEngine.smartClass != null && CombatEngine.smartClass != "" && CombatEngine.smartClass.toLowerCase() != "current") {
+                resolvedClass = CombatEngine.smartClass;
+            }
+        }
+
         // 1. Direct check in UserSkillsManager sections (guarantees instant retrieval for user modes)
         try {
             var raw = readUserSkills();
             var sections = parseRawSections(raw);
-            var cleanTarget = CombatEngine.cleanClassName(className);
+            var cleanTarget = CombatEngine.cleanClassName(resolvedClass);
+            var currentFallbackSection:Dynamic = null;
+
             for (s in sections) {
                 var cleanS = CombatEngine.cleanClassName(s.className);
-                if ((cleanS == cleanTarget || s.className.toLowerCase() == className.toLowerCase()) && 
-                    s.modeName != null && s.modeName.toLowerCase() == modeName.toLowerCase()) {
-                    var mVal:String = (s.mode != null && s.mode != "") ? s.mode : ((s.execMode != null && s.execMode != "") ? s.execMode : "WaitForCooldown");
-                    var toVal:Int = (s.timeout != null && s.timeout > 0) ? s.timeout : 100;
-                    var cVal:String = (s.combo != null) ? s.combo : "";
-                    return {
-                        skillUseMode: mVal,
-                        timeout: toVal,
-                        combo: cVal,
-                        isUser: true
-                    };
+                if (s.modeName != null && s.modeName.toLowerCase() == modeName.toLowerCase()) {
+                    if (cleanS == cleanTarget || s.className.toLowerCase() == resolvedClass.toLowerCase()) {
+                        var mVal:String = (s.mode != null && s.mode != "") ? s.mode : ((s.execMode != null && s.execMode != "") ? s.execMode : "WaitForCooldown");
+                        var toVal:Int = (s.timeout != null && s.timeout > 0) ? s.timeout : 100;
+                        var cVal:String = (s.combo != null) ? s.combo : "";
+                        return {
+                            skillUseMode: mVal,
+                            timeout: toVal,
+                            combo: cVal,
+                            isUser: true
+                        };
+                    } else if (s.className.toLowerCase() == "current") {
+                        currentFallbackSection = s;
+                    }
                 }
+            }
+
+            if (currentFallbackSection != null) {
+                var s = currentFallbackSection;
+                var mVal:String = (s.mode != null && s.mode != "") ? s.mode : ((s.execMode != null && s.execMode != "") ? s.execMode : "WaitForCooldown");
+                var toVal:Int = (s.timeout != null && s.timeout > 0) ? s.timeout : 100;
+                var cVal:String = (s.combo != null) ? s.combo : "";
+                return {
+                    skillUseMode: mVal,
+                    timeout: toVal,
+                    combo: cVal,
+                    isUser: true
+                };
             }
         } catch (_:Dynamic) {}
 
         // 2. Check CombatEngine _skillsData (bundled modes)
-        var classObj = CombatEngine.findClassConfig(className);
+        var classObj = CombatEngine.findClassConfig(resolvedClass);
+        if (classObj == null && resolvedClass.toLowerCase() != "current") {
+            classObj = CombatEngine.findClassConfig("Current");
+        }
         if (classObj != null) {
             var modeObj:Dynamic = Reflect.field(classObj, modeName);
             if (modeObj == null) {
@@ -305,13 +336,17 @@ class UserSkillsManager {
             if (modeObj != null) {
                 var modeType:String = (modeObj.skillUseMode != null) ? Std.string(modeObj.skillUseMode) : "WaitForCooldown";
                 var timeout:Int = (modeObj.skillTimeout != null) ? AqwUtils.parseInt(modeObj.skillTimeout, 100) : 100;
-                var skills:Array<Dynamic> = (modeObj.skills != null && Std.isOfType(modeObj.skills, Array)) ? cast modeObj.skills : [];
-                var comboStr:String = SkillDslParser.formatCombo(skills);
+                var comboStr:String = "";
+                if (modeObj.combo != null && Std.string(modeObj.combo) != "") {
+                    comboStr = Std.string(modeObj.combo);
+                } else if (modeObj.skills != null && Std.isOfType(modeObj.skills, Array)) {
+                    comboStr = SkillDslParser.formatCombo(cast modeObj.skills);
+                }
                 return {
                     skillUseMode: modeType,
                     timeout: timeout,
                     combo: (comboStr != null) ? comboStr : "",
-                    isUser: isUserMode(className, modeName)
+                    isUser: isUserMode(resolvedClass, modeName)
                 };
             }
         }

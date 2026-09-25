@@ -38,6 +38,7 @@ class SkillDslParser {
                     currentMode = "Base";
                 }
 
+                currentData = null;
                 if (currentClass != "" && currentMode != "") {
                     var classObj:Dynamic = Reflect.field(result, currentClass);
                     if (classObj == null) {
@@ -47,7 +48,8 @@ class SkillDslParser {
                     currentData = {
                         skillUseMode: "WaitForCooldown",
                         skillTimeout: 100,
-                        skills: []
+                        skills: [],
+                        combo: ""
                     };
                     Reflect.setField(classObj, currentMode, currentData);
                 }
@@ -76,6 +78,7 @@ class SkillDslParser {
                     currentData.skillTimeout = AqwUtils.parseInt(val, 100);
 
                 case "combo", "skills", "rotation":
+                    currentData.combo = val;
                     currentData.skills = parseCombo(val);
             }
         }

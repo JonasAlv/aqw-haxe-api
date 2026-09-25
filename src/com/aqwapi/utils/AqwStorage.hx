@@ -192,6 +192,10 @@ class AqwStorage {
 
     private static function getDefaultSkillsResource():String {
         try {
+            var def = com.aqwapi.modules.DefaultSkillsData.getDefaultSkills();
+            if (def != null && def.length > 0) return def;
+        } catch (_:Dynamic) {}
+        try {
             var res = haxe.Resource.getString("default_skills");
             if (res != null && res.length > 0) return res;
         } catch (_:Dynamic) {}
@@ -199,6 +203,10 @@ class AqwStorage {
     }
 
     private static function getDefaultUserSkillsResource():String {
+        try {
+            var def = com.aqwapi.modules.DefaultSkillsData.getDefaultUserSkills();
+            if (def != null && def.length > 0) return def;
+        } catch (_:Dynamic) {}
         try {
             var res = haxe.Resource.getString("default_user_skills");
             if (res != null && res.length > 0) return res;
@@ -212,7 +220,8 @@ class AqwStorage {
             if (target != null && target.exists) {
                 var size:Float = 0;
                 try { size = target.size; } catch (_:Dynamic) {}
-                if (size > 0) return;
+                if (fileName == "skills.txt" && size >= 25000) return;
+                else if (fileName != "skills.txt" && size > 0) return;
             }
 
             var data = getSourceData();

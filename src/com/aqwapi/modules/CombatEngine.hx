@@ -78,7 +78,9 @@ class CombatEngine {
                 }
             }
             var confMode = getSettingString("api_smart_mode", "");
-            if (confMode != null && confMode != "") {
+            if (skillMode != null && skillMode != "" && skillMode != "Base") {
+                // Keep explicitly set mode
+            } else if (confMode != null && confMode != "") {
                 skillMode = confMode;
             } else if (skillMode == null || skillMode == "") {
                 skillMode = "Base";
@@ -410,15 +412,27 @@ class CombatEngine {
         // 3. UserSkillsManager lookup (guarantees retrieval even before reload/disk sync)
         if (modeConfig == null && skillMode != null && skillMode != "") {
             var details = UserSkillsManager.getModeDetails(className, skillMode);
+            if (details == null && className.toLowerCase() != "current") {
+                details = UserSkillsManager.getModeDetails("Current", skillMode);
+            }
             if (details != null && details.combo != null && details.combo != "") {
                 var parsedSkills = com.aqwapi.utils.SkillDslParser.parseCombo(details.combo);
                 if (parsedSkills != null && parsedSkills.length > 0) {
                     modeConfig = {
                         skillUseMode: details.skillUseMode,
                         skillTimeout: details.timeout,
-                        skills: parsedSkills
+                        skills: parsedSkills,
+                        combo: details.combo
                     };
                     Reflect.setField(config, skillMode, modeConfig);
+                    activeModeName = skillMode;
+                }
+            } else if (_skillsData != null) {
+                // Check if mode exists on "Current" in _skillsData
+                var curClassObj:Dynamic = Reflect.field(_skillsData, "Current");
+                if (curClassObj == null) curClassObj = Reflect.field(_skillsData, "current");
+                if (curClassObj != null && Reflect.hasField(curClassObj, skillMode)) {
+                    modeConfig = Reflect.field(curClassObj, skillMode);
                     activeModeName = skillMode;
                 }
             }
@@ -823,10 +837,13 @@ class CombatEngine {
                             if (it == null) continue;
                             var equipped:Bool = (it.bEquip == 1 || it.bEquip == "1" || it.bEquip == true);
                             if (!equipped) continue;
+                            var sTypeStr:String = (it.sType != null) ? Std.string(it.sType).toLowerCase() : "";
                             var isClass:Bool = false;
-                            if (it.sType != null && Std.string(it.sType).toLowerCase() == "class") isClass = true;
-                            else if (it.bClass == 1 || it.bClass == true) isClass = true;
-                            else if (it.sES != null && Std.string(it.sES).toLowerCase() == "ar") isClass = true;
+                            if (sTypeStr == "class" || it.bClass == 1 || it.bClass == true || it.bClass == "1") {
+                                isClass = true;
+                            } else if (it.sES != null && Std.string(it.sES).toLowerCase() == "ar" && sTypeStr != "armor") {
+                                if (findClassConfig(it.sName) != null) isClass = true;
+                            }
                             if (isClass && it.sName != null) {
                                 var s:String = Std.string(it.sName);
                                 if (s != "" && s != "null") return s;
@@ -863,11 +880,24 @@ class CombatEngine {
                     return Reflect.field(_skillsData, key);
                 }
             }
+            var bestMatchKey:String = null;
+            var bestMatchLen:Int = 0;
             for (key in Reflect.fields(_skillsData)) {
                 var cleanKey:String = cleanClassName(key);
-                if (cleanKey != "" && (cleanKey == cleanTarget || cleanTarget.indexOf(cleanKey) != -1 || cleanKey.indexOf(cleanTarget) != -1)) {
-                    return Reflect.field(_skillsData, key);
+                if (cleanKey != "") {
+                    if (cleanTarget == cleanKey) {
+                        return Reflect.field(_skillsData, key);
+                    }
+                    if (cleanTarget.indexOf(cleanKey) != -1 || cleanKey.indexOf(cleanTarget) != -1) {
+                        if (cleanKey.length > bestMatchLen) {
+                            bestMatchLen = cleanKey.length;
+                            bestMatchKey = key;
+                        }
+                    }
                 }
+            }
+            if (bestMatchKey != null) {
+                return Reflect.field(_skillsData, bestMatchKey);
             }
         }
 
@@ -937,7 +967,8 @@ class CombatEngine {
         var modeObj:Dynamic = {
             skillUseMode: skillUseMode,
             skillTimeout: timeout,
-            skills: parsedCombo
+            skills: parsedCombo,
+            combo: combo
         };
         Reflect.setField(targetClass, modeName, modeObj);
         ApiLogger.info("Skills", "Registered custom mode [" + targetKey + " : " + modeName + "] in memory!");
