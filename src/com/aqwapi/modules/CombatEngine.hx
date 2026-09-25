@@ -248,20 +248,6 @@ class CombatEngine {
 
             if (_skillsData == null) _skillsData = {};
 
-            // Ensure Current default class section exists in _skillsData
-            if (!Reflect.hasField(_skillsData, "Current")) {
-                Reflect.setField(_skillsData, "Current", {
-                    Base: {
-                        skillUseMode: "WaitForCooldown",
-                        mode: "WaitForCooldown",
-                        skillTimeout: 100,
-                        timeout: 100,
-                        combo: "1 > 2 > 3 > 4",
-                        skills: SkillDslParser.parseCombo("1 > 2 > 3 > 4")
-                    }
-                });
-            }
-
             // Restore in-memory custom modes
             for (item in inMemoryCustom) {
                 var targetClass:Dynamic = Reflect.field(_skillsData, item.className);
@@ -427,14 +413,13 @@ class CombatEngine {
         if (confClass != null && confClass != "" && confClass != "Current") {
             className = confClass;
         } else {
+            // "Current" means use whatever class is currently equipped right now!
             className = getCurrentClassName();
             if (className == "" && avatar.objData != null && avatar.objData.strClassName != null) {
                 className = Std.string(avatar.objData.strClassName);
             }
-            if (className == "") className = "Current";
         }
-        var config:Dynamic = findClassConfig(className);
-        if (config == null) config = findClassConfig("Current");
+        var config:Dynamic = (className != "") ? findClassConfig(className) : null;
 
         if (config == null) { runSimpleRotation(world, avatar); return; }
 
@@ -458,12 +443,9 @@ class CombatEngine {
             }
         }
 
-        // 3. UserSkillsManager lookup (guarantees retrieval even before reload/disk sync)
+        // 3. UserSkillsManager lookup
         if (modeConfig == null && skillMode != null && skillMode != "") {
             var details = UserSkillsManager.getModeDetails(className, skillMode);
-            if (details == null && className.toLowerCase() != "current") {
-                details = UserSkillsManager.getModeDetails("Current", skillMode);
-            }
             if (details != null && details.combo != null && details.combo != "") {
                 var parsedSkills = com.aqwapi.utils.SkillDslParser.parseCombo(details.combo);
                 if (parsedSkills != null && parsedSkills.length > 0) {
@@ -474,14 +456,6 @@ class CombatEngine {
                         combo: details.combo
                     };
                     Reflect.setField(config, skillMode, modeConfig);
-                    activeModeName = skillMode;
-                }
-            } else if (_skillsData != null) {
-                // Check if mode exists on "Current" in _skillsData
-                var curClassObj:Dynamic = Reflect.field(_skillsData, "Current");
-                if (curClassObj == null) curClassObj = Reflect.field(_skillsData, "current");
-                if (curClassObj != null && Reflect.hasField(curClassObj, skillMode)) {
-                    modeConfig = Reflect.field(curClassObj, skillMode);
                     activeModeName = skillMode;
                 }
             }
@@ -501,17 +475,18 @@ class CombatEngine {
                     }
                 }
             }
-            if (modeConfig != null && skillMode != "Base" && skillMode != "") {
-                ApiLogger.warn("Combat", "Mode [" + skillMode + "] not found for [" + className + "], falling back to Base");
-            }
         }
 
-        // 5. Fallback to first available mode
+        // 5. Fallback to 1st available mode of this class
         if (modeConfig == null) {
             for (key in Reflect.fields(config)) {
-                modeConfig = Reflect.field(config, key);
-                activeModeName = key;
-                break;
+                var candidate:Dynamic = Reflect.field(config, key);
+                if (candidate != null && !Std.isOfType(candidate, Array)) {
+                    modeConfig = candidate;
+                    activeModeName = key;
+                    ApiLogger.info("Combat", "Mode [" + skillMode + "] not found for [" + className + "], falling back to 1st mode [" + key + "]");
+                    break;
+                }
             }
         }
 
@@ -925,22 +900,9 @@ class CombatEngine {
         if (className.toLowerCase() == "current") {
             var cur:String = getCurrentClassName();
             if (cur != "" && cur.toLowerCase() != "current") {
-                var found = findClassConfig(cur);
-                if (found != null) return found;
+                return findClassConfig(cur);
             }
-            for (key in Reflect.fields(_skillsData)) {
-                if (key.toLowerCase() == "current") return Reflect.field(_skillsData, key);
-            }
-            return {
-                Base: {
-                    skillUseMode: "WaitForCooldown",
-                    mode: "WaitForCooldown",
-                    skillTimeout: 100,
-                    timeout: 100,
-                    combo: "1 > 2 > 3 > 4",
-                    skills: SkillDslParser.parseCombo("1 > 2 > 3 > 4")
-                }
-            };
+            return null;
         }
 
         var lower:String = className.toLowerCase();

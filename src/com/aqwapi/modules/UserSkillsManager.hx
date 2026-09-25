@@ -344,9 +344,6 @@ class UserSkillsManager {
 
         // 2. Check CombatEngine _skillsData (bundled modes from skills.json)
         var classObj = CombatEngine.findClassConfig(resolvedClass);
-        if (classObj == null && resolvedClass.toLowerCase() != "current") {
-            classObj = CombatEngine.findClassConfig("Current");
-        }
         if (classObj != null) {
             var modeObj:Dynamic = Reflect.field(classObj, modeName);
             if (modeObj == null) {
