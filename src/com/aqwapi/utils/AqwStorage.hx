@@ -1,7 +1,5 @@
 package com.aqwapi.utils;
 
-import com.aqwapi.modules.DefaultSkillsData;
-
 class AqwStorage {
     private static var _dataDir:Dynamic = null;
     private static var _provisioned:Bool = false;
@@ -224,7 +222,7 @@ class AqwStorage {
             var pkg = resolvePackagedFile("skills.txt");
             var bytes = readBinaryFile(pkg);
             if (bytes != null) return bytes;
-            var def = DefaultSkillsData.getDefaultSkills();
+            var def = getDefaultSkillsResource();
             return (def != null && def.length > 0) ? def : null;
         });
 
@@ -233,9 +231,25 @@ class AqwStorage {
             var pkg = resolvePackagedFile("userSkills.txt");
             var bytes = readBinaryFile(pkg);
             if (bytes != null) return bytes;
-            var def = DefaultSkillsData.getDefaultUserSkills();
+            var def = getDefaultUserSkillsResource();
             return (def != null && def.length > 0) ? def : null;
         });
+    }
+
+    private static function getDefaultSkillsResource():String {
+        try {
+            var res = haxe.Resource.getString("default_skills");
+            if (res != null && res.length > 0) return res;
+        } catch (_:Dynamic) {}
+        return "";
+    }
+
+    private static function getDefaultUserSkillsResource():String {
+        try {
+            var res = haxe.Resource.getString("default_user_skills");
+            if (res != null && res.length > 0) return res;
+        } catch (_:Dynamic) {}
+        return "";
     }
 
     private static function ensureFile(dir:Dynamic, fileName:String, getSourceData:Void->Dynamic):Void {
