@@ -1,7 +1,5 @@
 package com.aqwapi.utils;
 
-import com.aqwapi.AqwApi;
-
 class ApiLogger {
     public static inline var LEVEL_DEBUG:Int = 0;
     public static inline var LEVEL_INFO:Int = 1;
@@ -193,10 +191,14 @@ class ApiLogger {
     }
 
     public static function pushChat(type:String, text:String, sender:String = "API"):Void {
-        if (AqwApi.game != null && AqwApi.game.chatF != null && AqwApi.game.chatF.pushMsg != null) {
-            try {
-                AqwApi.game.chatF.pushMsg(type, text, sender, "", 0);
-            } catch (e:Dynamic) {}
-        }
+        try {
+            var apiCls:Dynamic = Type.resolveClass("com.aqwapi.AqwApi");
+            if (apiCls != null) {
+                var g:Dynamic = Reflect.field(apiCls, "game");
+                if (g != null && g.chatF != null && g.chatF.pushMsg != null) {
+                    g.chatF.pushMsg(type, text, sender, "", 0);
+                }
+            }
+        } catch (_:Dynamic) {}
     }
 }
