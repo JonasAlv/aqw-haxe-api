@@ -39,7 +39,7 @@ class AqwApi {
                 }
                 if (m.isFinite == null) {
                     m.isFinite = function(v:Float):Bool {
-                        return (v == v) && v != untyped __global__["Number"].POSITIVE_INFINITY && v != untyped __global__["Number"].NEGATIVE_INFINITY;
+                        return (v == v) && v != Math.POSITIVE_INFINITY && v != Math.NEGATIVE_INFINITY;
                     };
                 }
             }

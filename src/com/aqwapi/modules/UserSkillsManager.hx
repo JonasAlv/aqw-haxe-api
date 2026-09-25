@@ -28,19 +28,18 @@ class UserSkillsManager {
 
         // SharedObject backup
         try {
-            var soClass:Dynamic = null;
+            var so:Dynamic = null;
             #if flash
-            try { soClass = untyped __global__["flash.net.SharedObject"]; } catch (_:Dynamic) {}
+            so = flash.net.SharedObject.getLocal("aqw_user_skills");
+            #else
+            var soClass = Type.resolveClass("flash.net.SharedObject");
+            if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills"]);
             #end
-            if (soClass == null) soClass = Type.resolveClass("flash.net.SharedObject");
-            if (soClass != null) {
-                var so = soClass.getLocal("aqw_user_skills");
-                if (so != null && so.data != null && so.data.content != null) {
-                    var soTxt:String = Std.string(so.data.content);
-                    if (soTxt != null && StringTools.trim(soTxt).length > 0) {
-                        try { com.aqwapi.utils.AqwStorage.writeText("userSkills.txt", soTxt); } catch (_:Dynamic) {}
-                        return soTxt;
-                    }
+            if (so != null && so.data != null && so.data.content != null) {
+                var soTxt:String = Std.string(so.data.content);
+                if (soTxt != null && StringTools.trim(soTxt).length > 0) {
+                    try { com.aqwapi.utils.AqwStorage.writeText("userSkills.txt", soTxt); } catch (_:Dynamic) {}
+                    return soTxt;
                 }
             }
         } catch (_:Dynamic) {}
@@ -62,18 +61,17 @@ class UserSkillsManager {
 
         // SharedObject backup (guaranteed on all platforms, zero permissions needed)
         try {
-            var soClass:Dynamic = null;
+            var so:Dynamic = null;
             #if flash
-            try { soClass = untyped __global__["flash.net.SharedObject"]; } catch (_:Dynamic) {}
+            so = flash.net.SharedObject.getLocal("aqw_user_skills");
+            #else
+            var soClass = Type.resolveClass("flash.net.SharedObject");
+            if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills"]);
             #end
-            if (soClass == null) soClass = Type.resolveClass("flash.net.SharedObject");
-            if (soClass != null) {
-                var so = soClass.getLocal("aqw_user_skills");
-                if (so != null && so.data != null) {
-                    so.data.content = content;
-                    try { so.flush(); } catch (_:Dynamic) {}
-                    ok = true;
-                }
+            if (so != null && so.data != null) {
+                so.data.content = content;
+                try { so.flush(); } catch (_:Dynamic) {}
+                ok = true;
             }
         } catch (_:Dynamic) {}
 
