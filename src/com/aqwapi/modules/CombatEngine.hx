@@ -6,6 +6,7 @@ import com.aqwapi.data.EntityDTO;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
 import com.aqwapi.utils.AqwUtils;
+import com.aqwapi.utils.SkillDslParser;
 import flash.events.TimerEvent;
 import flash.utils.Timer;
 
@@ -167,10 +168,33 @@ class CombatEngine {
     private static function readSkillsAsset():String {
         try {
             com.aqwapi.utils.AqwStorage.ensureFiles();
-            var txt = com.aqwapi.utils.AqwStorage.readText("skills.txt");
+            var txt = com.aqwapi.utils.AqwStorage.readText("skills.json");
+            if (txt != null && txt.length > 0) return txt;
+            txt = com.aqwapi.utils.AqwStorage.readText("skills.txt");
             if (txt != null && txt.length > 0) return txt;
         } catch (_:Dynamic) {}
         return null;
+    }
+
+    public static function compileSkillsData(data:Dynamic):Void {
+        if (data == null) return;
+        for (cKey in Reflect.fields(data)) {
+            var cObj:Dynamic = Reflect.field(data, cKey);
+            if (cObj == null || Std.isOfType(cObj, Array)) continue;
+            for (mKey in Reflect.fields(cObj)) {
+                var mObj:Dynamic = Reflect.field(cObj, mKey);
+                if (mObj == null) continue;
+                if (mObj.mode != null && mObj.skillUseMode == null) {
+                    mObj.skillUseMode = mObj.mode;
+                }
+                if (mObj.timeout != null && mObj.skillTimeout == null) {
+                    mObj.skillTimeout = mObj.timeout;
+                }
+                if (mObj.combo != null && (mObj.skills == null || !Std.isOfType(mObj.skills, Array) || (cast mObj.skills : Array<Dynamic>).length == 0)) {
+                    mObj.skills = SkillDslParser.parseCombo(Std.string(mObj.combo));
+                }
+            }
+        }
     }
 
     private static function backupCustomModes():Array<Dynamic> {
@@ -204,14 +228,39 @@ class CombatEngine {
             var inMemoryCustom:Array<Dynamic> = backupCustomModes();
 
             if (rawTxt != null && rawTxt.length > 0) {
-                _skillsData = com.aqwapi.utils.SkillDslParser.parse(rawTxt);
-                if (!silent) ApiLogger.info("Skills", "Loaded skills.txt successfully!");
+                var trimmed = StringTools.trim(rawTxt);
+                if (trimmed.charAt(0) == "{" || trimmed.charAt(0) == "[") {
+                    try {
+                        _skillsData = haxe.Json.parse(rawTxt);
+                    } catch (je:Dynamic) {
+                        ApiLogger.error("Skills", "skills.json parse error: " + je);
+                        _skillsData = {};
+                    }
+                } else {
+                    _skillsData = com.aqwapi.utils.SkillDslParser.parse(rawTxt);
+                }
+                compileSkillsData(_skillsData);
+                if (!silent) ApiLogger.info("Skills", "Loaded skills.json successfully!");
             } else {
                 _skillsData = {};
-                if (!silent) ApiLogger.warn("Skills", "skills.txt not found!");
+                if (!silent) ApiLogger.warn("Skills", "skills.json not found!");
             }
 
             if (_skillsData == null) _skillsData = {};
+
+            // Ensure Current default class section exists in _skillsData
+            if (!Reflect.hasField(_skillsData, "Current")) {
+                Reflect.setField(_skillsData, "Current", {
+                    Base: {
+                        skillUseMode: "WaitForCooldown",
+                        mode: "WaitForCooldown",
+                        skillTimeout: 100,
+                        timeout: 100,
+                        combo: "1 > 2 > 3 > 4",
+                        skills: SkillDslParser.parseCombo("1 > 2 > 3 > 4")
+                    }
+                });
+            }
 
             // Restore in-memory custom modes
             for (item in inMemoryCustom) {
@@ -223,9 +272,9 @@ class CombatEngine {
                 Reflect.setField(targetClass, item.modeName, item.data);
             }
 
-            var userSkillsTxt:String = UserSkillsManager.readUserSkills();
-            if (userSkillsTxt != null && userSkillsTxt.length > 0) {
-                mergeSkillsCustom(_skillsData, userSkillsTxt, "userSkills.txt", silent);
+            var userSkillsObj:Dynamic = UserSkillsManager.readUserSkillsObject();
+            if (userSkillsObj != null && Reflect.fields(userSkillsObj).length > 0) {
+                mergeSkillsCustomJson(_skillsData, userSkillsObj, silent);
             }
 
             UserSkillsManager.ensureStorageInitialized();
@@ -241,38 +290,36 @@ class CombatEngine {
                 }
             } catch (_:Dynamic) {}
             #end
-            if (!silent) ApiLogger.error("Skills", "skills.txt load error: " + msg);
+            if (!silent) ApiLogger.error("Skills", "skills load error: " + msg);
         }
     }
 
-    private static function mergeSkillsCustom(skillsData:Dynamic, customTxt:String, sourceName:String, silent:Bool):Void {
-        if (skillsData == null || customTxt == null || customTxt.length == 0) return;
-        var parsedCustom:Dynamic = com.aqwapi.utils.SkillDslParser.parse(customTxt);
-        if (parsedCustom != null) {
-            for (cKey in Reflect.fields(parsedCustom)) {
-                var targetKey:String = cKey;
-                var targetClass:Dynamic = Reflect.field(skillsData, cKey);
-                if (targetClass == null) {
-                    var cleanC:String = cleanClassName(cKey);
-                    for (existingKey in Reflect.fields(skillsData)) {
-                        if (existingKey.toLowerCase() == cKey.toLowerCase() || (cleanC != "" && cleanClassName(existingKey) == cleanC)) {
-                            targetKey = existingKey;
-                            targetClass = Reflect.field(skillsData, existingKey);
-                            break;
-                        }
+    private static function mergeSkillsCustomJson(skillsData:Dynamic, userObj:Dynamic, silent:Bool):Void {
+        if (skillsData == null || userObj == null) return;
+        compileSkillsData(userObj);
+        for (cKey in Reflect.fields(userObj)) {
+            var targetKey:String = cKey;
+            var targetClass:Dynamic = Reflect.field(skillsData, cKey);
+            if (targetClass == null) {
+                var cleanC:String = cleanClassName(cKey);
+                for (existingKey in Reflect.fields(skillsData)) {
+                    if (existingKey.toLowerCase() == cKey.toLowerCase() || (cleanC != "" && cleanClassName(existingKey) == cleanC)) {
+                        targetKey = existingKey;
+                        targetClass = Reflect.field(skillsData, existingKey);
+                        break;
                     }
                 }
-                if (targetClass == null) {
-                    targetClass = {};
-                    Reflect.setField(skillsData, targetKey, targetClass);
-                }
-                var srcClass:Dynamic = Reflect.field(parsedCustom, cKey);
-                for (mKey in Reflect.fields(srcClass)) {
-                    Reflect.setField(targetClass, mKey, Reflect.field(srcClass, mKey));
-                }
             }
-            if (!silent) ApiLogger.info("Skills", "Merged " + sourceName + " modes!");
+            if (targetClass == null) {
+                targetClass = {};
+                Reflect.setField(skillsData, targetKey, targetClass);
+            }
+            var srcClass:Dynamic = Reflect.field(userObj, cKey);
+            for (mKey in Reflect.fields(srcClass)) {
+                Reflect.setField(targetClass, mKey, Reflect.field(srcClass, mKey));
+            }
         }
+        if (!silent) ApiLogger.info("Skills", "Merged userSkills.json modes!");
     }
 
     private static function onTick(e:TimerEvent):Void {
@@ -384,8 +431,10 @@ class CombatEngine {
             if (className == "" && avatar.objData != null && avatar.objData.strClassName != null) {
                 className = Std.string(avatar.objData.strClassName);
             }
+            if (className == "") className = "Current";
         }
         var config:Dynamic = findClassConfig(className);
+        if (config == null) config = findClassConfig("Current");
 
         if (config == null) { runSimpleRotation(world, avatar); return; }
 
@@ -469,6 +518,12 @@ class CombatEngine {
         if (_lastLoggedMode != activeModeName) {
             _lastLoggedMode = activeModeName;
             ApiLogger.info("Combat", "Executing [" + className + " : " + activeModeName + "]");
+        }
+
+        if (modeConfig == null || modeConfig.skills == null || !Std.isOfType(modeConfig.skills, Array) || (cast modeConfig.skills : Array<Dynamic>).length == 0) {
+            if (modeConfig != null && modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
+                modeConfig.skills = com.aqwapi.utils.SkillDslParser.parseCombo(Std.string(modeConfig.combo));
+            }
         }
 
         if (modeConfig == null || modeConfig.skills == null || !Std.isOfType(modeConfig.skills, Array) || (cast modeConfig.skills : Array<Dynamic>).length == 0) {
@@ -841,8 +896,15 @@ class CombatEngine {
                             var isClass:Bool = false;
                             if (sTypeStr == "class" || it.bClass == 1 || it.bClass == true || it.bClass == "1") {
                                 isClass = true;
-                            } else if (it.sES != null && Std.string(it.sES).toLowerCase() == "ar" && sTypeStr != "armor") {
-                                if (findClassConfig(it.sName) != null) isClass = true;
+                            } else if (it.sES != null && Std.string(it.sES).toLowerCase() == "ar") {
+                                var sNameStr:String = (it.sName != null) ? Std.string(it.sName) : "";
+                                if (sNameStr != "") {
+                                    if (findClassConfig(sNameStr) != null) {
+                                        isClass = true;
+                                    } else if (it.bClass != null && it.bClass != 0 && it.bClass != "0") {
+                                        isClass = true;
+                                    }
+                                }
                             }
                             if (isClass && it.sName != null) {
                                 var s:String = Std.string(it.sName);
@@ -863,9 +925,22 @@ class CombatEngine {
         if (className.toLowerCase() == "current") {
             var cur:String = getCurrentClassName();
             if (cur != "" && cur.toLowerCase() != "current") {
-                return findClassConfig(cur);
+                var found = findClassConfig(cur);
+                if (found != null) return found;
             }
-            return null;
+            for (key in Reflect.fields(_skillsData)) {
+                if (key.toLowerCase() == "current") return Reflect.field(_skillsData, key);
+            }
+            return {
+                Base: {
+                    skillUseMode: "WaitForCooldown",
+                    mode: "WaitForCooldown",
+                    skillTimeout: 100,
+                    timeout: 100,
+                    combo: "1 > 2 > 3 > 4",
+                    skills: SkillDslParser.parseCombo("1 > 2 > 3 > 4")
+                }
+            };
         }
 
         var lower:String = className.toLowerCase();
@@ -903,17 +978,15 @@ class CombatEngine {
 
         // Also check UserSkillsManager if class was not found in _skillsData
         try {
-            var rawUser = UserSkillsManager.readUserSkills();
-            if (rawUser != null && rawUser.length > 0) {
-                var parsedUser:Dynamic = com.aqwapi.utils.SkillDslParser.parse(rawUser);
-                if (parsedUser != null) {
-                    for (cKey in Reflect.fields(parsedUser)) {
-                        if (cKey.toLowerCase() == lower || (cleanTarget != "" && cleanClassName(cKey) == cleanTarget)) {
-                            var customClassObj = Reflect.field(parsedUser, cKey);
-                            if (_skillsData == null) _skillsData = {};
-                            Reflect.setField(_skillsData, cKey, customClassObj);
-                            return customClassObj;
-                        }
+            var userObj = UserSkillsManager.readUserSkillsObject();
+            if (userObj != null) {
+                for (cKey in Reflect.fields(userObj)) {
+                    if (cKey.toLowerCase() == lower || (cleanTarget != "" && cleanClassName(cKey) == cleanTarget)) {
+                        var customClassObj = Reflect.field(userObj, cKey);
+                        compileSkillsData(userObj);
+                        if (_skillsData == null) _skillsData = {};
+                        Reflect.setField(_skillsData, cKey, customClassObj);
+                        return customClassObj;
                     }
                 }
             }
@@ -986,14 +1059,17 @@ class CombatEngine {
     }
 
     public static function getAvailableModes(className:String):Array<String> {
-        if (className == null || className == "" || className.toLowerCase() == "current") {
+        var resolvedClass = className;
+        if (resolvedClass == null || resolvedClass == "" || resolvedClass.toLowerCase() == "current") {
             var cur:String = getCurrentClassName();
             if (cur != "" && cur.toLowerCase() != "current") {
-                className = cur;
+                resolvedClass = cur;
+            } else {
+                resolvedClass = "Current";
             }
         }
         var modes:Array<String> = [];
-        var config:Dynamic = findClassConfig(className);
+        var config:Dynamic = findClassConfig(resolvedClass);
         if (config != null && !Std.isOfType(config, Array)) {
             for (mode in Reflect.fields(config)) {
                 if (mode != null && mode != "" && modes.indexOf(mode) == -1) {
@@ -1004,7 +1080,7 @@ class CombatEngine {
 
         // Always query UserSkillsManager to guarantee custom user modes are included
         try {
-            var userModes = UserSkillsManager.getUserModesForClass(className);
+            var userModes = UserSkillsManager.getUserModesForClass(resolvedClass);
             if (userModes != null) {
                 for (um in userModes) {
                     if (um != null && um != "" && modes.indexOf(um) == -1) {

@@ -43,10 +43,10 @@ class DefaultSkillsData {
     }
 
     public static macro function getSkillsConst():haxe.macro.Expr {
-        return com.aqwapi.utils.MacroAssets.loadAsset("skills.txt");
+        return com.aqwapi.utils.MacroAssets.loadAsset("skills.json");
     }
 
     public static macro function getUserSkillsConst():haxe.macro.Expr {
-        return com.aqwapi.utils.MacroAssets.loadAsset("userSkills.txt");
+        return com.aqwapi.utils.MacroAssets.loadAsset("userSkills.json");
     }
 }

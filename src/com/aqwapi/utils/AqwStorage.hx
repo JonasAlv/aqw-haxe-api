@@ -171,18 +171,18 @@ class AqwStorage {
             return readBinaryFile(pkg);
         });
 
-        // 2. skills.txt
-        ensureFile(dir, "skills.txt", function():Dynamic {
-            var pkg = resolvePackagedFile("skills.txt");
+        // 2. skills.json
+        ensureFile(dir, "skills.json", function():Dynamic {
+            var pkg = resolvePackagedFile("skills.json");
             var bytes = readBinaryFile(pkg);
             if (bytes != null) return bytes;
             var def = getDefaultSkillsResource();
             return (def != null && def.length > 0) ? def : null;
         });
 
-        // 3. userSkills.txt
-        ensureFile(dir, "userSkills.txt", function():Dynamic {
-            var pkg = resolvePackagedFile("userSkills.txt");
+        // 3. userSkills.json
+        ensureFile(dir, "userSkills.json", function():Dynamic {
+            var pkg = resolvePackagedFile("userSkills.json");
             var bytes = readBinaryFile(pkg);
             if (bytes != null) return bytes;
             var def = getDefaultUserSkillsResource();
@@ -218,10 +218,24 @@ class AqwStorage {
         try {
             var target = dir.resolvePath(fileName);
             if (target != null && target.exists) {
-                var size:Float = 0;
-                try { size = target.size; } catch (_:Dynamic) {}
-                if (fileName == "skills.txt" && size >= 25000) return;
-                else if (fileName != "skills.txt" && size > 0) return;
+                if (fileName == "userSkills.json" || fileName == "userSkills.txt") {
+                    var size:Float = 0;
+                    try { size = target.size; } catch (_:Dynamic) {}
+                    if (size > 0) return;
+                } else {
+                    var pkg = resolvePackagedFile(fileName);
+                    if (pkg != null && pkg.exists) {
+                        var pkgSize:Float = 0;
+                        var targetSize:Float = 0;
+                        try { pkgSize = pkg.size; } catch (_:Dynamic) {}
+                        try { targetSize = target.size; } catch (_:Dynamic) {}
+                        if (pkgSize > 0 && targetSize == pkgSize) return;
+                    } else {
+                        var size:Float = 0;
+                        try { size = target.size; } catch (_:Dynamic) {}
+                        if (size > 0) return;
+                    }
+                }
             }
 
             var data = getSourceData();

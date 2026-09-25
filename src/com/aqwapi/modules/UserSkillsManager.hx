@@ -5,201 +5,245 @@ import com.aqwapi.utils.AqwUtils;
 import com.aqwapi.utils.SkillDslParser;
 
 class UserSkillsManager {
-    private static var _userModesCache:Map<String, Array<String>> = null;
+    private static var _userSkillsCache:Dynamic = null;
 
     /**
-     * Ensures userSkills.txt is created on disk if not already present.
+     * Ensures userSkills.json is created on disk if not already present.
      */
     public static function ensureStorageInitialized():Void {
         com.aqwapi.utils.AqwStorage.ensureFiles();
     }
 
     /**
-     * Reads userSkills content from the unified data directory (or embedded default template).
+     * Reads userSkills object from userSkills.json (or fallback/migration from userSkills.txt).
      */
-    public static function readUserSkills():String {
+    public static function readUserSkillsObject():Dynamic {
+        if (_userSkillsCache != null) return _userSkillsCache;
+
+        var rawJson:String = null;
         try {
             com.aqwapi.utils.AqwStorage.ensureFiles();
-            var txt:String = com.aqwapi.utils.AqwStorage.readText("userSkills.txt");
-            if (txt != null && StringTools.trim(txt).length > 0) {
-                return txt;
-            }
+            rawJson = com.aqwapi.utils.AqwStorage.readText("userSkills.json");
         } catch (_:Dynamic) {}
 
-        // SharedObject backup
-        try {
-            var so:Dynamic = null;
-            #if flash
-            so = flash.net.SharedObject.getLocal("aqw_user_skills");
-            #else
-            var soClass = Type.resolveClass("flash.net.SharedObject");
-            if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills"]);
-            #end
-            if (so != null && so.data != null && so.data.content != null) {
-                var soTxt:String = Std.string(so.data.content);
-                if (soTxt != null && StringTools.trim(soTxt).length > 0) {
-                    try { com.aqwapi.utils.AqwStorage.writeText("userSkills.txt", soTxt); } catch (_:Dynamic) {}
-                    return soTxt;
+        // Fallback 1: SharedObject
+        if (rawJson == null || StringTools.trim(rawJson).length == 0) {
+            try {
+                var so:Dynamic = null;
+                #if flash
+                so = flash.net.SharedObject.getLocal("aqw_user_skills_json");
+                #else
+                var soClass = Type.resolveClass("flash.net.SharedObject");
+                if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills_json"]);
+                #end
+                if (so != null && so.data != null && so.data.content != null) {
+                    var soTxt:String = Std.string(so.data.content);
+                    if (soTxt != null && StringTools.trim(soTxt).length > 0) {
+                        rawJson = soTxt;
+                    }
                 }
-            }
-        } catch (_:Dynamic) {}
+            } catch (_:Dynamic) {}
+        }
 
-        return DefaultSkillsData.getDefaultUserSkills();
+        // Fallback 2: Migration from legacy userSkills.txt
+        if (rawJson == null || StringTools.trim(rawJson).length == 0) {
+            try {
+                var oldTxt = com.aqwapi.utils.AqwStorage.readText("userSkills.txt");
+                if (oldTxt != null && StringTools.trim(oldTxt).length > 0) {
+                    var parsedOld = SkillDslParser.parse(oldTxt);
+                    if (parsedOld != null && Reflect.fields(parsedOld).length > 0) {
+                        writeUserSkillsObject(parsedOld);
+                        return parsedOld;
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        // Fallback 3: Embedded default user skills JSON
+        if (rawJson == null || StringTools.trim(rawJson).length == 0) {
+            rawJson = DefaultSkillsData.getDefaultUserSkills();
+        }
+
+        if (rawJson != null && StringTools.trim(rawJson).length > 0) {
+            try {
+                _userSkillsCache = haxe.Json.parse(rawJson);
+                return _userSkillsCache;
+            } catch (e:Dynamic) {
+                ApiLogger.error("UserSkills", "JSON parse error: " + e);
+            }
+        }
+
+        _userSkillsCache = {};
+        return _userSkillsCache;
     }
 
     /**
-     * Writes userSkills to the unified data directory.
+     * Reads userSkills as JSON string (backwards compatibility).
      */
-    public static function writeUserSkills(content:String):Bool {
+    public static function readUserSkills():String {
+        var obj = readUserSkillsObject();
+        try {
+            return haxe.Json.stringify(obj, null, "  ");
+        } catch (_:Dynamic) {}
+        return "{}";
+    }
+
+    /**
+     * Writes userSkills object to userSkills.json and SharedObject.
+     */
+    public static function writeUserSkillsObject(data:Dynamic):Bool {
+        if (data == null) data = {};
+        _userSkillsCache = data;
+
+        var jsonStr:String = "";
+        try {
+            jsonStr = haxe.Json.stringify(data, null, "  ");
+        } catch (je:Dynamic) {
+            ApiLogger.error("UserSkills", "JSON stringify error: " + je);
+            return false;
+        }
+
         var ok:Bool = false;
         try {
             com.aqwapi.utils.AqwStorage.ensureFiles();
-            ok = com.aqwapi.utils.AqwStorage.writeText("userSkills.txt", content);
+            ok = com.aqwapi.utils.AqwStorage.writeText("userSkills.json", jsonStr);
             if (ok) {
-                ApiLogger.info("UserSkills", "Saved userSkills.txt to data folder");
+                ApiLogger.info("UserSkills", "Saved userSkills.json to data folder");
             } else {
-                ApiLogger.warn("UserSkills", "Failed to save userSkills.txt to data folder");
+                ApiLogger.warn("UserSkills", "Failed to save userSkills.json to data folder");
             }
         } catch (e:Dynamic) {
             ApiLogger.warn("UserSkills", "Storage write error: " + e);
         }
 
-        // SharedObject backup (guaranteed on all platforms, zero permissions needed)
+        // SharedObject backup
         try {
             var so:Dynamic = null;
             #if flash
-            so = flash.net.SharedObject.getLocal("aqw_user_skills");
+            so = flash.net.SharedObject.getLocal("aqw_user_skills_json");
             #else
             var soClass = Type.resolveClass("flash.net.SharedObject");
-            if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills"]);
+            if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills_json"]);
             #end
             if (so != null && so.data != null) {
-                so.data.content = content;
+                so.data.content = jsonStr;
                 try { so.flush(); } catch (_:Dynamic) {}
                 ok = true;
             }
         } catch (_:Dynamic) {}
 
-        _userModesCache = null;
         return ok;
     }
 
     /**
-     * Checks if a specific mode for a class was user-created in userSkills.txt.
+     * Writes userSkills JSON string to storage.
+     */
+    public static function writeUserSkills(content:String):Bool {
+        if (content == null || content == "") return false;
+        try {
+            var parsed = haxe.Json.parse(content);
+            return writeUserSkillsObject(parsed);
+        } catch (e:Dynamic) {
+            ApiLogger.error("UserSkills", "Invalid JSON in writeUserSkills: " + e);
+            return false;
+        }
+    }
+
+    /**
+     * Checks if a specific mode for a class was user-created in userSkills.json.
      */
     public static function isUserMode(className:String, modeName:String):Bool {
-        ensureCache();
-        if (_userModesCache == null || className == null || modeName == null) return false;
+        if (className == null || modeName == null) return false;
+        var data = readUserSkillsObject();
+        if (data == null) return false;
+
         var cleanClass:String = CombatEngine.cleanClassName(className);
-        var modes = _userModesCache.get(cleanClass);
-        if (modes != null && modes.indexOf(modeName) != -1) return true;
-        modes = _userModesCache.get(className);
-        if (modes != null && modes.indexOf(modeName) != -1) return true;
-        modes = _userModesCache.get(className.toLowerCase());
-        return modes != null && modes.indexOf(modeName) != -1;
+        for (cKey in Reflect.fields(data)) {
+            if (cKey.toLowerCase() == className.toLowerCase() || (cleanClass != "" && CombatEngine.cleanClassName(cKey) == cleanClass)) {
+                var cObj:Dynamic = Reflect.field(data, cKey);
+                if (cObj != null && !Std.isOfType(cObj, Array)) {
+                    for (mKey in Reflect.fields(cObj)) {
+                        if (mKey.toLowerCase() == modeName.toLowerCase()) return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
      * Gets all user-created modes for a given class.
      */
     public static function getUserModesForClass(className:String):Array<String> {
-        ensureCache();
-        if (_userModesCache == null || className == null || className == "") return [];
+        if (className == null || className == "") return [];
+        var data = readUserSkillsObject();
+        if (data == null) return [];
+
+        var modes:Array<String> = [];
         var cleanClass = CombatEngine.cleanClassName(className);
-        var modes = _userModesCache.get(cleanClass);
-        if (modes != null && modes.length > 0) return modes.copy();
-        modes = _userModesCache.get(className);
-        if (modes != null && modes.length > 0) return modes.copy();
-        modes = _userModesCache.get(className.toLowerCase());
-        if (modes != null && modes.length > 0) return modes.copy();
-        return [];
+
+        for (cKey in Reflect.fields(data)) {
+            if (cKey.toLowerCase() == className.toLowerCase() || (cleanClass != "" && CombatEngine.cleanClassName(cKey) == cleanClass)) {
+                var cObj:Dynamic = Reflect.field(data, cKey);
+                if (cObj != null && !Std.isOfType(cObj, Array)) {
+                    for (mKey in Reflect.fields(cObj)) {
+                        if (mKey != null && mKey != "" && modes.indexOf(mKey) == -1) {
+                            modes.push(mKey);
+                        }
+                    }
+                }
+            }
+        }
+        return modes;
     }
 
     /**
-     * Saves or updates a mode in userSkills.txt and registers it in memory.
+     * Saves or updates a mode in userSkills.json and registers it in memory.
      */
     public static function saveMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
 
         try {
-            var raw = readUserSkills();
-            var sections = parseRawSections(raw);
+            var data:Dynamic = readUserSkillsObject();
+            if (data == null) data = {};
 
-            // Normalize section key
             var cleanTargetClass = CombatEngine.cleanClassName(className);
-            var foundSection:Dynamic = null;
+            var targetClassKey = className;
 
-            for (s in sections) {
-                if (s != null && s.className != null && s.modeName != null &&
-                    CombatEngine.cleanClassName(s.className) == cleanTargetClass &&
-                    s.modeName.toLowerCase() == modeName.toLowerCase()) {
-                    foundSection = s;
+            for (cKey in Reflect.fields(data)) {
+                if (cKey.toLowerCase() == className.toLowerCase() || (cleanTargetClass != "" && CombatEngine.cleanClassName(cKey) == cleanTargetClass)) {
+                    targetClassKey = cKey;
                     break;
                 }
+            }
+
+            var classObj:Dynamic = Reflect.field(data, targetClassKey);
+            if (classObj == null) {
+                classObj = {};
+                Reflect.setField(data, targetClassKey, classObj);
             }
 
             var effectiveMode = (skillUseMode != null && skillUseMode != "") ? skillUseMode : "WaitForCooldown";
             var effectiveTimeout = timeout > 0 ? timeout : 100;
             var effectiveCombo = (combo != null) ? combo : "";
 
-            if (foundSection != null) {
-                foundSection.className = className;
-                foundSection.modeName = modeName;
-                foundSection.mode = effectiveMode;
-                foundSection.timeout = effectiveTimeout;
-                foundSection.combo = effectiveCombo;
-            } else {
-                sections.push({
-                    className: className,
-                    modeName: modeName,
-                    mode: effectiveMode,
-                    timeout: effectiveTimeout,
-                    combo: effectiveCombo
-                });
-            }
+            var modeEntry:Dynamic = {
+                mode: effectiveMode,
+                timeout: effectiveTimeout,
+                combo: effectiveCombo
+            };
+            Reflect.setField(classObj, modeName, modeEntry);
 
-            var rebuiltText = rebuildSectionsText(sections);
-            var writeOk:Bool = false;
-            try {
-                writeOk = writeUserSkills(rebuiltText);
-            } catch (we:Dynamic) {
-                ApiLogger.error("UserSkills", "Error in writeUserSkills: " + we);
-            }
+            writeUserSkillsObject(data);
 
             // Instant in-memory registration into CombatEngine
             try {
-                CombatEngine.registerCustomMode(className, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
+                CombatEngine.registerCustomMode(targetClassKey, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
+                if (targetClassKey != className) {
+                    CombatEngine.registerCustomMode(className, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
+                }
             } catch (ce:Dynamic) {
                 ApiLogger.error("UserSkills", "Error registering custom mode: " + ce);
-            }
-
-            try {
-                ensureCache();
-                if (_userModesCache != null) {
-                    var cleanC = CombatEngine.cleanClassName(className);
-                    var mList = _userModesCache.get(cleanC);
-                    if (mList == null) {
-                        mList = [];
-                        _userModesCache.set(cleanC, mList);
-                    }
-                    if (mList.indexOf(modeName) == -1) mList.push(modeName);
-
-                    var mListRaw = _userModesCache.get(className);
-                    if (mListRaw == null) {
-                        mListRaw = [];
-                        _userModesCache.set(className, mListRaw);
-                    }
-                    if (mListRaw.indexOf(modeName) == -1) mListRaw.push(modeName);
-
-                    var mListLower = _userModesCache.get(className.toLowerCase());
-                    if (mListLower == null) {
-                        mListLower = [];
-                        _userModesCache.set(className.toLowerCase(), mListLower);
-                    }
-                    if (mListLower.indexOf(modeName) == -1) mListLower.push(modeName);
-                }
-            } catch (ue:Dynamic) {
-                ApiLogger.error("UserSkills", "Error updating modes cache: " + ue);
             }
 
             return true;
@@ -210,48 +254,37 @@ class UserSkillsManager {
     }
 
     /**
-     * Deletes a mode from userSkills.txt and unregisters it from memory.
+     * Deletes a mode from userSkills.json and unregisters it from memory.
      */
     public static function deleteMode(className:String, modeName:String):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
 
         try {
-            var raw = readUserSkills();
-            var sections = parseRawSections(raw);
+            var data:Dynamic = readUserSkillsObject();
+            if (data == null) return false;
 
             var cleanTargetClass = CombatEngine.cleanClassName(className);
-            var remaining:Array<Dynamic> = [];
             var removed:Bool = false;
 
-            for (s in sections) {
-                if (s != null && s.className != null && s.modeName != null &&
-                    CombatEngine.cleanClassName(s.className) == cleanTargetClass &&
-                    s.modeName.toLowerCase() == modeName.toLowerCase()) {
-                    removed = true;
-                    continue;
+            for (cKey in Reflect.fields(data)) {
+                if (cKey.toLowerCase() == className.toLowerCase() || (cleanTargetClass != "" && CombatEngine.cleanClassName(cKey) == cleanTargetClass)) {
+                    var classObj:Dynamic = Reflect.field(data, cKey);
+                    if (classObj != null) {
+                        for (mKey in Reflect.fields(classObj)) {
+                            if (mKey.toLowerCase() == modeName.toLowerCase()) {
+                                Reflect.deleteField(classObj, mKey);
+                                removed = true;
+                                break;
+                            }
+                        }
+                    }
                 }
-                remaining.push(s);
             }
 
             if (removed) {
-                var rebuiltText = rebuildSectionsText(remaining);
-                try {
-                    writeUserSkills(rebuiltText);
-                } catch (_:Dynamic) {}
+                writeUserSkillsObject(data);
                 try {
                     CombatEngine.unregisterCustomMode(className, modeName);
-                } catch (_:Dynamic) {}
-                try {
-                    ensureCache();
-                    if (_userModesCache != null) {
-                        var cleanC = CombatEngine.cleanClassName(className);
-                        var mList = _userModesCache.get(cleanC);
-                        if (mList != null) mList.remove(modeName);
-                        var mListRaw = _userModesCache.get(className);
-                        if (mListRaw != null) mListRaw.remove(modeName);
-                        var mListLower = _userModesCache.get(className.toLowerCase());
-                        if (mListLower != null) mListLower.remove(modeName);
-                    }
                 } catch (_:Dynamic) {}
                 return true;
             }
@@ -278,47 +311,38 @@ class UserSkillsManager {
             }
         }
 
-        // 1. Direct check in UserSkillsManager sections (guarantees instant retrieval for user modes)
+        // 1. Direct check in userSkills.json
         try {
-            var raw = readUserSkills();
-            var sections = parseRawSections(raw);
-            var cleanTarget = CombatEngine.cleanClassName(resolvedClass);
-            var currentFallbackSection:Dynamic = null;
-
-            for (s in sections) {
-                var cleanS = CombatEngine.cleanClassName(s.className);
-                if (s.modeName != null && s.modeName.toLowerCase() == modeName.toLowerCase()) {
-                    if (cleanS == cleanTarget || s.className.toLowerCase() == resolvedClass.toLowerCase()) {
-                        var mVal:String = (s.mode != null && s.mode != "") ? s.mode : ((s.execMode != null && s.execMode != "") ? s.execMode : "WaitForCooldown");
-                        var toVal:Int = (s.timeout != null && s.timeout > 0) ? s.timeout : 100;
-                        var cVal:String = (s.combo != null) ? s.combo : "";
-                        return {
-                            skillUseMode: mVal,
-                            timeout: toVal,
-                            combo: cVal,
-                            isUser: true
-                        };
-                    } else if (s.className.toLowerCase() == "current") {
-                        currentFallbackSection = s;
+            var data:Dynamic = readUserSkillsObject();
+            if (data != null) {
+                var cleanTarget = CombatEngine.cleanClassName(resolvedClass);
+                for (cKey in Reflect.fields(data)) {
+                    if (cKey.toLowerCase() == resolvedClass.toLowerCase() || (cleanTarget != "" && CombatEngine.cleanClassName(cKey) == cleanTarget)) {
+                        var classObj:Dynamic = Reflect.field(data, cKey);
+                        if (classObj != null) {
+                            for (mKey in Reflect.fields(classObj)) {
+                                if (mKey.toLowerCase() == modeName.toLowerCase()) {
+                                    var mObj:Dynamic = Reflect.field(classObj, mKey);
+                                    if (mObj != null) {
+                                        var mVal:String = (mObj.mode != null && mObj.mode != "") ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown");
+                                        var toVal:Int = (mObj.timeout != null) ? AqwUtils.parseInt(mObj.timeout, 100) : (mObj.skillTimeout != null ? AqwUtils.parseInt(mObj.skillTimeout, 100) : 100);
+                                        var cVal:String = (mObj.combo != null) ? Std.string(mObj.combo) : "";
+                                        return {
+                                            skillUseMode: mVal,
+                                            timeout: toVal,
+                                            combo: cVal,
+                                            isUser: true
+                                        };
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-
-            if (currentFallbackSection != null) {
-                var s = currentFallbackSection;
-                var mVal:String = (s.mode != null && s.mode != "") ? s.mode : ((s.execMode != null && s.execMode != "") ? s.execMode : "WaitForCooldown");
-                var toVal:Int = (s.timeout != null && s.timeout > 0) ? s.timeout : 100;
-                var cVal:String = (s.combo != null) ? s.combo : "";
-                return {
-                    skillUseMode: mVal,
-                    timeout: toVal,
-                    combo: cVal,
-                    isUser: true
-                };
-            }
         } catch (_:Dynamic) {}
 
-        // 2. Check CombatEngine _skillsData (bundled modes)
+        // 2. Check CombatEngine _skillsData (bundled modes from skills.json)
         var classObj = CombatEngine.findClassConfig(resolvedClass);
         if (classObj == null && resolvedClass.toLowerCase() != "current") {
             classObj = CombatEngine.findClassConfig("Current");
@@ -334,8 +358,8 @@ class UserSkillsManager {
                 }
             }
             if (modeObj != null) {
-                var modeType:String = (modeObj.skillUseMode != null) ? Std.string(modeObj.skillUseMode) : "WaitForCooldown";
-                var timeout:Int = (modeObj.skillTimeout != null) ? AqwUtils.parseInt(modeObj.skillTimeout, 100) : 100;
+                var modeType:String = (modeObj.mode != null) ? Std.string(modeObj.mode) : ((modeObj.skillUseMode != null) ? Std.string(modeObj.skillUseMode) : "WaitForCooldown");
+                var timeout:Int = (modeObj.timeout != null) ? AqwUtils.parseInt(modeObj.timeout, 100) : ((modeObj.skillTimeout != null) ? AqwUtils.parseInt(modeObj.skillTimeout, 100) : 100);
                 var comboStr:String = "";
                 if (modeObj.combo != null && Std.string(modeObj.combo) != "") {
                     comboStr = Std.string(modeObj.combo);
@@ -352,107 +376,5 @@ class UserSkillsManager {
         }
 
         return null;
-    }
-
-    private static function ensureCache():Void {
-        if (_userModesCache != null) return;
-        _userModesCache = new Map<String, Array<String>>();
-        var raw = readUserSkills();
-        var sections = parseRawSections(raw);
-        for (s in sections) {
-            if (s == null || s.className == null || s.modeName == null || s.modeName == "") continue;
-            var cClean = CombatEngine.cleanClassName(s.className);
-            var list = _userModesCache.get(cClean);
-            if (list == null) {
-                list = [];
-                _userModesCache.set(cClean, list);
-            }
-            if (list.indexOf(s.modeName) == -1) list.push(s.modeName);
-
-            var listRaw = _userModesCache.get(s.className);
-            if (listRaw == null) {
-                listRaw = [];
-                _userModesCache.set(s.className, listRaw);
-            }
-            if (listRaw.indexOf(s.modeName) == -1) listRaw.push(s.modeName);
-
-            var listLower = _userModesCache.get(s.className.toLowerCase());
-            if (listLower == null) {
-                listLower = [];
-                _userModesCache.set(s.className.toLowerCase(), listLower);
-            }
-            if (listLower.indexOf(s.modeName) == -1) listLower.push(s.modeName);
-        }
-    }
-
-    private static function parseRawSections(txt:String):Array<Dynamic> {
-        var sections:Array<Dynamic> = [];
-        if (txt == null || txt.length == 0) return sections;
-
-        var current:Dynamic = null;
-        var lines:Array<String> = txt.split("\n");
-
-        for (rawLine in lines) {
-            var line = StringTools.trim(rawLine);
-            if (line.length == 0 || StringTools.startsWith(line, "#") || StringTools.startsWith(line, "//")) continue;
-
-            if (StringTools.startsWith(line, "[") && StringTools.endsWith(line, "]")) {
-                var inner = line.substring(1, line.length - 1);
-                var colonIdx = inner.indexOf(":");
-                var cName = "";
-                var mName = "Base";
-                if (colonIdx != -1) {
-                    cName = StringTools.trim(inner.substring(0, colonIdx));
-                    mName = StringTools.trim(inner.substring(colonIdx + 1));
-                } else {
-                    cName = StringTools.trim(inner);
-                }
-
-                current = {
-                    className: cName,
-                    modeName: mName,
-                    mode: "WaitForCooldown",
-                    timeout: 100,
-                    combo: ""
-                };
-                sections.push(current);
-                continue;
-            }
-
-            if (current == null) continue;
-
-            var eqIdx = line.indexOf("=");
-            if (eqIdx == -1) continue;
-
-            var key = StringTools.trim(line.substring(0, eqIdx)).toLowerCase();
-            var val = StringTools.trim(line.substring(eqIdx + 1));
-
-            switch (key) {
-                case "mode", "skillusemode":
-                    current.mode = (val.toLowerCase() == "useifavailable" || val.toLowerCase() == "priority") ? "UseIfAvailable" : "WaitForCooldown";
-                case "timeout", "skilltimeout":
-                    current.timeout = AqwUtils.parseInt(val, 100);
-                case "combo", "skills", "rotation":
-                    current.combo = val;
-            }
-        }
-
-        return sections;
-    }
-
-    private static function rebuildSectionsText(sections:Array<Dynamic>):String {
-        var buf:StringBuf = new StringBuf();
-        buf.add("# ==============================================================\n");
-        buf.add("# User Custom Skills & Rotations (userSkills.txt)\n");
-        buf.add("# ==============================================================\n\n");
-
-        for (s in sections) {
-            buf.add("[" + s.className + " : " + s.modeName + "]\n");
-            buf.add("mode = " + s.mode + "\n");
-            buf.add("timeout = " + s.timeout + "\n");
-            buf.add("combo = " + s.combo + "\n\n");
-        }
-
-        return buf.toString();
     }
 }
