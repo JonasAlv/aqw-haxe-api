@@ -158,7 +158,7 @@ class MapManager {
     @:getter(usePrivateRoom)
     public function get_usePrivateRoom_prop():Bool { return _usePrivateRoom; }
     @:setter(usePrivateRoom)
-    public function set_usePrivateRoom_prop(v:Bool):Void { _usePrivateRoom = v; }
+    public function set_usePrivateRoom_prop(v:Bool):Bool { _usePrivateRoom = v; return v; }
     public function get_usePrivateRoom():Bool { return _usePrivateRoom; }
     public function set_usePrivateRoom(v:Bool):Bool { _usePrivateRoom = v; return v; }
 
@@ -166,7 +166,7 @@ class MapManager {
     @:getter(privateRoomNumber)
     public function get_privateRoomNumber_prop():Int { return _privateRoomNumber; }
     @:setter(privateRoomNumber)
-    public function set_privateRoomNumber_prop(v:Int):Void { _privateRoomNumber = v; }
+    public function set_privateRoomNumber_prop(v:Int):Int { _privateRoomNumber = v; return v; }
     public function get_privateRoomNumber():Int { return _privateRoomNumber; }
     public function set_privateRoomNumber(v:Int):Int { _privateRoomNumber = v; return v; }
 
@@ -174,7 +174,7 @@ class MapManager {
     @:getter(autoDeathSpawn)
     public function get_autoDeathSpawn_prop():Bool { return _autoDeathSpawn; }
     @:setter(autoDeathSpawn)
-    public function set_autoDeathSpawn_prop(v:Bool):Void { _autoDeathSpawn = v; if (v) checkAutoDeathSpawn(); }
+    public function set_autoDeathSpawn_prop(v:Bool):Bool { _autoDeathSpawn = v; if (v) checkAutoDeathSpawn(); return v; }
     public function get_autoDeathSpawn():Bool { return _autoDeathSpawn; }
     public function set_autoDeathSpawn(v:Bool):Bool { _autoDeathSpawn = v; if (v) checkAutoDeathSpawn(); return v; }
 }

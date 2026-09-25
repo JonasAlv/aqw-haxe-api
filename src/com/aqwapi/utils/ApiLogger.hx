@@ -63,23 +63,22 @@ class ApiLogger {
         try {
             var fileCls:Dynamic = untyped __global__["flash.filesystem.File"];
             var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
-            if (fileCls == null || fsCls == null) return null;
+            var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
+            if (fileCls == null || fsCls == null || fmCls == null) return null;
 
             // Priority 1: applicationStorageDirectory/bot.log (guaranteed writable on all AIR desktop/mobile targets)
             try {
                 if (fileCls.applicationStorageDirectory != null) {
                     var candidate = fileCls.applicationStorageDirectory.resolvePath("bot.log");
-                    var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null && Reflect.field(fs, "open") != null) {
-                        fs.open(candidate, "append");
-                        fs.writeUTFBytes("");
-                        fs.close();
-                        _logFile = candidate;
-                        flash.Lib.trace("[ApiLogger] Logging to appStorage file: " + candidate.nativePath);
-                        return _logFile;
-                    }
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(candidate, fmCls.APPEND);
+                    fs.writeUTFBytes("");
+                    fs.close();
+                    _logFile = candidate;
+                    flash.Lib.trace("[ApiLogger] Logging to appStorage file: " + candidate.nativePath);
+                    return _logFile;
                 }
-            } catch (_:Dynamic) {}
+            } catch (e:Dynamic) {}
 
             // Priority 2: haxe-workspace/bot.log (applicationDirectory.parent.parent)
             try {
@@ -87,34 +86,30 @@ class ApiLogger {
                     fileCls.applicationDirectory.parent != null && 
                     fileCls.applicationDirectory.parent.parent != null) {
                     var candidate = fileCls.applicationDirectory.parent.parent.resolvePath("bot.log");
-                    var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null && Reflect.field(fs, "open") != null) {
-                        fs.open(candidate, "append");
-                        fs.writeUTFBytes("");
-                        fs.close();
-                        _logFile = candidate;
-                        flash.Lib.trace("[ApiLogger] Logging to workspace file: " + candidate.nativePath);
-                        return _logFile;
-                    }
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(candidate, fmCls.APPEND);
+                    fs.writeUTFBytes("");
+                    fs.close();
+                    _logFile = candidate;
+                    flash.Lib.trace("[ApiLogger] Logging to workspace file: " + candidate.nativePath);
+                    return _logFile;
                 }
-            } catch (_:Dynamic) {}
+            } catch (e:Dynamic) {}
 
             // Priority 3: userDirectory/bot.log
             try {
                 if (fileCls.userDirectory != null) {
                     var candidate = fileCls.userDirectory.resolvePath("bot.log");
-                    var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null && Reflect.field(fs, "open") != null) {
-                        fs.open(candidate, "append");
-                        fs.writeUTFBytes("");
-                        fs.close();
-                        _logFile = candidate;
-                        flash.Lib.trace("[ApiLogger] Logging to userDir file: " + candidate.nativePath);
-                        return _logFile;
-                    }
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(candidate, fmCls.APPEND);
+                    fs.writeUTFBytes("");
+                    fs.close();
+                    _logFile = candidate;
+                    flash.Lib.trace("[ApiLogger] Logging to userDir file: " + candidate.nativePath);
+                    return _logFile;
                 }
-            } catch (_:Dynamic) {}
-        } catch (_:Dynamic) {}
+            } catch (e:Dynamic) {}
+        } catch (e:Dynamic) {}
         #end
 
         return null;
@@ -131,6 +126,7 @@ class ApiLogger {
             default: "LOG";
         };
 
+        var formatted:String = "[AqwApi:" + tag + "] " + message;
         var formatted:String = "[AqwApi:" + tag + ":" + levelStr + "] " + message;
 
         if (printToConsole) {
@@ -151,17 +147,17 @@ class ApiLogger {
                 if (f != null) {
                     #if flash
                     var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
-                    if (fsCls != null) {
-                        var fs:Dynamic = Type.createInstance(fsCls, []);
-                        if (fs != null && Reflect.field(fs, "open") != null) {
-                            fs.open(f, "append");
-                            fs.writeUTFBytes(formatted + "\n");
-                            fs.close();
-                        }
-                    }
+                    var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(f, fmCls.APPEND);
+                    fs.writeUTFBytes(formatted + "\n");
+                    fs.close();
                     #end
                 }
-            } catch (_:Dynamic) {}
+            } catch (e:Dynamic) {
+                _logFileInitialized = false;
+                _logFile = null;
+            }
         }
 
         if (printToChat && msgLevel >= chatMinLevel) {
@@ -182,13 +178,12 @@ class ApiLogger {
             if (f != null) {
                 #if flash
                 var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
-                if (fsCls != null) {
-                    var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null && Reflect.field(fs, "open") != null) {
-                        fs.open(f, "write");
-                        fs.writeUTFBytes("");
-                        fs.close();
-                    }
+                var fmCls:Dynamic = untyped __global__["flash.filesystem.FileMode"];
+                if (fsCls != null && fmCls != null) {
+                    var fs = Type.createInstance(fsCls, []);
+                    fs.open(f, fmCls.WRITE);
+                    fs.writeUTFBytes("");
+                    fs.close();
                 }
                 #end
             }

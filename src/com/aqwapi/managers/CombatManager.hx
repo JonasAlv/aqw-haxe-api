@@ -225,7 +225,7 @@ class CombatManager {
     @:getter(mode)
     public function get_mode_prop():String { return CombatEngine.skillMode; }
     @:setter(mode)
-    public function set_mode_prop(v:String):Void { CombatEngine.skillMode = v; }
+    public function set_mode_prop(v:String):String { CombatEngine.skillMode = v; return v; }
     public function get_mode():String { return CombatEngine.skillMode; }
     public function set_mode(v:String):String { CombatEngine.skillMode = v; return v; }
 
@@ -233,7 +233,7 @@ class CombatManager {
     @:getter(farmClass)
     public function get_farmClass_prop():String { return CombatEngine.farmClass; }
     @:setter(farmClass)
-    public function set_farmClass_prop(v:String):Void { CombatEngine.farmClass = v; }
+    public function set_farmClass_prop(v:String):String { CombatEngine.farmClass = v; return v; }
     public function get_farmClass():String { return CombatEngine.farmClass; }
     public function set_farmClass(v:String):String { CombatEngine.farmClass = v; return v; }
 
@@ -241,7 +241,7 @@ class CombatManager {
     @:getter(farmMode)
     public function get_farmMode_prop():String { return CombatEngine.farmMode; }
     @:setter(farmMode)
-    public function set_farmMode_prop(v:String):Void { CombatEngine.farmMode = v; }
+    public function set_farmMode_prop(v:String):String { CombatEngine.farmMode = v; return v; }
     public function get_farmMode():String { return CombatEngine.farmMode; }
     public function set_farmMode(v:String):String { CombatEngine.farmMode = v; return v; }
 
@@ -249,7 +249,7 @@ class CombatManager {
     @:getter(soloClass)
     public function get_soloClass_prop():String { return CombatEngine.soloClass; }
     @:setter(soloClass)
-    public function set_soloClass_prop(v:String):Void { CombatEngine.soloClass = v; }
+    public function set_soloClass_prop(v:String):String { CombatEngine.soloClass = v; return v; }
     public function get_soloClass():String { return CombatEngine.soloClass; }
     public function set_soloClass(v:String):String { CombatEngine.soloClass = v; return v; }
 
@@ -257,7 +257,7 @@ class CombatManager {
     @:getter(soloMode)
     public function get_soloMode_prop():String { return CombatEngine.soloMode; }
     @:setter(soloMode)
-    public function set_soloMode_prop(v:String):Void { CombatEngine.soloMode = v; }
+    public function set_soloMode_prop(v:String):String { CombatEngine.soloMode = v; return v; }
     public function get_soloMode():String { return CombatEngine.soloMode; }
     public function set_soloMode(v:String):String { CombatEngine.soloMode = v; return v; }
 
@@ -265,7 +265,7 @@ class CombatManager {
     @:getter(bossClass)
     public function get_bossClass_prop():String { return CombatEngine.bossClass; }
     @:setter(bossClass)
-    public function set_bossClass_prop(v:String):Void { CombatEngine.bossClass = v; }
+    public function set_bossClass_prop(v:String):String { CombatEngine.bossClass = v; return v; }
     public function get_bossClass():String { return CombatEngine.bossClass; }
     public function set_bossClass(v:String):String { CombatEngine.bossClass = v; return v; }
 
@@ -273,7 +273,7 @@ class CombatManager {
     @:getter(bossMode)
     public function get_bossMode_prop():String { return CombatEngine.bossMode; }
     @:setter(bossMode)
-    public function set_bossMode_prop(v:String):Void { CombatEngine.bossMode = v; }
+    public function set_bossMode_prop(v:String):String { CombatEngine.bossMode = v; return v; }
     public function get_bossMode():String { return CombatEngine.bossMode; }
     public function set_bossMode(v:String):String { CombatEngine.bossMode = v; return v; }
 
@@ -281,7 +281,7 @@ class CombatManager {
     @:getter(dodgeClass)
     public function get_dodgeClass_prop():String { return CombatEngine.dodgeClass; }
     @:setter(dodgeClass)
-    public function set_dodgeClass_prop(v:String):Void { CombatEngine.dodgeClass = v; }
+    public function set_dodgeClass_prop(v:String):String { CombatEngine.dodgeClass = v; return v; }
     public function get_dodgeClass():String { return CombatEngine.dodgeClass; }
     public function set_dodgeClass(v:String):String { CombatEngine.dodgeClass = v; return v; }
 
@@ -289,7 +289,7 @@ class CombatManager {
     @:getter(dodgeMode)
     public function get_dodgeMode_prop():String { return CombatEngine.dodgeMode; }
     @:setter(dodgeMode)
-    public function set_dodgeMode_prop(v:String):Void { CombatEngine.dodgeMode = v; }
+    public function set_dodgeMode_prop(v:String):String { CombatEngine.dodgeMode = v; return v; }
     public function get_dodgeMode():String { return CombatEngine.dodgeMode; }
     public function set_dodgeMode(v:String):String { CombatEngine.dodgeMode = v; return v; }
 
@@ -297,7 +297,7 @@ class CombatManager {
     @:getter(infiniteRange)
     public function get_infiniteRange_prop():Bool { return _infiniteRange; }
     @:setter(infiniteRange)
-    public function set_infiniteRange_prop(v:Bool):Void { setInfiniteRange(v); }
+    public function set_infiniteRange_prop(v:Bool):Bool { setInfiniteRange(v); return v; }
     public function get_infiniteRange():Bool { return _infiniteRange; }
     public function set_infiniteRange(v:Bool):Bool { setInfiniteRange(v); return v; }
 
