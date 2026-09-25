@@ -342,14 +342,17 @@ class AqwStorage {
             var fsCls:Dynamic = getFileStreamClass();
             if (fsCls == null) return false;
             var target = dir.resolvePath(clean);
+            if (target == null) return false;
             if (target.parent != null && !target.parent.exists) {
                 try { target.parent.createDirectory(); } catch (_:Dynamic) {}
             }
             var stream:Dynamic = Type.createInstance(fsCls, []);
-            stream.open(target, "write");
-            stream.writeUTFBytes(content);
-            stream.close();
-            return true;
+            if (stream != null && Reflect.field(stream, "open") != null) {
+                stream.open(target, "write");
+                stream.writeUTFBytes(content);
+                stream.close();
+                return true;
+            }
         } catch (e:Dynamic) {
             ApiLogger.error("Storage", "writeText failed for " + clean + ": " + e);
         }
@@ -361,16 +364,22 @@ class AqwStorage {
             if (fallbackDir == null) fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
             if (fallbackDir != null && fallbackDir != dir) {
                 var fsCls:Dynamic = getFileStreamClass();
-                var target = fallbackDir.resolvePath(clean);
-                if (target.parent != null && !target.parent.exists) {
-                    try { target.parent.createDirectory(); } catch (_:Dynamic) {}
+                if (fsCls != null) {
+                    var target = fallbackDir.resolvePath(clean);
+                    if (target != null) {
+                        if (target.parent != null && !target.parent.exists) {
+                            try { target.parent.createDirectory(); } catch (_:Dynamic) {}
+                        }
+                        var stream:Dynamic = Type.createInstance(fsCls, []);
+                        if (stream != null && Reflect.field(stream, "open") != null) {
+                            stream.open(target, "write");
+                            stream.writeUTFBytes(content);
+                            stream.close();
+                            ApiLogger.info("Storage", "Saved " + clean + " to fallback storage folder");
+                            return true;
+                        }
+                    }
                 }
-                var stream:Dynamic = Type.createInstance(fsCls, []);
-                stream.open(target, "write");
-                stream.writeUTFBytes(content);
-                stream.close();
-                ApiLogger.info("Storage", "Saved " + clean + " to fallback storage folder");
-                return true;
             }
         } catch (_:Dynamic) {}
 
@@ -385,14 +394,17 @@ class AqwStorage {
             var fsCls:Dynamic = getFileStreamClass();
             if (fsCls == null) return false;
             var target = dir.resolvePath(clean);
+            if (target == null) return false;
             if (target.parent != null && !target.parent.exists) {
                 try { target.parent.createDirectory(); } catch (_:Dynamic) {}
             }
             var stream:Dynamic = Type.createInstance(fsCls, []);
-            stream.open(target, "write");
-            stream.writeBytes(bytes);
-            stream.close();
-            return true;
+            if (stream != null && Reflect.field(stream, "open") != null) {
+                stream.open(target, "write");
+                stream.writeBytes(bytes);
+                stream.close();
+                return true;
+            }
         } catch (e:Dynamic) {
             ApiLogger.error("Storage", "writeBytes failed for " + clean + ": " + e);
         }
@@ -405,14 +417,16 @@ class AqwStorage {
             var fsCls:Dynamic = getFileStreamClass();
             if (fsCls == null) return null;
             var stream:Dynamic = Type.createInstance(fsCls, []);
-            stream.open(file, "read");
-            var baCls:Dynamic = getByteArrayClass();
-            var bytes:Dynamic = (baCls != null) ? Type.createInstance(baCls, []) : null;
-            if (bytes != null) {
-                stream.readBytes(bytes);
+            if (stream != null && Reflect.field(stream, "open") != null) {
+                stream.open(file, "read");
+                var baCls:Dynamic = getByteArrayClass();
+                var bytes:Dynamic = (baCls != null) ? Type.createInstance(baCls, []) : null;
+                if (bytes != null) {
+                    stream.readBytes(bytes);
+                }
+                stream.close();
+                return bytes;
             }
-            stream.close();
-            return bytes;
         } catch (e:Dynamic) {
             ApiLogger.warn("Storage", "readBinaryFile failed: " + e);
         }
