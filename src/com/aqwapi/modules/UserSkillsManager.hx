@@ -126,56 +126,71 @@ class UserSkillsManager {
         var foundSection:Dynamic = null;
 
         for (s in sections) {
-            if (CombatEngine.cleanClassName(s.className) == cleanTargetClass && s.modeName.toLowerCase() == modeName.toLowerCase()) {
+            if (s != null && s.className != null && s.modeName != null &&
+                CombatEngine.cleanClassName(s.className) == cleanTargetClass &&
+                s.modeName.toLowerCase() == modeName.toLowerCase()) {
                 foundSection = s;
                 break;
             }
         }
 
+        var effectiveMode = (skillUseMode != null && skillUseMode != "") ? skillUseMode : "WaitForCooldown";
+        var effectiveTimeout = timeout > 0 ? timeout : 100;
+        var effectiveCombo = (combo != null) ? combo : "";
+
         if (foundSection != null) {
             foundSection.className = className;
             foundSection.modeName = modeName;
-            foundSection.mode = skillUseMode;
-            foundSection.timeout = timeout;
-            foundSection.combo = combo;
+            foundSection.mode = effectiveMode;
+            foundSection.timeout = effectiveTimeout;
+            foundSection.combo = effectiveCombo;
         } else {
             sections.push({
                 className: className,
                 modeName: modeName,
-                mode: skillUseMode,
-                timeout: timeout,
-                combo: combo
+                mode: effectiveMode,
+                timeout: effectiveTimeout,
+                combo: effectiveCombo
             });
         }
 
         var rebuiltText = rebuildSectionsText(sections);
-        writeUserSkills(rebuiltText);
+        var writeOk = writeUserSkills(rebuiltText);
 
         // Instant in-memory registration into CombatEngine
-        CombatEngine.registerCustomMode(className, modeName, skillUseMode, timeout, combo);
-        ensureCache();
-        if (_userModesCache != null) {
-            var cleanC = CombatEngine.cleanClassName(className);
-            var mList = _userModesCache.get(cleanC);
-            if (mList == null) {
-                mList = [];
-                _userModesCache.set(cleanC, mList);
-            }
-            if (mList.indexOf(modeName) == -1) mList.push(modeName);
+        try {
+            CombatEngine.registerCustomMode(className, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
+        } catch (ce:Dynamic) {
+            ApiLogger.error("UserSkills", "Error registering custom mode: " + ce);
+        }
 
-            var mListRaw = _userModesCache.get(className);
-            if (mListRaw == null) {
-                mListRaw = [];
-                _userModesCache.set(className, mListRaw);
-            }
-            if (mListRaw.indexOf(modeName) == -1) mListRaw.push(modeName);
+        try {
+            ensureCache();
+            if (_userModesCache != null) {
+                var cleanC = CombatEngine.cleanClassName(className);
+                var mList = _userModesCache.get(cleanC);
+                if (mList == null) {
+                    mList = [];
+                    _userModesCache.set(cleanC, mList);
+                }
+                if (mList.indexOf(modeName) == -1) mList.push(modeName);
 
-            var mListLower = _userModesCache.get(className.toLowerCase());
-            if (mListLower == null) {
-                mListLower = [];
-                _userModesCache.set(className.toLowerCase(), mListLower);
+                var mListRaw = _userModesCache.get(className);
+                if (mListRaw == null) {
+                    mListRaw = [];
+                    _userModesCache.set(className, mListRaw);
+                }
+                if (mListRaw.indexOf(modeName) == -1) mListRaw.push(modeName);
+
+                var mListLower = _userModesCache.get(className.toLowerCase());
+                if (mListLower == null) {
+                    mListLower = [];
+                    _userModesCache.set(className.toLowerCase(), mListLower);
+                }
+                if (mListLower.indexOf(modeName) == -1) mListLower.push(modeName);
             }
-            if (mListLower.indexOf(modeName) == -1) mListLower.push(modeName);
+        } catch (ue:Dynamic) {
+            ApiLogger.error("UserSkills", "Error updating modes cache: " + ue);
         }
 
         return true;
@@ -195,7 +210,9 @@ class UserSkillsManager {
         var removed:Bool = false;
 
         for (s in sections) {
-            if (CombatEngine.cleanClassName(s.className) == cleanTargetClass && s.modeName.toLowerCase() == modeName.toLowerCase()) {
+            if (s != null && s.className != null && s.modeName != null &&
+                CombatEngine.cleanClassName(s.className) == cleanTargetClass &&
+                s.modeName.toLowerCase() == modeName.toLowerCase()) {
                 removed = true;
                 continue;
             }
@@ -284,6 +301,7 @@ class UserSkillsManager {
         var raw = readUserSkills();
         var sections = parseRawSections(raw);
         for (s in sections) {
+            if (s == null || s.className == null || s.modeName == null || s.modeName == "") continue;
             var cClean = CombatEngine.cleanClassName(s.className);
             var list = _userModesCache.get(cClean);
             if (list == null) {
