@@ -15,6 +15,14 @@ class AqwStorage {
         var cls:Dynamic = null;
         #if flash
         try { cls = untyped __global__["flash.filesystem.File"]; } catch (_:Dynamic) {}
+        if (cls == null) {
+            try {
+                var appDom = flash.system.ApplicationDomain.currentDomain;
+                if (appDom != null && appDom.hasDefinition("flash.filesystem.File")) {
+                    cls = appDom.getDefinition("flash.filesystem.File");
+                }
+            } catch (_:Dynamic) {}
+        }
         #end
         if (cls == null) {
             try { cls = Type.resolveClass("flash.filesystem.File"); } catch (_:Dynamic) {}
@@ -26,6 +34,14 @@ class AqwStorage {
         var cls:Dynamic = null;
         #if flash
         try { cls = untyped __global__["flash.filesystem.FileStream"]; } catch (_:Dynamic) {}
+        if (cls == null) {
+            try {
+                var appDom = flash.system.ApplicationDomain.currentDomain;
+                if (appDom != null && appDom.hasDefinition("flash.filesystem.FileStream")) {
+                    cls = appDom.getDefinition("flash.filesystem.FileStream");
+                }
+            } catch (_:Dynamic) {}
+        }
         #end
         if (cls == null) {
             try { cls = Type.resolveClass("flash.filesystem.FileStream"); } catch (_:Dynamic) {}
