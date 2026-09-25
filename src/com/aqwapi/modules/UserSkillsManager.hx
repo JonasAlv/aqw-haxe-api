@@ -227,7 +227,29 @@ class UserSkillsManager {
     public static function getModeDetails(className:String, modeName:String):Dynamic {
         if (className == null || className == "" || modeName == null || modeName == "") return null;
 
-        // 1. Try CombatEngine _skillsData
+        // 1. Direct check in UserSkillsManager sections (guarantees instant retrieval for user modes)
+        try {
+            var raw = readUserSkills();
+            var sections = parseRawSections(raw);
+            var cleanTarget = CombatEngine.cleanClassName(className);
+            for (s in sections) {
+                var cleanS = CombatEngine.cleanClassName(s.className);
+                if ((cleanS == cleanTarget || s.className.toLowerCase() == className.toLowerCase()) && 
+                    s.modeName != null && s.modeName.toLowerCase() == modeName.toLowerCase()) {
+                    var mVal:String = (s.mode != null && s.mode != "") ? s.mode : ((s.execMode != null && s.execMode != "") ? s.execMode : "WaitForCooldown");
+                    var toVal:Int = (s.timeout != null && s.timeout > 0) ? s.timeout : 100;
+                    var cVal:String = (s.combo != null) ? s.combo : "";
+                    return {
+                        skillUseMode: mVal,
+                        timeout: toVal,
+                        combo: cVal,
+                        isUser: true
+                    };
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        // 2. Check CombatEngine _skillsData (bundled modes)
         var classObj = CombatEngine.findClassConfig(className);
         if (classObj != null) {
             var modeObj:Dynamic = Reflect.field(classObj, modeName);
@@ -247,23 +269,8 @@ class UserSkillsManager {
                 return {
                     skillUseMode: modeType,
                     timeout: timeout,
-                    combo: comboStr,
+                    combo: (comboStr != null) ? comboStr : "",
                     isUser: isUserMode(className, modeName)
-                };
-            }
-        }
-
-        // 2. Direct fallback to UserSkillsManager sections (guarantees retrieval even before CombatEngine reload)
-        var raw = readUserSkills();
-        var sections = parseRawSections(raw);
-        var cleanTarget = CombatEngine.cleanClassName(className);
-        for (s in sections) {
-            if (CombatEngine.cleanClassName(s.className) == cleanTarget && s.modeName.toLowerCase() == modeName.toLowerCase()) {
-                return {
-                    skillUseMode: s.mode,
-                    timeout: s.timeout,
-                    combo: s.combo,
-                    isUser: true
                 };
             }
         }

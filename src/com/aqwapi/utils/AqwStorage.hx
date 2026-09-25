@@ -311,6 +311,26 @@ class AqwStorage {
             ApiLogger.warn("Storage", "Error reading packaged " + clean + ": " + e);
         }
 
+        // Fallback 2: read from documentsDirectory / applicationStorageDirectory if written there
+        try {
+            var FileClass:Dynamic = getFileClass();
+            var fallbackDir = getStaticProp(FileClass, "documentsDirectory");
+            if (fallbackDir == null) fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
+            if (fallbackDir != null) {
+                var f = fallbackDir.resolvePath(clean);
+                if (f != null && f.exists) {
+                    var fsCls:Dynamic = getFileStreamClass();
+                    if (fsCls != null) {
+                        var stream:Dynamic = Type.createInstance(fsCls, []);
+                        stream.open(f, "read");
+                        var txt:String = stream.readUTFBytes(stream.bytesAvailable);
+                        stream.close();
+                        if (txt != null && txt.length > 0) return txt;
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+
         return null;
     }
 

@@ -873,26 +873,18 @@ class CombatEngine {
 
         // Also check UserSkillsManager if class was not found in _skillsData
         try {
-            var userModes = UserSkillsManager.getUserModesForClass(className);
-            if (userModes != null && userModes.length > 0) {
-                var dynamicClass:Dynamic = {};
-                for (m in userModes) {
-                    var d = UserSkillsManager.getModeDetails(className, m);
-                    if (d != null && d.combo != null && d.combo != "") {
-                        var parsedSkills = com.aqwapi.utils.SkillDslParser.parseCombo(d.combo);
-                        if (parsedSkills != null && parsedSkills.length > 0) {
-                            Reflect.setField(dynamicClass, m, {
-                                skillUseMode: d.skillUseMode,
-                                skillTimeout: d.timeout,
-                                skills: parsedSkills
-                            });
+            var rawUser = UserSkillsManager.readUserSkills();
+            if (rawUser != null && rawUser.length > 0) {
+                var parsedUser:Dynamic = com.aqwapi.utils.SkillDslParser.parse(rawUser);
+                if (parsedUser != null) {
+                    for (cKey in Reflect.fields(parsedUser)) {
+                        if (cKey.toLowerCase() == lower || (cleanTarget != "" && cleanClassName(cKey) == cleanTarget)) {
+                            var customClassObj = Reflect.field(parsedUser, cKey);
+                            if (_skillsData == null) _skillsData = {};
+                            Reflect.setField(_skillsData, cKey, customClassObj);
+                            return customClassObj;
                         }
                     }
-                }
-                if (Reflect.fields(dynamicClass).length > 0) {
-                    if (_skillsData == null) _skillsData = {};
-                    Reflect.setField(_skillsData, className, dynamicClass);
-                    return dynamicClass;
                 }
             }
         } catch (_:Dynamic) {}
