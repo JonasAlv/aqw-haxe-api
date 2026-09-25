@@ -324,28 +324,30 @@ class AqwStorage {
         if (dir == null || content == null) return false;
         try {
             var fsCls:Dynamic = getFileStreamClass();
-            if (fsCls == null) return false;
-            var target = dir.resolvePath(clean);
-            if (target == null) return false;
-            if (target.parent != null && !target.parent.exists) {
-                try { target.parent.createDirectory(); } catch (_:Dynamic) {}
-            }
-            var stream:Dynamic = Type.createInstance(fsCls, []);
-            if (stream != null && Reflect.field(stream, "open") != null) {
-                stream.open(target, "write");
-                stream.writeUTFBytes(content);
-                stream.close();
-                return true;
+            if (fsCls != null) {
+                var target = dir.resolvePath(clean);
+                if (target != null) {
+                    if (target.parent != null && !target.parent.exists) {
+                        try { target.parent.createDirectory(); } catch (_:Dynamic) {}
+                    }
+                    var stream:Dynamic = Type.createInstance(fsCls, []);
+                    if (stream != null && Reflect.field(stream, "open") != null) {
+                        stream.open(target, "write");
+                        stream.writeUTFBytes(content);
+                        stream.close();
+                        return true;
+                    }
+                }
             }
         } catch (e:Dynamic) {
-            ApiLogger.error("Storage", "writeText failed for " + clean + ": " + e);
+            ApiLogger.warn("Storage", "Primary writeText failed for " + clean + ": " + e);
         }
 
-        // Fallback: if writing to primary data directory failed, try documentsDirectory or applicationStorageDirectory
+        // Fallback: if writing to primary data directory failed, try applicationStorageDirectory or documentsDirectory
         try {
             var FileClass:Dynamic = getFileClass();
-            var fallbackDir = getStaticProp(FileClass, "documentsDirectory");
-            if (fallbackDir == null) fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
+            var fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
+            if (fallbackDir == null) fallbackDir = getStaticProp(FileClass, "documentsDirectory");
             if (fallbackDir != null && fallbackDir != dir) {
                 var fsCls:Dynamic = getFileStreamClass();
                 if (fsCls != null) {
@@ -367,6 +369,7 @@ class AqwStorage {
             }
         } catch (_:Dynamic) {}
 
+        ApiLogger.error("Storage", "writeText failed for " + clean);
         return false;
     }
 
