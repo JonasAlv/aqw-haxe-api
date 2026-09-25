@@ -6,11 +6,63 @@ class AqwStorage {
     private static var _dataDir:Dynamic = null;
     private static var _provisioned:Bool = false;
 
-    private static function cleanFileName(name:String):String {
+    public static inline function cleanFileName(name:String):String {
         if (name == null) return "";
         if (name.indexOf("assets/") == 0) return name.substring(7);
         if (name.indexOf("/") == 0) return name.substring(1);
         return name;
+    }
+
+    public static function getFileClass():Dynamic {
+        var cls:Dynamic = null;
+        #if flash
+        try { cls = untyped __global__["flash.filesystem.File"]; } catch (_:Dynamic) {}
+        #end
+        if (cls == null) {
+            try { cls = Type.resolveClass("flash.filesystem.File"); } catch (_:Dynamic) {}
+        }
+        return cls;
+    }
+
+    public static function getFileStreamClass():Dynamic {
+        var cls:Dynamic = null;
+        #if flash
+        try { cls = untyped __global__["flash.filesystem.FileStream"]; } catch (_:Dynamic) {}
+        #end
+        if (cls == null) {
+            try { cls = Type.resolveClass("flash.filesystem.FileStream"); } catch (_:Dynamic) {}
+        }
+        return cls;
+    }
+
+    public static function getByteArrayClass():Dynamic {
+        var cls:Dynamic = null;
+        #if flash
+        try { cls = untyped __global__["flash.utils.ByteArray"]; } catch (_:Dynamic) {}
+        #end
+        if (cls == null) {
+            try { cls = Type.resolveClass("flash.utils.ByteArray"); } catch (_:Dynamic) {}
+        }
+        return cls;
+    }
+
+    public static function getStaticProp(cls:Dynamic, prop:String):Dynamic {
+        if (cls == null) return null;
+        #if flash
+        try {
+            var val:Dynamic = untyped cls[prop];
+            if (val != null) return val;
+        } catch (_:Dynamic) {}
+        #end
+        try {
+            var val:Dynamic = Reflect.field(cls, prop);
+            if (val != null) return val;
+        } catch (_:Dynamic) {}
+        try {
+            var val:Dynamic = Reflect.getProperty(cls, prop);
+            if (val != null) return val;
+        } catch (_:Dynamic) {}
+        return null;
     }
 
     /**
@@ -22,58 +74,89 @@ class AqwStorage {
         if (_dataDir != null) return _dataDir;
 
         try {
-            var FileClass:Dynamic = Type.resolveClass("flash.filesystem.File");
-            if (FileClass == null) return null;
+            var FileClass:Dynamic = getFileClass();
+            if (FileClass == null) {
+                ApiLogger.error("Storage", "flash.filesystem.File class is not available");
+                return null;
+            }
 
             var isAndroid:Bool = false;
             try {
-                var caps:Dynamic = Type.resolveClass("flash.system.Capabilities");
+                var caps:Dynamic = null;
+                #if flash
+                try { caps = untyped __global__["flash.system.Capabilities"]; } catch (_:Dynamic) {}
+                #end
+                if (caps == null) caps = Type.resolveClass("flash.system.Capabilities");
                 if (caps != null) {
-                    var v:String = Reflect.field(caps, "version");
-                    var m:String = Reflect.field(caps, "manufacturer");
+                    var v:String = Std.string(getStaticProp(caps, "version"));
+                    var m:String = Std.string(getStaticProp(caps, "manufacturer"));
                     if ((v != null && v.indexOf("AND") == 0) || (m != null && m.indexOf("Android") != -1)) {
                         isAndroid = true;
                     }
                 }
             } catch (_:Dynamic) {}
 
-            // Android: use documentsDirectory
+            // 1. Android: use documentsDirectory (/storage/emulated/0/Android/data/<pkg>/files)
             if (isAndroid) {
                 try {
-                    var docDir:Dynamic = Reflect.getProperty(FileClass, "documentsDirectory");
+                    var docDir:Dynamic = getStaticProp(FileClass, "documentsDirectory");
                     if (docDir != null) {
                         _dataDir = docDir;
+                        var p:String = "";
+                        try { p = docDir.nativePath; } catch (_:Dynamic) {}
+                        ApiLogger.info("Storage", "Using Android documentsDirectory: " + p);
                         return _dataDir;
                     }
-                } catch (_:Dynamic) {}
+                } catch (e:Dynamic) {
+                    ApiLogger.warn("Storage", "documentsDirectory access failed: " + e);
+                }
             }
 
-            // Desktop: use application assets folder
+            // 2. Desktop: look for "assets" in applicationDirectory
             try {
-                var appDir:Dynamic = Reflect.getProperty(FileClass, "applicationDirectory");
+                var appDir:Dynamic = getStaticProp(FileClass, "applicationDirectory");
                 if (appDir != null) {
                     var assetsDir = appDir.resolvePath("assets");
                     if (assetsDir != null && assetsDir.exists) {
                         _dataDir = assetsDir;
+                        var p:String = "";
+                        try { p = assetsDir.nativePath; } catch (_:Dynamic) {}
+                        ApiLogger.info("Storage", "Using Desktop assets folder: " + p);
                         return _dataDir;
                     }
                     var loaderAssets = appDir.resolvePath("loader/assets");
                     if (loaderAssets != null && loaderAssets.exists) {
                         _dataDir = loaderAssets;
+                        var p:String = "";
+                        try { p = loaderAssets.nativePath; } catch (_:Dynamic) {}
+                        ApiLogger.info("Storage", "Using Desktop loader/assets folder: " + p);
                         return _dataDir;
                     }
                 }
-            } catch (_:Dynamic) {}
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Storage", "applicationDirectory access failed: " + e);
+            }
 
-            // Fallback
+            // 3. Fallback: documentsDirectory
             try {
-                var docDir:Dynamic = Reflect.getProperty(FileClass, "documentsDirectory");
+                var docDir:Dynamic = getStaticProp(FileClass, "documentsDirectory");
                 if (docDir != null) {
                     _dataDir = docDir;
                     return _dataDir;
                 }
             } catch (_:Dynamic) {}
-        } catch (_:Dynamic) {}
+
+            // 4. Fallback: applicationStorageDirectory
+            try {
+                var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
+                if (appStorage != null) {
+                    _dataDir = appStorage;
+                    return _dataDir;
+                }
+            } catch (_:Dynamic) {}
+        } catch (e:Dynamic) {
+            ApiLogger.error("Storage", "Failed to resolve data directory: " + e);
+        }
 
         return null;
     }
@@ -81,9 +164,9 @@ class AqwStorage {
     public static function resolvePackagedFile(fileName:String):Dynamic {
         var clean = cleanFileName(fileName);
         try {
-            var FileClass:Dynamic = Type.resolveClass("flash.filesystem.File");
+            var FileClass:Dynamic = getFileClass();
             if (FileClass == null) return null;
-            var appDir:Dynamic = Reflect.getProperty(FileClass, "applicationDirectory");
+            var appDir:Dynamic = getStaticProp(FileClass, "applicationDirectory");
             if (appDir == null) return null;
 
             var p1 = appDir.resolvePath("assets/" + clean);
@@ -184,31 +267,35 @@ class AqwStorage {
         try {
             var f = getFile(clean);
             if (f != null && f.exists) {
-                var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-                var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-                var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
-                var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                stream.open(f, readMode);
-                var txt:String = stream.readUTFBytes(stream.bytesAvailable);
-                stream.close();
-                return txt;
+                var fsCls:Dynamic = getFileStreamClass();
+                if (fsCls != null) {
+                    var stream:Dynamic = Type.createInstance(fsCls, []);
+                    stream.open(f, "read");
+                    var txt:String = stream.readUTFBytes(stream.bytesAvailable);
+                    stream.close();
+                    if (txt != null && txt.length > 0) return txt;
+                }
             }
-        } catch (_:Dynamic) {}
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Storage", "Error reading " + clean + ": " + e);
+        }
 
         // Fallback: read directly from packaged app asset
         try {
             var pkg = resolvePackagedFile(clean);
             if (pkg != null && pkg.exists) {
-                var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-                var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-                var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
-                var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-                stream.open(pkg, readMode);
-                var txt:String = stream.readUTFBytes(stream.bytesAvailable);
-                stream.close();
-                return txt;
+                var fsCls:Dynamic = getFileStreamClass();
+                if (fsCls != null) {
+                    var stream:Dynamic = Type.createInstance(fsCls, []);
+                    stream.open(pkg, "read");
+                    var txt:String = stream.readUTFBytes(stream.bytesAvailable);
+                    stream.close();
+                    if (txt != null && txt.length > 0) return txt;
+                }
             }
-        } catch (_:Dynamic) {}
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Storage", "Error reading packaged " + clean + ": " + e);
+        }
 
         return null;
     }
@@ -218,19 +305,41 @@ class AqwStorage {
         var dir = getDataDirectory();
         if (dir == null || content == null) return false;
         try {
-            var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-            var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-            var writeMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "WRITE") : "write";
+            var fsCls:Dynamic = getFileStreamClass();
+            if (fsCls == null) return false;
             var target = dir.resolvePath(clean);
             if (target.parent != null && !target.parent.exists) {
-                target.parent.createDirectory();
+                try { target.parent.createDirectory(); } catch (_:Dynamic) {}
             }
-            var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-            stream.open(target, writeMode);
+            var stream:Dynamic = Type.createInstance(fsCls, []);
+            stream.open(target, "write");
             stream.writeUTFBytes(content);
             stream.close();
             return true;
+        } catch (e:Dynamic) {
+            ApiLogger.error("Storage", "writeText failed for " + clean + ": " + e);
+        }
+
+        // Fallback: if writing to primary data directory failed, try documentsDirectory or applicationStorageDirectory
+        try {
+            var FileClass:Dynamic = getFileClass();
+            var fallbackDir = getStaticProp(FileClass, "documentsDirectory");
+            if (fallbackDir == null) fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
+            if (fallbackDir != null && fallbackDir != dir) {
+                var fsCls:Dynamic = getFileStreamClass();
+                var target = fallbackDir.resolvePath(clean);
+                if (target.parent != null && !target.parent.exists) {
+                    try { target.parent.createDirectory(); } catch (_:Dynamic) {}
+                }
+                var stream:Dynamic = Type.createInstance(fsCls, []);
+                stream.open(target, "write");
+                stream.writeUTFBytes(content);
+                stream.close();
+                ApiLogger.info("Storage", "Saved " + clean + " to fallback storage folder");
+                return true;
+            }
         } catch (_:Dynamic) {}
+
         return false;
     }
 
@@ -239,36 +348,40 @@ class AqwStorage {
         var dir = getDataDirectory();
         if (dir == null || bytes == null) return false;
         try {
-            var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-            var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-            var writeMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "WRITE") : "write";
+            var fsCls:Dynamic = getFileStreamClass();
+            if (fsCls == null) return false;
             var target = dir.resolvePath(clean);
             if (target.parent != null && !target.parent.exists) {
-                target.parent.createDirectory();
+                try { target.parent.createDirectory(); } catch (_:Dynamic) {}
             }
-            var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-            stream.open(target, writeMode);
+            var stream:Dynamic = Type.createInstance(fsCls, []);
+            stream.open(target, "write");
             stream.writeBytes(bytes);
             stream.close();
             return true;
-        } catch (_:Dynamic) {}
+        } catch (e:Dynamic) {
+            ApiLogger.error("Storage", "writeBytes failed for " + clean + ": " + e);
+        }
         return false;
     }
 
     private static function readBinaryFile(file:Dynamic):Dynamic {
         if (file == null || !file.exists) return null;
         try {
-            var FileStreamClass:Dynamic = Type.resolveClass("flash.filesystem.FileStream");
-            var FileModeClass:Dynamic = Type.resolveClass("flash.filesystem.FileMode");
-            var readMode:String = (FileModeClass != null) ? Reflect.getProperty(FileModeClass, "READ") : "read";
-            var stream:Dynamic = Type.createInstance(FileStreamClass, []);
-            stream.open(file, readMode);
-            var ByteArrayClass:Dynamic = Type.resolveClass("flash.utils.ByteArray");
-            var bytes:Dynamic = Type.createInstance(ByteArrayClass, []);
-            stream.readBytes(bytes);
+            var fsCls:Dynamic = getFileStreamClass();
+            if (fsCls == null) return null;
+            var stream:Dynamic = Type.createInstance(fsCls, []);
+            stream.open(file, "read");
+            var baCls:Dynamic = getByteArrayClass();
+            var bytes:Dynamic = (baCls != null) ? Type.createInstance(baCls, []) : null;
+            if (bytes != null) {
+                stream.readBytes(bytes);
+            }
             stream.close();
             return bytes;
-        } catch (_:Dynamic) {}
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Storage", "readBinaryFile failed: " + e);
+        }
         return null;
     }
 }
