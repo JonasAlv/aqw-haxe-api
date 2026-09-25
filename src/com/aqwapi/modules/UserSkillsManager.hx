@@ -150,16 +150,35 @@ class UserSkillsManager {
     }
 
     /**
+     * Helper to resolve 'Current' to the actual equipped class or configured smartClass.
+     */
+    public static function resolveClassName(className:String):String {
+        if (className == null || className == "") {
+            var cur = CombatEngine.getCurrentClassName();
+            if (cur != null && cur != "" && cur.toLowerCase() != "current") return cur;
+            if (CombatEngine.smartClass != null && CombatEngine.smartClass != "" && CombatEngine.smartClass.toLowerCase() != "current") return CombatEngine.smartClass;
+            return className != null ? className : "";
+        }
+        if (className.toLowerCase() == "current") {
+            var cur = CombatEngine.getCurrentClassName();
+            if (cur != null && cur != "" && cur.toLowerCase() != "current") return cur;
+            if (CombatEngine.smartClass != null && CombatEngine.smartClass != "" && CombatEngine.smartClass.toLowerCase() != "current") return CombatEngine.smartClass;
+        }
+        return className;
+    }
+
+    /**
      * Checks if a specific mode for a class was user-created in userSkills.json.
      */
     public static function isUserMode(className:String, modeName:String):Bool {
         if (className == null || modeName == null) return false;
+        var resolvedClass = resolveClassName(className);
         var data = readUserSkillsObject();
         if (data == null) return false;
 
-        var cleanClass:String = CombatEngine.cleanClassName(className);
+        var cleanClass:String = CombatEngine.cleanClassName(resolvedClass);
         for (cKey in Reflect.fields(data)) {
-            if (cKey.toLowerCase() == className.toLowerCase() || (cleanClass != "" && CombatEngine.cleanClassName(cKey) == cleanClass)) {
+            if (cKey.toLowerCase() == resolvedClass.toLowerCase() || (cleanClass != "" && CombatEngine.cleanClassName(cKey) == cleanClass)) {
                 var cObj:Dynamic = Reflect.field(data, cKey);
                 if (cObj != null && !Std.isOfType(cObj, Array)) {
                     for (mKey in Reflect.fields(cObj)) {
@@ -176,14 +195,15 @@ class UserSkillsManager {
      */
     public static function getUserModesForClass(className:String):Array<String> {
         if (className == null || className == "") return [];
+        var resolvedClass = resolveClassName(className);
         var data = readUserSkillsObject();
         if (data == null) return [];
 
         var modes:Array<String> = [];
-        var cleanClass = CombatEngine.cleanClassName(className);
+        var cleanClass = CombatEngine.cleanClassName(resolvedClass);
 
         for (cKey in Reflect.fields(data)) {
-            if (cKey.toLowerCase() == className.toLowerCase() || (cleanClass != "" && CombatEngine.cleanClassName(cKey) == cleanClass)) {
+            if (cKey.toLowerCase() == resolvedClass.toLowerCase() || (cleanClass != "" && CombatEngine.cleanClassName(cKey) == cleanClass)) {
                 var cObj:Dynamic = Reflect.field(data, cKey);
                 if (cObj != null && !Std.isOfType(cObj, Array)) {
                     for (mKey in Reflect.fields(cObj)) {
@@ -202,16 +222,18 @@ class UserSkillsManager {
      */
     public static function saveMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
+        var resolvedClass = resolveClassName(className);
+        if (resolvedClass == null || resolvedClass == "" || resolvedClass.toLowerCase() == "current") return false;
 
         try {
             var data:Dynamic = readUserSkillsObject();
             if (data == null) data = {};
 
-            var cleanTargetClass = CombatEngine.cleanClassName(className);
-            var targetClassKey = className;
+            var cleanTargetClass = CombatEngine.cleanClassName(resolvedClass);
+            var targetClassKey = resolvedClass;
 
             for (cKey in Reflect.fields(data)) {
-                if (cKey.toLowerCase() == className.toLowerCase() || (cleanTargetClass != "" && CombatEngine.cleanClassName(cKey) == cleanTargetClass)) {
+                if (cKey.toLowerCase() == resolvedClass.toLowerCase() || (cleanTargetClass != "" && CombatEngine.cleanClassName(cKey) == cleanTargetClass)) {
                     targetClassKey = cKey;
                     break;
                 }
@@ -239,7 +261,10 @@ class UserSkillsManager {
             // Instant in-memory registration into CombatEngine
             try {
                 CombatEngine.registerCustomMode(targetClassKey, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
-                if (targetClassKey != className) {
+                if (targetClassKey != resolvedClass) {
+                    CombatEngine.registerCustomMode(resolvedClass, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
+                }
+                if (resolvedClass != className) {
                     CombatEngine.registerCustomMode(className, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
                 }
             } catch (ce:Dynamic) {
@@ -258,16 +283,18 @@ class UserSkillsManager {
      */
     public static function deleteMode(className:String, modeName:String):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
+        var resolvedClass = resolveClassName(className);
+        if (resolvedClass == null || resolvedClass == "") return false;
 
         try {
             var data:Dynamic = readUserSkillsObject();
             if (data == null) return false;
 
-            var cleanTargetClass = CombatEngine.cleanClassName(className);
+            var cleanTargetClass = CombatEngine.cleanClassName(resolvedClass);
             var removed:Bool = false;
 
             for (cKey in Reflect.fields(data)) {
-                if (cKey.toLowerCase() == className.toLowerCase() || (cleanTargetClass != "" && CombatEngine.cleanClassName(cKey) == cleanTargetClass)) {
+                if (cKey.toLowerCase() == resolvedClass.toLowerCase() || (cleanTargetClass != "" && CombatEngine.cleanClassName(cKey) == cleanTargetClass)) {
                     var classObj:Dynamic = Reflect.field(data, cKey);
                     if (classObj != null) {
                         for (mKey in Reflect.fields(classObj)) {
@@ -277,6 +304,9 @@ class UserSkillsManager {
                                 break;
                             }
                         }
+                        if (Reflect.fields(classObj).length == 0) {
+                            Reflect.deleteField(data, cKey);
+                        }
                     }
                 }
             }
@@ -284,7 +314,10 @@ class UserSkillsManager {
             if (removed) {
                 writeUserSkillsObject(data);
                 try {
-                    CombatEngine.unregisterCustomMode(className, modeName);
+                    CombatEngine.unregisterCustomMode(resolvedClass, modeName);
+                    if (resolvedClass != className) {
+                        CombatEngine.unregisterCustomMode(className, modeName);
+                    }
                 } catch (_:Dynamic) {}
                 return true;
             }
@@ -301,15 +334,7 @@ class UserSkillsManager {
     public static function getModeDetails(className:String, modeName:String):Dynamic {
         if (className == null || className == "" || modeName == null || modeName == "") return null;
 
-        var resolvedClass = className;
-        if (resolvedClass.toLowerCase() == "current") {
-            var cur = CombatEngine.getCurrentClassName();
-            if (cur != null && cur != "" && cur.toLowerCase() != "current") {
-                resolvedClass = cur;
-            } else if (CombatEngine.smartClass != null && CombatEngine.smartClass != "" && CombatEngine.smartClass.toLowerCase() != "current") {
-                resolvedClass = CombatEngine.smartClass;
-            }
-        }
+        var resolvedClass = resolveClassName(className);
 
         // 1. Direct check in userSkills.json
         try {

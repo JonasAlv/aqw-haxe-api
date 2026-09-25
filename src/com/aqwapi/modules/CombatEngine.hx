@@ -1013,10 +1013,31 @@ class CombatEngine {
         if (className == null || className == "" || modeName == null || modeName == "") return;
         if (_skillsData == null) return;
 
-        var targetClass:Dynamic = findClassConfig(className);
-        if (targetClass != null && Reflect.hasField(targetClass, modeName)) {
-            Reflect.deleteField(targetClass, modeName);
-            ApiLogger.info("Skills", "Unregistered custom mode [" + className + " : " + modeName + "] from memory!");
+        var resolvedClass = (className.toLowerCase() == "current") ? getCurrentClassName() : className;
+        if (resolvedClass == "" || resolvedClass.toLowerCase() == "current") {
+            if (smartClass != null && smartClass != "" && smartClass.toLowerCase() != "current") {
+                resolvedClass = smartClass;
+            }
+        }
+        if (resolvedClass == null || resolvedClass == "") return;
+
+        var cleanClass:String = cleanClassName(resolvedClass);
+        for (cKey in Reflect.fields(_skillsData)) {
+            if (cKey.toLowerCase() == resolvedClass.toLowerCase() || (cleanClass != "" && cleanClassName(cKey) == cleanClass)) {
+                var cObj:Dynamic = Reflect.field(_skillsData, cKey);
+                if (cObj != null && !Std.isOfType(cObj, Array)) {
+                    for (mKey in Reflect.fields(cObj)) {
+                        if (mKey.toLowerCase() == modeName.toLowerCase()) {
+                            Reflect.deleteField(cObj, mKey);
+                            ApiLogger.info("Skills", "Unregistered custom mode [" + cKey + " : " + mKey + "] from memory!");
+                            break;
+                        }
+                    }
+                    if (Reflect.fields(cObj).length == 0) {
+                        Reflect.deleteField(_skillsData, cKey);
+                    }
+                }
+            }
         }
     }
 
