@@ -64,9 +64,10 @@ class AqwStorage {
     }
 
     /**
-     * Resolves the unified storage folder:
-     * - Android: File.documentsDirectory (/storage/emulated/0/Android/data/<pkg>/files)
-     * - Desktop: File.applicationDirectory.resolvePath("assets")
+     * Resolves the primary writable data directory:
+     * - Priority 1: File.applicationStorageDirectory (guaranteed writable on both Android and Desktop,
+     *   requires zero Android permissions, avoids Android 10+ Error #3001 scoped storage denial).
+     * - Priority 2: File.documentsDirectory (fallback if applicationStorageDirectory is unavailable).
      */
     public static function getDataDirectory():Dynamic {
         if (_dataDir != null) return _dataDir;
@@ -78,39 +79,7 @@ class AqwStorage {
                 return null;
             }
 
-            var isAndroid:Bool = false;
-            try {
-                var caps:Dynamic = null;
-                #if flash
-                try { caps = untyped __global__["flash.system.Capabilities"]; } catch (_:Dynamic) {}
-                #end
-                if (caps == null) caps = Type.resolveClass("flash.system.Capabilities");
-                if (caps != null) {
-                    var v:String = Std.string(getStaticProp(caps, "version"));
-                    var m:String = Std.string(getStaticProp(caps, "manufacturer"));
-                    if ((v != null && v.indexOf("AND") == 0) || (m != null && m.indexOf("Android") != -1)) {
-                        isAndroid = true;
-                    }
-                }
-            } catch (_:Dynamic) {}
-
-            // 1. Android: use documentsDirectory (/storage/emulated/0/Android/data/<pkg>/files)
-            if (isAndroid) {
-                try {
-                    var docDir:Dynamic = getStaticProp(FileClass, "documentsDirectory");
-                    if (docDir != null) {
-                        _dataDir = docDir;
-                        var p:String = "";
-                        try { p = docDir.nativePath; } catch (_:Dynamic) {}
-                        ApiLogger.info("Storage", "Using Android documentsDirectory: " + p);
-                        return _dataDir;
-                    }
-                } catch (e:Dynamic) {
-                    ApiLogger.warn("Storage", "documentsDirectory access failed: " + e);
-                }
-            }
-
-            // 2. Desktop: use applicationStorageDirectory (guaranteed writable across Windows / macOS)
+            // 1. Primary: use applicationStorageDirectory (guaranteed writable across Android, Windows, macOS)
             try {
                 var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
                 if (appStorage != null) {
@@ -121,17 +90,22 @@ class AqwStorage {
                     return _dataDir;
                 }
             } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "applicationStorageDirectory access failed: " + e);
+                ApiLogger.debug("Storage", "applicationStorageDirectory access failed: " + e);
             }
 
-            // 3. Fallback: documentsDirectory
+            // 2. Fallback: documentsDirectory
             try {
                 var docDir:Dynamic = getStaticProp(FileClass, "documentsDirectory");
                 if (docDir != null) {
                     _dataDir = docDir;
+                    var p:String = "";
+                    try { p = docDir.nativePath; } catch (_:Dynamic) {}
+                    ApiLogger.info("Storage", "Using documentsDirectory: " + p);
                     return _dataDir;
                 }
-            } catch (_:Dynamic) {}
+            } catch (e:Dynamic) {
+                ApiLogger.debug("Storage", "documentsDirectory access failed: " + e);
+            }
         } catch (e:Dynamic) {
             ApiLogger.error("Storage", "Failed to resolve data directory: " + e);
         }
@@ -264,17 +238,19 @@ class AqwStorage {
                 var fsCls:Dynamic = getFileStreamClass();
                 if (fsCls != null) {
                     var stream:Dynamic = Type.createInstance(fsCls, []);
-                    stream.open(f, "read");
-                    var txt:String = stream.readUTFBytes(stream.bytesAvailable);
-                    stream.close();
-                    if (txt != null && txt.length > 0) return txt;
+                    if (stream != null && Reflect.field(stream, "open") != null) {
+                        stream.open(f, "read");
+                        var txt:String = stream.readUTFBytes(stream.bytesAvailable);
+                        stream.close();
+                        if (txt != null && txt.length > 0) return txt;
+                    }
                 }
             }
         } catch (e:Dynamic) {
             ApiLogger.warn("Storage", "Error reading " + clean + ": " + e);
         }
 
-        // Fallback: read directly from packaged app asset
+        // Fallback 1: read directly from packaged app asset
         try {
             var pkg = resolvePackagedFile(clean);
             if (pkg != null && pkg.exists) {
@@ -296,9 +272,9 @@ class AqwStorage {
         // Fallback 2: read from documentsDirectory / applicationStorageDirectory if written there
         try {
             var FileClass:Dynamic = getFileClass();
-            var fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
-            if (fallbackDir == null) fallbackDir = getStaticProp(FileClass, "documentsDirectory");
-            if (fallbackDir != null) {
+            var fallbackDir = getStaticProp(FileClass, "documentsDirectory");
+            if (fallbackDir == null || fallbackDir == getDataDirectory()) fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
+            if (fallbackDir != null && fallbackDir != getDataDirectory()) {
                 var f = fallbackDir.resolvePath(clean);
                 if (f != null && f.exists) {
                     var fsCls:Dynamic = getFileStreamClass();
@@ -340,14 +316,14 @@ class AqwStorage {
                 }
             }
         } catch (e:Dynamic) {
-            ApiLogger.warn("Storage", "Primary writeText failed for " + clean + ": " + e);
+            ApiLogger.debug("Storage", "Primary writeText failed for " + clean + ": " + e);
         }
 
-        // Fallback: if writing to primary data directory failed, try applicationStorageDirectory or documentsDirectory
+        // Fallback: if writing to primary data directory failed, try documentsDirectory or applicationStorageDirectory
         try {
             var FileClass:Dynamic = getFileClass();
-            var fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
-            if (fallbackDir == null) fallbackDir = getStaticProp(FileClass, "documentsDirectory");
+            var fallbackDir = getStaticProp(FileClass, "documentsDirectory");
+            if (fallbackDir == null || fallbackDir == dir) fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
             if (fallbackDir != null && fallbackDir != dir) {
                 var fsCls:Dynamic = getFileStreamClass();
                 if (fsCls != null) {
@@ -379,22 +355,52 @@ class AqwStorage {
         if (dir == null || bytes == null) return false;
         try {
             var fsCls:Dynamic = getFileStreamClass();
-            if (fsCls == null) return false;
-            var target = dir.resolvePath(clean);
-            if (target == null) return false;
-            if (target.parent != null && !target.parent.exists) {
-                try { target.parent.createDirectory(); } catch (_:Dynamic) {}
-            }
-            var stream:Dynamic = Type.createInstance(fsCls, []);
-            if (stream != null && Reflect.field(stream, "open") != null) {
-                stream.open(target, "write");
-                stream.writeBytes(bytes);
-                stream.close();
-                return true;
+            if (fsCls != null) {
+                var target = dir.resolvePath(clean);
+                if (target != null) {
+                    if (target.parent != null && !target.parent.exists) {
+                        try { target.parent.createDirectory(); } catch (_:Dynamic) {}
+                    }
+                    var stream:Dynamic = Type.createInstance(fsCls, []);
+                    if (stream != null && Reflect.field(stream, "open") != null) {
+                        stream.open(target, "write");
+                        stream.writeBytes(bytes);
+                        stream.close();
+                        return true;
+                    }
+                }
             }
         } catch (e:Dynamic) {
-            ApiLogger.error("Storage", "writeBytes failed for " + clean + ": " + e);
+            ApiLogger.debug("Storage", "Primary writeBytes failed for " + clean + ": " + e);
         }
+
+        // Fallback: try alternate directory
+        try {
+            var FileClass:Dynamic = getFileClass();
+            var fallbackDir = getStaticProp(FileClass, "documentsDirectory");
+            if (fallbackDir == null || fallbackDir == dir) fallbackDir = getStaticProp(FileClass, "applicationStorageDirectory");
+            if (fallbackDir != null && fallbackDir != dir) {
+                var fsCls:Dynamic = getFileStreamClass();
+                if (fsCls != null) {
+                    var target = fallbackDir.resolvePath(clean);
+                    if (target != null) {
+                        if (target.parent != null && !target.parent.exists) {
+                            try { target.parent.createDirectory(); } catch (_:Dynamic) {}
+                        }
+                        var stream:Dynamic = Type.createInstance(fsCls, []);
+                        if (stream != null && Reflect.field(stream, "open") != null) {
+                            stream.open(target, "write");
+                            stream.writeBytes(bytes);
+                            stream.close();
+                            ApiLogger.info("Storage", "Saved " + clean + " to fallback storage folder");
+                            return true;
+                        }
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        ApiLogger.error("Storage", "writeBytes failed for " + clean);
         return false;
     }
 
