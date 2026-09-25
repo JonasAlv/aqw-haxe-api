@@ -266,7 +266,7 @@ class AqwStorage {
     }
 
     /**
-     * Auto-provisions quests.json, skills.txt, userSkills.txt to data directory if missing.
+     * Auto-provisions quests.json, skills.json, userSkills.json to data directory if missing.
      */
     public static function ensureFiles():Void {
         if (_provisioned) return;
