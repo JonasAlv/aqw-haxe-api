@@ -413,7 +413,7 @@ class CombatEngine {
         if (confClass != null && confClass != "" && confClass != "Current") {
             className = confClass;
         } else {
-            // "Current" means use whatever class is currently equipped right now!
+            // "Current" means use whatever class is currently equipped right now
             className = getCurrentClassName();
             if (className == "" && avatar.objData != null && avatar.objData.strClassName != null) {
                 className = Std.string(avatar.objData.strClassName);
@@ -1009,15 +1009,22 @@ class CombatEngine {
         ApiLogger.info("Skills", "Registered custom mode [" + targetKey + " : " + modeName + "] in memory!");
     }
 
-    public static function unregisterCustomMode(className:String, modeName:String):Void {
-        if (className == null || className == "" || modeName == null || modeName == "") return;
-        if (_skillsData == null) return;
+    public static function unregisterCustomMode(className:String, modeName:String):Bool {
+        if (className == null || className == "" || modeName == null || modeName == "") return false;
+        if (_skillsData == null) return false;
 
         var targetClass:Dynamic = findClassConfig(className);
-        if (targetClass != null && Reflect.hasField(targetClass, modeName)) {
-            Reflect.deleteField(targetClass, modeName);
-            ApiLogger.info("Skills", "Unregistered custom mode [" + className + " : " + modeName + "] from memory!");
+        var removed:Bool = false;
+        if (targetClass != null) {
+            for (f in Reflect.fields(targetClass)) {
+                if (f != null && (f.toLowerCase() == modeName.toLowerCase() || StringTools.trim(f).toLowerCase() == StringTools.trim(modeName).toLowerCase())) {
+                    Reflect.deleteField(targetClass, f);
+                    removed = true;
+                    ApiLogger.info("Skills", "Unregistered custom mode [" + className + " : " + f + "] from memory!");
+                }
+            }
         }
+        return removed;
     }
 
     public static function getAvailableModes(className:String):Array<String> {

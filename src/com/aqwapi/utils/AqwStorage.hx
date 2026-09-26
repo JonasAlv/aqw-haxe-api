@@ -42,7 +42,14 @@ class AqwStorage {
                 if (nativeDir != null && nativeDir.length > 0) {
                     var sep:String = (nativeDir.indexOf("/") != -1) ? "/" : "\\";
                     var fullPath:String = nativeDir + sep + "assets" + sep + clean;
-                    var f:Dynamic = Type.createInstance(FileClass, [fullPath]);
+                    var f:Dynamic = null;
+                    try {
+                        f = Type.createInstance(FileClass, []);
+                        if (f != null) Reflect.setField(f, "nativePath", fullPath);
+                    } catch (_:Dynamic) {}
+                    if (f == null) {
+                        try { f = Type.createInstance(FileClass, [fullPath]); } catch (_:Dynamic) {}
+                    }
                     if (f != null) return f;
                 }
             } catch (_:Dynamic) {}
@@ -382,11 +389,32 @@ class AqwStorage {
     public static function readText(fileName:String):String {
         var clean = cleanFileName(fileName);
 
-        // Priority 1 (Desktop): Read directly from game folder assets/ (portable WoW-style self-contained config)
+        // Priority 1 (Desktop): Compare game folder assets/ vs applicationStorageDirectory
         if (isDesktop()) {
             try {
                 var assetFile = getAppAssetsFile(clean);
-                if (assetFile != null && assetFile.exists) {
+                var storageFile = getFile(clean);
+                var assetExists:Bool = (assetFile != null && assetFile.exists);
+                var storageExists:Bool = (storageFile != null && storageFile.exists);
+
+                if (assetExists && storageExists) {
+                    var aTime:Float = 0;
+                    var sTime:Float = 0;
+                    try { if (assetFile.modificationDate != null) aTime = assetFile.modificationDate.time; } catch (_:Dynamic) {}
+                    try { if (storageFile.modificationDate != null) sTime = storageFile.modificationDate.time; } catch (_:Dynamic) {}
+
+                    // Prefer whichever was modified more recently
+                    if (aTime > sTime) {
+                        var txt = readFileStream(assetFile);
+                        if (txt != null && StringTools.trim(txt).length > 0) return txt;
+                    } else {
+                        var txt = readFileStream(storageFile);
+                        if (txt != null && StringTools.trim(txt).length > 0) return txt;
+                    }
+                } else if (storageExists) {
+                    var txt = readFileStream(storageFile);
+                    if (txt != null && StringTools.trim(txt).length > 0) return txt;
+                } else if (assetExists) {
                     var txt = readFileStream(assetFile);
                     if (txt != null && StringTools.trim(txt).length > 0) return txt;
                 }
