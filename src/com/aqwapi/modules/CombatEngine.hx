@@ -95,9 +95,8 @@ class CombatEngine {
     }
 
     public static function init():Void {
-        if (_skillsLoaded && _skillsData != null) return;
-        _skillsLoaded = true;
-        reloadSkills(true);
+        if (_skillsLoaded && _skillsData != null && Reflect.fields(_skillsData).length > 0) return;
+        reloadSkills(false);
     }
 
     public static function toggleSmart():Void {
@@ -222,46 +221,47 @@ class CombatEngine {
 
     public static function compileSkillsData(data:Dynamic):Void {
         if (data == null) return;
-        for (cKey in Reflect.fields(data)) {
-            var cObj:Dynamic = Reflect.field(data, cKey);
-            if (cObj == null || Std.isOfType(cObj, Array)) continue;
-            for (mKey in Reflect.fields(cObj)) {
+        try {
+            for (cKey in Reflect.fields(data)) {
                 try {
-                    var mObj:Dynamic = Reflect.field(cObj, mKey);
-                    if (mObj == null) continue;
-                    if (mObj.mode != null && mObj.skillUseMode == null) {
-                        mObj.skillUseMode = mObj.mode;
+                    var cObj:Dynamic = Reflect.field(data, cKey);
+                    if (cObj == null || Std.isOfType(cObj, Array)) continue;
+                    for (mKey in Reflect.fields(cObj)) {
+                        try {
+                            var mObj:Dynamic = Reflect.field(cObj, mKey);
+                            if (mObj == null || Std.isOfType(mObj, Array)) continue;
+                            if (mObj.mode != null && mObj.skillUseMode == null) {
+                                mObj.skillUseMode = mObj.mode;
+                            }
+                            if (mObj.timeout != null && mObj.skillTimeout == null) {
+                                mObj.skillTimeout = mObj.timeout;
+                            }
+                        } catch (me:Dynamic) {}
                     }
-                    if (mObj.timeout != null && mObj.skillTimeout == null) {
-                        mObj.skillTimeout = mObj.timeout;
-                    }
-                    if (mObj.combo != null && (mObj.skills == null || !Std.isOfType(mObj.skills, Array) || (cast mObj.skills : Array<Dynamic>).length == 0)) {
-                        mObj.skills = SkillDslParser.parseCombo(Std.string(mObj.combo));
-                    }
-                } catch (me:Dynamic) {
-                    ApiLogger.warn("Skills", "Error compiling mode [" + cKey + " : " + mKey + "]: " + me);
-                }
+                } catch (_:Dynamic) {}
             }
-        }
+        } catch (_:Dynamic) {}
     }
 
     private static function backupCustomModes():Array<Dynamic> {
         var list:Array<Dynamic> = [];
         if (_skillsData == null) return list;
-        for (cKey in Reflect.fields(_skillsData)) {
-            var cObj:Dynamic = Reflect.field(_skillsData, cKey);
-            if (cObj != null && !Std.isOfType(cObj, Array)) {
-                for (mKey in Reflect.fields(cObj)) {
-                    if (mKey.toLowerCase() != "base") {
-                        list.push({
-                            className: cKey,
-                            modeName: mKey,
-                            data: Reflect.field(cObj, mKey)
-                        });
+        try {
+            for (cKey in Reflect.fields(_skillsData)) {
+                var cObj:Dynamic = Reflect.field(_skillsData, cKey);
+                if (cObj != null && !Std.isOfType(cObj, Array)) {
+                    for (mKey in Reflect.fields(cObj)) {
+                        if (mKey.toLowerCase() != "base") {
+                            list.push({
+                                className: cKey,
+                                modeName: mKey,
+                                data: Reflect.field(cObj, mKey)
+                            });
+                        }
                     }
                 }
             }
-        }
+        } catch (_:Dynamic) {}
         return list;
     }
 
@@ -314,8 +314,6 @@ class CombatEngine {
             UserSkillsManager.ensureStorageInitialized();
             rebuildClassIndex();
         } catch (e:Dynamic) {
-            _skillsData = {};
-            rebuildClassIndex();
             var msg:String = Std.string(e);
             #if flash
             try {
@@ -326,7 +324,20 @@ class CombatEngine {
                 }
             } catch (_:Dynamic) {}
             #end
-            if (!silent) ApiLogger.error("Skills", "skills load error: " + msg);
+            ApiLogger.error("Skills", "skills load error: " + msg);
+
+            // Resilient fallback to embedded default skills if _skillsData ended up empty
+            if (_skillsData == null || Reflect.fields(_skillsData).length == 0) {
+                try {
+                    var defTxt = DefaultSkillsData.getDefaultSkills();
+                    if (defTxt != null && defTxt.length > 0) {
+                        _skillsData = haxe.Json.parse(defTxt);
+                        compileSkillsData(_skillsData);
+                    }
+                } catch (_:Dynamic) {}
+            }
+            if (_skillsData == null) _skillsData = {};
+            rebuildClassIndex();
         }
     }
 

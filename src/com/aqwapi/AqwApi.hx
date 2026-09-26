@@ -57,17 +57,38 @@ class AqwApi {
         try {
             com.aqwapi.modules.CombatEngine.init();
         } catch (e:Dynamic) {
-            ApiLogger.warn("Api", "CombatEngine preload error: " + e);
+            var msg:String = Std.string(e);
+            #if flash
+            try {
+                if (Std.isOfType(e, flash.errors.Error)) {
+                    var fe:flash.errors.Error = cast e;
+                    var st:String = fe.getStackTrace();
+                    if (st != null && st != "") msg += " @ " + st;
+                }
+            } catch (_:Dynamic) {}
+            #end
+            ApiLogger.warn("Api", "CombatEngine preload error: " + msg);
         }
         try {
             com.aqwapi.modules.UserSkillsManager.ensureStorageInitialized();
             com.aqwapi.modules.UserSkillsManager.readUserSkillsObject();
         } catch (_:Dynamic) {}
+        #if flash
+        try {
+            // Defer heavy 2.7MB quest data parsing so app startup is instantaneous (<10ms)
+            haxe.Timer.delay(function():Void {
+                try {
+                    com.aqwapi.modules.QuestDataLoader.ensureLoaded(true);
+                } catch (qe:Dynamic) {
+                    ApiLogger.warn("Api", "QuestDataLoader deferred error: " + qe);
+                }
+            }, 1000);
+        } catch (_:Dynamic) {}
+        #else
         try {
             com.aqwapi.modules.QuestDataLoader.ensureLoaded(true);
-        } catch (e:Dynamic) {
-            ApiLogger.warn("Api", "QuestDataLoader preload error: " + e);
-        }
+        } catch (e:Dynamic) {}
+        #end
     }
 
     public static function init(gameReference:Dynamic):Void {

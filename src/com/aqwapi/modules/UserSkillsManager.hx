@@ -69,13 +69,33 @@ class UserSkillsManager {
             try {
                 var defJson = DefaultSkillsData.getDefaultUserSkills();
                 if (defJson != null && StringTools.trim(defJson).length > 0) {
-                    parsedData = haxe.Json.parse(defJson);
+                    var defObj:Dynamic = haxe.Json.parse(defJson);
+                    if (defObj != null && !Std.isOfType(defObj, Array) && Reflect.fields(defObj).length > 0) {
+                        parsedData = defObj;
+                        try {
+                            AqwStorage.writeText("userSkills.json", haxe.Json.stringify(parsedData, null, "  "));
+                        } catch (_:Dynamic) {}
+                    }
                 }
             } catch (_:Dynamic) {}
         }
 
         _userSkillsCache = parsedData;
         return _userSkillsCache;
+    }
+
+    public static function deleteFieldSafe(o:Dynamic, field:String):Bool {
+        if (o == null || field == null || field == "") return false;
+        #if flash
+        try {
+            untyped __delete__(o, field);
+            return true;
+        } catch (_:Dynamic) {}
+        #end
+        try {
+            return Reflect.deleteField(o, field);
+        } catch (_:Dynamic) {}
+        return false;
     }
 
     /**
@@ -331,7 +351,17 @@ class UserSkillsManager {
 
             return ok;
         } catch (e:Dynamic) {
-            ApiLogger.error("UserSkills", "saveMode exception: " + e);
+            var msg:String = Std.string(e);
+            #if flash
+            try {
+                if (Std.isOfType(e, flash.errors.Error)) {
+                    var fe:flash.errors.Error = cast e;
+                    var st:String = fe.getStackTrace();
+                    if (st != null && st != "") msg += " @ " + st;
+                }
+            } catch (_:Dynamic) {}
+            #end
+            ApiLogger.error("UserSkills", "saveMode exception: " + msg);
             return false;
         }
     }
@@ -372,12 +402,12 @@ class UserSkillsManager {
                         }
 
                         if (targetModeKey != null) {
-                            Reflect.deleteField(classObj, targetModeKey);
+                            deleteFieldSafe(classObj, targetModeKey);
                             removed = true;
                         }
 
                         if (Reflect.fields(classObj).length == 0) {
-                            Reflect.deleteField(data, targetClassKey);
+                            deleteFieldSafe(data, targetClassKey);
                         }
                     }
                 }
@@ -387,7 +417,17 @@ class UserSkillsManager {
                 }
             }
         } catch (e:Dynamic) {
-            ApiLogger.error("UserSkills", "deleteMode data removal error: " + e);
+            var msg:String = Std.string(e);
+            #if flash
+            try {
+                if (Std.isOfType(e, flash.errors.Error)) {
+                    var fe:flash.errors.Error = cast e;
+                    var st:String = fe.getStackTrace();
+                    if (st != null && st != "") msg += " @ " + st;
+                }
+            } catch (_:Dynamic) {}
+            #end
+            ApiLogger.error("UserSkills", "deleteMode data removal error: " + msg);
         }
 
         // 2. Also ensure deleted from SharedObject backup
@@ -422,12 +462,12 @@ class UserSkillsManager {
                                 }
                             }
                             if (soModeKey != null) {
-                                Reflect.deleteField(soClassObj, soModeKey);
+                                deleteFieldSafe(soClassObj, soModeKey);
                                 soRemoved = true;
                                 removed = true;
                             }
                             if (Reflect.fields(soClassObj).length == 0) {
-                                Reflect.deleteField(soObj, soTargetClass);
+                                deleteFieldSafe(soObj, soTargetClass);
                             }
                         }
                         if (soRemoved) {
@@ -438,7 +478,17 @@ class UserSkillsManager {
                 }
             }
         } catch (e2:Dynamic) {
-            ApiLogger.error("UserSkills", "deleteMode SharedObject removal error: " + e2);
+            var msg2:String = Std.string(e2);
+            #if flash
+            try {
+                if (Std.isOfType(e2, flash.errors.Error)) {
+                    var fe2:flash.errors.Error = cast e2;
+                    var st2:String = fe2.getStackTrace();
+                    if (st2 != null && st2 != "") msg2 += " @ " + st2;
+                }
+            } catch (_:Dynamic) {}
+            #end
+            ApiLogger.error("UserSkills", "deleteMode SharedObject removal error: " + msg2);
         }
 
         // 3. Unregister from CombatEngine in-memory registry
