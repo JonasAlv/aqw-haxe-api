@@ -38,67 +38,30 @@ class UserSkillsManager {
             parsedData = {};
         }
 
-        // Recover and merge custom modes from SharedObject (handles cases where desktop appDir was read-only or files were desynced)
-        try {
-            var so:Dynamic = null;
-            #if flash
-            so = flash.net.SharedObject.getLocal("aqw_user_skills_json");
-            #else
-            var soClass = Type.resolveClass("flash.net.SharedObject");
-            if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills_json"]);
-            #end
-            if (so != null && so.data != null && so.data.content != null) {
-                var soTxt:String = Std.string(so.data.content);
-                if (soTxt != null && StringTools.trim(soTxt).length > 0) {
-                    var soObj:Dynamic = haxe.Json.parse(soTxt);
-                    if (soObj != null && !Std.isOfType(soObj, Array)) {
-                        var changed:Bool = false;
-                        for (cKey in Reflect.fields(soObj)) {
-                            var soClassObj:Dynamic = Reflect.field(soObj, cKey);
-                            if (soClassObj != null && !Std.isOfType(soClassObj, Array)) {
-                                var targetClassObj:Dynamic = null;
-                                var targetClassKey:String = cKey;
-                                var cleanC = CombatEngine.cleanClassName(cKey);
-
-                                for (dk in Reflect.fields(parsedData)) {
-                                    if (dk.toLowerCase() == cKey.toLowerCase() || (cleanC != "" && CombatEngine.cleanClassName(dk) == cleanC)) {
-                                        targetClassKey = dk;
-                                        targetClassObj = Reflect.field(parsedData, dk);
-                                        break;
-                                    }
-                                }
-
-                                if (targetClassObj == null) {
-                                    targetClassObj = {};
-                                    Reflect.setField(parsedData, targetClassKey, targetClassObj);
-                                    changed = true;
-                                }
-
-                                for (mKey in Reflect.fields(soClassObj)) {
-                                    var hasMode:Bool = false;
-                                    for (dmk in Reflect.fields(targetClassObj)) {
-                                        if (dmk.toLowerCase() == mKey.toLowerCase()) {
-                                            hasMode = true;
-                                            break;
-                                        }
-                                    }
-                                    if (!hasMode) {
-                                        Reflect.setField(targetClassObj, mKey, Reflect.field(soClassObj, mKey));
-                                        changed = true;
-                                    }
-                                }
-                            }
-                        }
-                        // If new modes were recovered from SharedObject, sync disk
-                        if (changed) {
+        // Recover custom modes from SharedObject ONLY if disk was empty or missing!
+        if (Reflect.fields(parsedData).length == 0) {
+            try {
+                var so:Dynamic = null;
+                #if flash
+                so = flash.net.SharedObject.getLocal("aqw_user_skills_json");
+                #else
+                var soClass = Type.resolveClass("flash.net.SharedObject");
+                if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills_json"]);
+                #end
+                if (so != null && so.data != null && so.data.content != null) {
+                    var soTxt:String = Std.string(so.data.content);
+                    if (soTxt != null && StringTools.trim(soTxt).length > 0) {
+                        var soObj:Dynamic = haxe.Json.parse(soTxt);
+                        if (soObj != null && !Std.isOfType(soObj, Array) && Reflect.fields(soObj).length > 0) {
+                            parsedData = soObj;
                             try {
                                 com.aqwapi.utils.AqwStorage.writeText("userSkills.json", haxe.Json.stringify(parsedData, null, "  "));
                             } catch (_:Dynamic) {}
                         }
                     }
                 }
-            }
-        } catch (_:Dynamic) {}
+            } catch (_:Dynamic) {}
+        }
 
         // Fallback: Default embedded user skills if completely empty
         if (Reflect.fields(parsedData).length == 0) {
@@ -323,6 +286,8 @@ class UserSkillsManager {
         var resolvedClass = resolveClassName(className);
         if (resolvedClass == null || resolvedClass == "") resolvedClass = className;
         var cleanTargetClass = CombatEngine.cleanClassName(resolvedClass);
+        var cleanOrigClass = CombatEngine.cleanClassName(className);
+        var targetModeClean = StringTools.trim(modeName).toLowerCase();
 
         var removed:Bool = false;
 
@@ -331,14 +296,17 @@ class UserSkillsManager {
             var data:Dynamic = readUserSkillsObject();
             if (data != null) {
                 for (cKey in Reflect.fields(data)) {
-                    if (cKey.toLowerCase() == resolvedClass.toLowerCase() || cKey.toLowerCase() == className.toLowerCase() || (cleanTargetClass != "" && CombatEngine.cleanClassName(cKey) == cleanTargetClass)) {
+                    var cClean = CombatEngine.cleanClassName(cKey);
+                    var cLower = cKey.toLowerCase();
+                    if (cLower == resolvedClass.toLowerCase() || cLower == className.toLowerCase() ||
+                        (cleanTargetClass != "" && cClean == cleanTargetClass) ||
+                        (cleanOrigClass != "" && cClean == cleanOrigClass)) {
                         var classObj:Dynamic = Reflect.field(data, cKey);
-                        if (classObj != null) {
+                        if (classObj != null && !Std.isOfType(classObj, Array)) {
                             for (mKey in Reflect.fields(classObj)) {
-                                if (mKey.toLowerCase() == modeName.toLowerCase() || StringTools.trim(mKey).toLowerCase() == StringTools.trim(modeName).toLowerCase()) {
+                                if (mKey.toLowerCase() == targetModeClean || StringTools.trim(mKey).toLowerCase() == targetModeClean) {
                                     Reflect.deleteField(classObj, mKey);
                                     removed = true;
-                                    break;
                                 }
                             }
                             if (Reflect.fields(classObj).length == 0) {
@@ -355,7 +323,7 @@ class UserSkillsManager {
             ApiLogger.error("UserSkills", "deleteMode data removal error: " + e);
         }
 
-        // 2. Also ensure deleted from SharedObject directly
+        // 2. Also ensure deleted from SharedObject directly (in case disk and SO differed)
         try {
             var so:Dynamic = null;
             #if flash
@@ -371,15 +339,18 @@ class UserSkillsManager {
                     if (soObj != null && !Std.isOfType(soObj, Array)) {
                         var soRemoved:Bool = false;
                         for (cKey in Reflect.fields(soObj)) {
-                            if (cKey.toLowerCase() == resolvedClass.toLowerCase() || cKey.toLowerCase() == className.toLowerCase() || (cleanTargetClass != "" && CombatEngine.cleanClassName(cKey) == cleanTargetClass)) {
+                            var cClean = CombatEngine.cleanClassName(cKey);
+                            var cLower = cKey.toLowerCase();
+                            if (cLower == resolvedClass.toLowerCase() || cLower == className.toLowerCase() ||
+                                (cleanTargetClass != "" && cClean == cleanTargetClass) ||
+                                (cleanOrigClass != "" && cClean == cleanOrigClass)) {
                                 var cObj:Dynamic = Reflect.field(soObj, cKey);
                                 if (cObj != null && !Std.isOfType(cObj, Array)) {
                                     for (mKey in Reflect.fields(cObj)) {
-                                        if (mKey.toLowerCase() == modeName.toLowerCase() || StringTools.trim(mKey).toLowerCase() == StringTools.trim(modeName).toLowerCase()) {
+                                        if (mKey.toLowerCase() == targetModeClean || StringTools.trim(mKey).toLowerCase() == targetModeClean) {
                                             Reflect.deleteField(cObj, mKey);
                                             soRemoved = true;
                                             removed = true;
-                                            break;
                                         }
                                     }
                                     if (Reflect.fields(cObj).length == 0) {
@@ -391,7 +362,6 @@ class UserSkillsManager {
                         if (soRemoved) {
                             so.data.content = haxe.Json.stringify(soObj, null, "  ");
                             try { so.flush(); } catch (_:Dynamic) {}
-                            writeUserSkillsObject(soObj);
                         }
                     }
                 }
@@ -400,7 +370,7 @@ class UserSkillsManager {
             ApiLogger.error("UserSkills", "deleteMode SharedObject removal error: " + e2);
         }
 
-        // 3. Unregister from CombatEngine in-memory registry
+        // 3. Unregister from CombatEngine in-memory registry across all matching keys
         try {
             var ceRemoved1 = CombatEngine.unregisterCustomMode(resolvedClass, modeName);
             var ceRemoved2 = false;
@@ -410,6 +380,9 @@ class UserSkillsManager {
             var ceRemoved3 = false;
             if (cleanTargetClass != "") {
                 ceRemoved3 = CombatEngine.unregisterCustomMode(cleanTargetClass, modeName);
+            }
+            if (cleanOrigClass != "" && cleanOrigClass != cleanTargetClass) {
+                CombatEngine.unregisterCustomMode(cleanOrigClass, modeName);
             }
             if (ceRemoved1 || ceRemoved2 || ceRemoved3) {
                 removed = true;

@@ -197,26 +197,6 @@ class CombatEngine {
         }
     }
 
-    private static function backupCustomModes():Array<Dynamic> {
-        var list:Array<Dynamic> = [];
-        if (_skillsData == null) return list;
-        for (cKey in Reflect.fields(_skillsData)) {
-            var cObj:Dynamic = Reflect.field(_skillsData, cKey);
-            if (cObj != null && !Std.isOfType(cObj, Array)) {
-                for (mKey in Reflect.fields(cObj)) {
-                    if (mKey.toLowerCase() != "base") {
-                        list.push({
-                            className: cKey,
-                            modeName: mKey,
-                            data: Reflect.field(cObj, mKey)
-                        });
-                    }
-                }
-            }
-        }
-        return list;
-    }
-
     public static function reloadSkills(silent:Bool = false):Void {
         _skillsLoaded = true;
         try {
@@ -224,8 +204,6 @@ class CombatEngine {
             if (rawTxt == null || rawTxt.length == 0) {
                 rawTxt = DefaultSkillsData.getDefaultSkills();
             }
-
-            var inMemoryCustom:Array<Dynamic> = backupCustomModes();
 
             if (rawTxt != null && rawTxt.length > 0) {
                 var trimmed = StringTools.trim(rawTxt);
@@ -247,16 +225,6 @@ class CombatEngine {
             }
 
             if (_skillsData == null) _skillsData = {};
-
-            // Restore in-memory custom modes
-            for (item in inMemoryCustom) {
-                var targetClass:Dynamic = Reflect.field(_skillsData, item.className);
-                if (targetClass == null) {
-                    targetClass = {};
-                    Reflect.setField(_skillsData, item.className, targetClass);
-                }
-                Reflect.setField(targetClass, item.modeName, item.data);
-            }
 
             var userSkillsObj:Dynamic = UserSkillsManager.readUserSkillsObject();
             if (userSkillsObj != null && Reflect.fields(userSkillsObj).length > 0) {
@@ -1013,14 +981,22 @@ class CombatEngine {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
         if (_skillsData == null) return false;
 
-        var targetClass:Dynamic = findClassConfig(className);
+        var cleanTarget:String = cleanClassName(className);
+        var lower:String = className.toLowerCase();
+        var modeClean:String = StringTools.trim(modeName).toLowerCase();
         var removed:Bool = false;
-        if (targetClass != null) {
-            for (f in Reflect.fields(targetClass)) {
-                if (f != null && (f.toLowerCase() == modeName.toLowerCase() || StringTools.trim(f).toLowerCase() == StringTools.trim(modeName).toLowerCase())) {
-                    Reflect.deleteField(targetClass, f);
-                    removed = true;
-                    ApiLogger.info("Skills", "Unregistered custom mode [" + className + " : " + f + "] from memory!");
+
+        for (cKey in Reflect.fields(_skillsData)) {
+            if (cKey.toLowerCase() == lower || (cleanTarget != "" && cleanClassName(cKey) == cleanTarget)) {
+                var targetClass:Dynamic = Reflect.field(_skillsData, cKey);
+                if (targetClass != null && !Std.isOfType(targetClass, Array)) {
+                    for (f in Reflect.fields(targetClass)) {
+                        if (f != null && (f.toLowerCase() == modeClean || StringTools.trim(f).toLowerCase() == modeClean)) {
+                            Reflect.deleteField(targetClass, f);
+                            removed = true;
+                            ApiLogger.info("Skills", "Unregistered custom mode [" + cKey + " : " + f + "] from memory!");
+                        }
+                    }
                 }
             }
         }

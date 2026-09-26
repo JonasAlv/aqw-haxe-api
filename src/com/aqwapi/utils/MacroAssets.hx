@@ -9,9 +9,11 @@ class MacroAssets {
     public static function loadAsset(relPath:String):Expr {
         var candidates = [
             relPath,
+            "../aqw-mobile/loader/assets/" + relPath,
             "../aqw-mobile-mod/loader/assets/" + relPath,
             "loader/assets/" + relPath,
-            "/home/me/Music/haxe-workspace/aqw-mobile-mod/loader/assets/" + relPath
+            "assets/" + relPath,
+            "../assets/" + relPath
         ];
         for (c in candidates) {
             if (FileSystem.exists(c)) {

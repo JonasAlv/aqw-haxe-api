@@ -28,6 +28,13 @@ class AqwStorage {
         return false;
     }
 
+    public static function isBundledAsset(fileName:String):Bool {
+        if (fileName == null) return false;
+        var clean = cleanFileName(fileName).toLowerCase();
+        return (clean == "skills.json" || clean == "skills.txt" ||
+                clean == "quests.json" || clean == "quests.txt");
+    }
+
     public static function getAppAssetsFile(fileName:String):Dynamic {
         var clean = cleanFileName(fileName);
         try {
@@ -38,19 +45,30 @@ class AqwStorage {
 
             // 1. Try constructing File via nativePath (standard filesystem path bypasses AIR appDir read-only flag on Windows desktop)
             try {
-                var nativeDir:String = appDir.nativePath;
+                var nativeDir:String = null;
+                try { nativeDir = appDir.nativePath; } catch (_:Dynamic) {}
                 if (nativeDir != null && nativeDir.length > 0) {
                     var sep:String = (nativeDir.indexOf("/") != -1) ? "/" : "\\";
                     var fullPath:String = nativeDir + sep + "assets" + sep + clean;
                     var f:Dynamic = null;
                     try {
-                        f = Type.createInstance(FileClass, []);
-                        if (f != null) Reflect.setField(f, "nativePath", fullPath);
+                        f = Type.createInstance(FileClass, [fullPath]);
                     } catch (_:Dynamic) {}
                     if (f == null) {
-                        try { f = Type.createInstance(FileClass, [fullPath]); } catch (_:Dynamic) {}
+                        try {
+                            f = Type.createInstance(FileClass, []);
+                            if (f != null) {
+                                Reflect.setProperty(f, "nativePath", fullPath);
+                            }
+                        } catch (_:Dynamic) {}
                     }
-                    if (f != null) return f;
+                    if (f != null) {
+                        var p:String = null;
+                        try { p = f.nativePath; } catch (_:Dynamic) {}
+                        if (p != null && p.length > 0) {
+                            return f;
+                        }
+                    }
                 }
             } catch (_:Dynamic) {}
 
@@ -58,6 +76,10 @@ class AqwStorage {
             try {
                 var f = appDir.resolvePath("assets/" + clean);
                 if (f != null) return f;
+            } catch (_:Dynamic) {}
+            try {
+                var f2 = appDir.resolvePath(clean);
+                if (f2 != null) return f2;
             } catch (_:Dynamic) {}
         } catch (_:Dynamic) {}
         return null;
@@ -273,7 +295,9 @@ class AqwStorage {
     }
 
     /**
-     * Auto-provisions quests.json, skills.json, userSkills.json to data directory if missing.
+     * Auto-provisions userSkills.json to data directory if missing.
+     * Note: bundled game assets (skills.json, quests.json) are packaged with the game
+     * and are never copied to applicationStorageDirectory so that updates are never masked.
      */
     public static function ensureFiles():Void {
         if (_provisioned) return;
@@ -288,22 +312,7 @@ class AqwStorage {
             }
         } catch (_:Dynamic) {}
 
-        // 1. quests.json
-        ensureFile(dir, "quests.json", function():Dynamic {
-            var pkg = resolvePackagedFile("quests.json");
-            return readBinaryFile(pkg);
-        });
-
-        // 2. skills.json
-        ensureFile(dir, "skills.json", function():Dynamic {
-            var pkg = resolvePackagedFile("skills.json");
-            var bytes = readBinaryFile(pkg);
-            if (bytes != null) return bytes;
-            var def = getDefaultSkillsResource();
-            return (def != null && def.length > 0) ? def : null;
-        });
-
-        // 3. userSkills.json
+        // Only provision userSkills.json if missing
         ensureFile(dir, "userSkills.json", function():Dynamic {
             var pkg = resolvePackagedFile("userSkills.json");
             var bytes = readBinaryFile(pkg);
@@ -351,24 +360,9 @@ class AqwStorage {
 
             var target = dir.resolvePath(fileName);
             if (target != null && target.exists) {
-                if (fileName == "userSkills.json" || fileName == "userSkills.txt") {
-                    var size:Float = 0;
-                    try { size = target.size; } catch (_:Dynamic) {}
-                    if (size > 0) return;
-                } else {
-                    var pkg = resolvePackagedFile(fileName);
-                    if (pkg != null && pkg.exists) {
-                        var pkgSize:Float = 0;
-                        var targetSize:Float = 0;
-                        try { pkgSize = pkg.size; } catch (_:Dynamic) {}
-                        try { targetSize = target.size; } catch (_:Dynamic) {}
-                        if (pkgSize > 0 && targetSize == pkgSize) return;
-                    } else {
-                        var size:Float = 0;
-                        try { size = target.size; } catch (_:Dynamic) {}
-                        if (size > 0) return;
-                    }
-                }
+                var size:Float = 0;
+                try { size = target.size; } catch (_:Dynamic) {}
+                if (size > 0) return;
             }
 
             var data = getSourceData();
@@ -388,40 +382,67 @@ class AqwStorage {
 
     public static function readText(fileName:String):String {
         var clean = cleanFileName(fileName);
+        if (clean == "") return null;
 
-        // Priority 1 (Desktop): Compare game folder assets/ vs applicationStorageDirectory
+        // --- Case A: Bundled Game Definitions (skills.json, quests.json) ---
+        // Packaged game definitions must ALWAYS take precedence over any stale storage files.
+        if (isBundledAsset(clean)) {
+            // Priority 1 (Desktop): Read directly from game folder assets/
+            if (isDesktop()) {
+                try {
+                    var assetFile = getAppAssetsFile(clean);
+                    if (assetFile != null && assetFile.exists) {
+                        var txt = readFileStream(assetFile);
+                        if (txt != null && StringTools.trim(txt).length > 0) return txt;
+                    }
+                } catch (_:Dynamic) {}
+            }
+
+            // Priority 2: Packaged app asset (APK assets on Android, or captive app bundle)
+            try {
+                var pkg = resolvePackagedFile(clean);
+                if (pkg != null && pkg.exists) {
+                    var txt = readFileStream(pkg);
+                    if (txt != null && StringTools.trim(txt).length > 0) return txt;
+                }
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Storage", "Error reading packaged " + clean + ": " + e);
+            }
+
+            // Priority 3: Compile-time embedded SWC resource fallback
+            if (clean == "skills.json" || clean == "skills.txt") {
+                try {
+                    var def = getDefaultSkillsResource();
+                    if (def != null && StringTools.trim(def).length > 0) return def;
+                } catch (_:Dynamic) {}
+            }
+
+            // Priority 4: Writable storage fallback (only if packaged asset failed completely)
+            try {
+                var f = getFile(clean);
+                if (f != null && f.exists) {
+                    var txt = readFileStream(f);
+                    if (txt != null && StringTools.trim(txt).length > 0) return txt;
+                }
+            } catch (_:Dynamic) {}
+
+            return null;
+        }
+
+        // --- Case B: User Data Files (userSkills.json) ---
+        // User custom data prioritizes the active writable store.
+        // Priority 1 (Desktop): Game folder assets/ (portable mode)
         if (isDesktop()) {
             try {
                 var assetFile = getAppAssetsFile(clean);
-                var storageFile = getFile(clean);
-                var assetExists:Bool = (assetFile != null && assetFile.exists);
-                var storageExists:Bool = (storageFile != null && storageFile.exists);
-
-                if (assetExists && storageExists) {
-                    var aTime:Float = 0;
-                    var sTime:Float = 0;
-                    try { if (assetFile.modificationDate != null) aTime = assetFile.modificationDate.time; } catch (_:Dynamic) {}
-                    try { if (storageFile.modificationDate != null) sTime = storageFile.modificationDate.time; } catch (_:Dynamic) {}
-
-                    // Prefer whichever was modified more recently
-                    if (aTime > sTime) {
-                        var txt = readFileStream(assetFile);
-                        if (txt != null && StringTools.trim(txt).length > 0) return txt;
-                    } else {
-                        var txt = readFileStream(storageFile);
-                        if (txt != null && StringTools.trim(txt).length > 0) return txt;
-                    }
-                } else if (storageExists) {
-                    var txt = readFileStream(storageFile);
-                    if (txt != null && StringTools.trim(txt).length > 0) return txt;
-                } else if (assetExists) {
+                if (assetFile != null && assetFile.exists) {
                     var txt = readFileStream(assetFile);
                     if (txt != null && StringTools.trim(txt).length > 0) return txt;
                 }
             } catch (_:Dynamic) {}
         }
 
-        // Priority 2: Primary data directory (applicationStorageDirectory)
+        // Priority 2: Primary writable storage directory (applicationStorageDirectory)
         try {
             var f = getFile(clean);
             if (f != null && f.exists) {
@@ -432,18 +453,7 @@ class AqwStorage {
             ApiLogger.warn("Storage", "Error reading " + clean + ": " + e);
         }
 
-        // Priority 3: Packaged app asset
-        try {
-            var pkg = resolvePackagedFile(clean);
-            if (pkg != null && pkg.exists) {
-                var txt = readFileStream(pkg);
-                if (txt != null && StringTools.trim(txt).length > 0) return txt;
-            }
-        } catch (e:Dynamic) {
-            ApiLogger.warn("Storage", "Error reading packaged " + clean + ": " + e);
-        }
-
-        // Priority 4: Fallback directory (documentsDirectory / applicationStorageDirectory)
+        // Priority 3: Fallback directory (documentsDirectory)
         try {
             var FileClass:Dynamic = getFileClass();
             var fallbackDir = getStaticProp(FileClass, "documentsDirectory");
@@ -456,6 +466,23 @@ class AqwStorage {
                 }
             }
         } catch (_:Dynamic) {}
+
+        // Priority 4: Packaged seed asset (initial default)
+        try {
+            var pkg = resolvePackagedFile(clean);
+            if (pkg != null && pkg.exists) {
+                var txt = readFileStream(pkg);
+                if (txt != null && StringTools.trim(txt).length > 0) return txt;
+            }
+        } catch (_:Dynamic) {}
+
+        // Priority 5: Embedded default user skills resource
+        if (clean == "userSkills.json" || clean == "userSkills.txt") {
+            try {
+                var def = getDefaultUserSkillsResource();
+                if (def != null && StringTools.trim(def).length > 0) return def;
+            } catch (_:Dynamic) {}
+        }
 
         return null;
     }
