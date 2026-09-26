@@ -22,6 +22,10 @@ class AqwStorage {
     public static function readFileStream(file:Dynamic):String {
         if (file == null) return null;
         try {
+            var exists:Bool = false;
+            try { exists = (file.exists == true); } catch (_:Dynamic) {}
+            if (!exists) return null;
+
             var fsCls:Dynamic = getFileStreamClass();
             if (fsCls == null) return null;
             var stream:Dynamic = Type.createInstance(fsCls, []);

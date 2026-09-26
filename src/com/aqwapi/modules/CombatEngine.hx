@@ -201,6 +201,26 @@ class CombatEngine {
         }
     }
 
+    private static function backupCustomModes():Array<Dynamic> {
+        var list:Array<Dynamic> = [];
+        if (_skillsData == null) return list;
+        for (cKey in Reflect.fields(_skillsData)) {
+            var cObj:Dynamic = Reflect.field(_skillsData, cKey);
+            if (cObj != null && !Std.isOfType(cObj, Array)) {
+                for (mKey in Reflect.fields(cObj)) {
+                    if (mKey.toLowerCase() != "base") {
+                        list.push({
+                            className: cKey,
+                            modeName: mKey,
+                            data: Reflect.field(cObj, mKey)
+                        });
+                    }
+                }
+            }
+        }
+        return list;
+    }
+
     public static function reloadSkills(silent:Bool = false):Void {
         _skillsLoaded = true;
         try {
@@ -208,6 +228,8 @@ class CombatEngine {
             if (rawTxt == null || rawTxt.length == 0) {
                 rawTxt = DefaultSkillsData.getDefaultSkills();
             }
+
+            var inMemoryCustom:Array<Dynamic> = backupCustomModes();
 
             if (rawTxt != null && rawTxt.length > 0) {
                 var trimmed = StringTools.trim(rawTxt);
@@ -229,6 +251,16 @@ class CombatEngine {
             }
 
             if (_skillsData == null) _skillsData = {};
+
+            // Restore in-memory custom modes
+            for (item in inMemoryCustom) {
+                var targetClass:Dynamic = Reflect.field(_skillsData, item.className);
+                if (targetClass == null) {
+                    targetClass = {};
+                    Reflect.setField(_skillsData, item.className, targetClass);
+                }
+                Reflect.setField(targetClass, item.modeName, item.data);
+            }
 
             var userSkillsObj:Dynamic = UserSkillsManager.readUserSkillsObject();
             if (userSkillsObj != null && Reflect.fields(userSkillsObj).length > 0) {
@@ -885,13 +917,42 @@ class CombatEngine {
             return Reflect.field(_skillsData, trimmed);
         }
 
-        // 2. Case-insensitive match in _skillsData (without stripping characters)
+        // 2. Case-insensitive match in _skillsData
         var lower:String = trimmed.toLowerCase();
         for (key in Reflect.fields(_skillsData)) {
             if (key.toLowerCase() == lower) return Reflect.field(_skillsData, key);
         }
 
-        // 3. UserSkillsManager lookup if class was not found in _skillsData
+        // 3. Clean and fuzzy substring match (e.g. "Master Ranger" matches "Master Ranger (Rank 10)")
+        var cleanTarget:String = cleanClassName(trimmed);
+        if (cleanTarget != "") {
+            for (key in Reflect.fields(_skillsData)) {
+                if (cleanClassName(key) == cleanTarget) {
+                    return Reflect.field(_skillsData, key);
+                }
+            }
+            var bestMatchKey:String = null;
+            var bestMatchLen:Int = 0;
+            for (key in Reflect.fields(_skillsData)) {
+                var cleanKey:String = cleanClassName(key);
+                if (cleanKey != "") {
+                    if (cleanTarget == cleanKey) {
+                        return Reflect.field(_skillsData, key);
+                    }
+                    if (cleanTarget.indexOf(cleanKey) != -1 || cleanKey.indexOf(cleanTarget) != -1) {
+                        if (cleanKey.length > bestMatchLen) {
+                            bestMatchLen = cleanKey.length;
+                            bestMatchKey = key;
+                        }
+                    }
+                }
+            }
+            if (bestMatchKey != null) {
+                return Reflect.field(_skillsData, bestMatchKey);
+            }
+        }
+
+        // 4. UserSkillsManager lookup if class was not found in _skillsData
         try {
             var userObj = UserSkillsManager.readUserSkillsObject();
             if (userObj != null) {
@@ -903,7 +964,7 @@ class CombatEngine {
                     return customClassObj;
                 }
                 for (cKey in Reflect.fields(userObj)) {
-                    if (cKey.toLowerCase() == lower) {
+                    if (cKey.toLowerCase() == lower || (cleanTarget != "" && cleanClassName(cKey) == cleanTarget)) {
                         var customClassObj = Reflect.field(userObj, cKey);
                         compileSkillsData(userObj);
                         if (_skillsData == null) _skillsData = {};
@@ -922,7 +983,7 @@ class CombatEngine {
         if (_skillsData == null) return [];
         var list:Array<String> = [];
         for (key in Reflect.fields(_skillsData)) {
-            if (key != null && key != "") {
+            if (key != null && key != "" && list.indexOf(key) == -1) {
                 list.push(key);
             }
         }
@@ -946,9 +1007,10 @@ class CombatEngine {
         var targetKey:String = trimmedClass;
         var targetClass:Dynamic = Reflect.field(_skillsData, trimmedClass);
         if (targetClass == null) {
+            var cleanC:String = cleanClassName(trimmedClass);
             var lowerClass = trimmedClass.toLowerCase();
             for (existingKey in Reflect.fields(_skillsData)) {
-                if (existingKey.toLowerCase() == lowerClass) {
+                if (existingKey.toLowerCase() == lowerClass || (cleanC != "" && cleanClassName(existingKey) == cleanC)) {
                     targetKey = existingKey;
                     targetClass = Reflect.field(_skillsData, existingKey);
                     break;
@@ -984,8 +1046,9 @@ class CombatEngine {
             targetClassKey = trimmedClass;
         } else {
             var lower = trimmedClass.toLowerCase();
+            var cleanC = cleanClassName(trimmedClass);
             for (cKey in Reflect.fields(_skillsData)) {
-                if (cKey.toLowerCase() == lower) {
+                if (cKey.toLowerCase() == lower || (cleanC != "" && cleanClassName(cKey) == cleanC)) {
                     targetClassKey = cKey;
                     break;
                 }

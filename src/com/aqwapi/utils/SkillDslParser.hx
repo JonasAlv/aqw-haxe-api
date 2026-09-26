@@ -247,20 +247,16 @@ class SkillDslParser {
                 if (after.length > 0) {
                     if (StringTools.startsWith(after, ">=")) {
                         comp = "greater";
-                        var pVal:Float = Std.parseFloat(StringTools.trim(after.substring(2)));
-                        val = Math.isNaN(pVal) ? 0.0 : pVal;
+                        val = AqwUtils.parseFloat(StringTools.trim(after.substring(2)), 0.0);
                     } else if (StringTools.startsWith(after, "<=")) {
                         comp = "less";
-                        var pVal:Float = Std.parseFloat(StringTools.trim(after.substring(2)));
-                        val = Math.isNaN(pVal) ? 0.0 : pVal;
+                        val = AqwUtils.parseFloat(StringTools.trim(after.substring(2)), 0.0);
                     } else if (StringTools.startsWith(after, ">")) {
                         comp = "greater";
-                        var pVal:Float = Std.parseFloat(StringTools.trim(after.substring(1)));
-                        val = Math.isNaN(pVal) ? 0.0 : pVal;
+                        val = AqwUtils.parseFloat(StringTools.trim(after.substring(1)), 0.0);
                     } else if (StringTools.startsWith(after, "<")) {
                         comp = "less";
-                        var pVal:Float = Std.parseFloat(StringTools.trim(after.substring(1)));
-                        val = Math.isNaN(pVal) ? 0.0 : pVal;
+                        val = AqwUtils.parseFloat(StringTools.trim(after.substring(1)), 0.0);
                     }
                 }
 
@@ -307,8 +303,7 @@ class SkillDslParser {
         cleanStr = StringTools.replace(cleanStr.toLowerCase(), "hp", "");
         cleanStr = StringTools.replace(cleanStr.toLowerCase(), "mp", "");
 
-        var pVal:Float = Std.parseFloat(StringTools.trim(cleanStr));
-        var val:Float = Math.isNaN(pVal) ? 0.0 : pVal;
+        var val:Float = AqwUtils.parseFloat(StringTools.trim(cleanStr), 0.0);
 
         // Values over 100 cannot be percentages (e.g. hp < 2500)
         if (val > 100) {
@@ -334,15 +329,7 @@ class SkillDslParser {
 
     public static function formatSkill(s:Dynamic):String {
         if (s == null) return "1";
-        var sid:Int = 1;
-        if (s.skillId != null) {
-            if (Std.isOfType(s.skillId, Int)) {
-                sid = cast s.skillId;
-            } else {
-                var pSid:Null<Int> = Std.parseInt(Std.string(s.skillId));
-                if (pSid != null) sid = pSid;
-            }
-        }
+        var sid:Int = (s.skillId != null) ? AqwUtils.parseInt(s.skillId, 1) : 1;
         var rules:Array<Dynamic> = (s.rules != null && Std.isOfType(s.rules, Array)) ? cast s.rules : [];
         if (rules.length == 0) return Std.string(sid);
 
@@ -362,27 +349,11 @@ class SkillDslParser {
         var rtype:String = (r.type != null) ? Std.string(r.type) : "";
         if (rtype == "None" || rtype == "") return "";
         if (rtype == "Wait") {
-            var to:Int = 0;
-            if (r.timeout != null) {
-                if (Std.isOfType(r.timeout, Int)) {
-                    to = cast r.timeout;
-                } else {
-                    var pTo:Null<Int> = Std.parseInt(Std.string(r.timeout));
-                    if (pTo != null) to = pTo;
-                }
-            }
+            var to:Int = (r.timeout != null) ? AqwUtils.parseInt(r.timeout, 0) : 0;
             return "wait(" + to + "ms)";
         }
         if (rtype == "PartyHealth") {
-            var val:Float = 0.0;
-            if (r.value != null) {
-                if (Std.isOfType(r.value, Float) || Std.isOfType(r.value, Int)) {
-                    val = cast r.value;
-                } else {
-                    var pVal:Float = Std.parseFloat(Std.string(r.value));
-                    if (!Math.isNaN(pVal)) val = pVal;
-                }
-            }
+            var val:Float = (r.value != null) ? AqwUtils.parseFloat(r.value, 0.0) : 0.0;
             var isPct:Bool = (r.isPercentage == true);
             var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<");
             var unit:String = isPct ? "%" : "";
@@ -391,15 +362,7 @@ class SkillDslParser {
         }
         if (rtype == "Health" || rtype == "Mana") {
             var stat:String = (rtype == "Health") ? "hp" : "mp";
-            var val:Float = 0.0;
-            if (r.value != null) {
-                if (Std.isOfType(r.value, Float) || Std.isOfType(r.value, Int)) {
-                    val = cast r.value;
-                } else {
-                    var pVal:Float = Std.parseFloat(Std.string(r.value));
-                    if (!Math.isNaN(pVal)) val = pVal;
-                }
-            }
+            var val:Float = (r.value != null) ? AqwUtils.parseFloat(r.value, 0.0) : 0.0;
             var isPct:Bool = (r.isPercentage == true);
             var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<");
             var unit:String = isPct ? "%" : "";
@@ -409,15 +372,7 @@ class SkillDslParser {
         if (rtype == "Aura" || rtype == "MultiAura") {
             var target:String = (r.auraTarget != null && r.auraTarget != "") ? Std.string(r.auraTarget) : "self";
             var name:String = (r.auraName != null) ? Std.string(r.auraName) : "";
-            var val:Float = 0.0;
-            if (r.value != null) {
-                if (Std.isOfType(r.value, Float) || Std.isOfType(r.value, Int)) {
-                    val = cast r.value;
-                } else {
-                    var pVal:Float = Std.parseFloat(Std.string(r.value));
-                    if (!Math.isNaN(pVal)) val = pVal;
-                }
-            }
+            var val:Float = (r.value != null) ? AqwUtils.parseFloat(r.value, 0.0) : 0.0;
             var comp:String = (r.comparison != null) ? Std.string(r.comparison) : "greater";
             if (comp == "less" && val <= 0.5) {
                 return "!aura(" + target + ":" + name + ")";

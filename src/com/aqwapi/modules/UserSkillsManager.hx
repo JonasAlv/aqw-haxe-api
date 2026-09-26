@@ -169,32 +169,84 @@ class UserSkillsManager {
     }
 
     /**
+     * Gets all class names that have custom modes saved in userSkills.json.
+     */
+    public static function getAllUserClasses():Array<String> {
+        var data = readUserSkillsObject();
+        if (data == null) return [];
+        var classes:Array<String> = [];
+        for (field in Reflect.fields(data)) {
+            if (field != null && field != "" && classes.indexOf(field) == -1) {
+                classes.push(field);
+            }
+        }
+        return classes;
+    }
+
+    /**
+     * Helper to find matching class key in userSkills data:
+     * 1. Exact match
+     * 2. Case-insensitive
+     * 3. Clean and fuzzy substring match (handles equipped classes like "Master Ranger (Rank 10)")
+     */
+    private static function findTargetClassKey(data:Dynamic, className:String):String {
+        if (data == null || className == null) return null;
+        var resolved = resolveClassName(className);
+        var trimmed = StringTools.trim(resolved);
+        if (trimmed == "") return null;
+
+        // 1. Exact match
+        if (Reflect.hasField(data, trimmed)) return trimmed;
+
+        // 2. Case-insensitive match
+        var lower = trimmed.toLowerCase();
+        for (cKey in Reflect.fields(data)) {
+            if (cKey.toLowerCase() == lower) return cKey;
+        }
+
+        // 3. Clean and fuzzy substring match (matching CombatEngine cleanClassName)
+        var cleanTarget = CombatEngine.cleanClassName(trimmed);
+        if (cleanTarget != "") {
+            for (cKey in Reflect.fields(data)) {
+                if (CombatEngine.cleanClassName(cKey) == cleanTarget) {
+                    return cKey;
+                }
+            }
+            var bestKey:String = null;
+            var bestLen:Int = 0;
+            for (cKey in Reflect.fields(data)) {
+                var cleanKey = CombatEngine.cleanClassName(cKey);
+                if (cleanKey != "") {
+                    if (cleanTarget == cleanKey) return cKey;
+                    if (cleanTarget.indexOf(cleanKey) != -1 || cleanKey.indexOf(cleanTarget) != -1) {
+                        if (cleanKey.length > bestLen) {
+                            bestLen = cleanKey.length;
+                            bestKey = cKey;
+                        }
+                    }
+                }
+            }
+            if (bestKey != null) return bestKey;
+        }
+
+        return null;
+    }
+
+    /**
      * Checks if a specific mode for a class was user-created in userSkills.json.
-     * Retains exact in-game class names and mode names.
      */
     public static function isUserMode(className:String, modeName:String):Bool {
         if (className == null || modeName == null) return false;
-        var resolvedClass = resolveClassName(className);
-        var trimmedClass = StringTools.trim(resolvedClass);
         var trimmedMode = StringTools.trim(modeName);
-        if (trimmedClass == "" || trimmedMode == "" || trimmedMode == "[+ New Mode]") return false;
+        if (trimmedMode == "" || trimmedMode == "[+ New Mode]") return false;
 
         var data = readUserSkillsObject();
         if (data == null) return false;
 
-        // 1. Exact match
-        var classObj:Dynamic = Reflect.field(data, trimmedClass);
-        if (classObj == null) {
-            // 2. Case-insensitive fallback (no stripping of spaces or characters)
-            var lowerClass = trimmedClass.toLowerCase();
-            for (cKey in Reflect.fields(data)) {
-                if (cKey.toLowerCase() == lowerClass) {
-                    classObj = Reflect.field(data, cKey);
-                    break;
-                }
-            }
-        }
+        var targetKey = findTargetClassKey(data, className);
+        if (targetKey == null) return false;
 
+        var classObj:Dynamic = Reflect.field(data, targetKey);
         if (classObj != null && !Std.isOfType(classObj, Array)) {
             if (Reflect.hasField(classObj, trimmedMode)) return true;
             var lowerMode = trimmedMode.toLowerCase();
@@ -210,24 +262,13 @@ class UserSkillsManager {
      */
     public static function getUserModesForClass(className:String):Array<String> {
         if (className == null || className == "") return [];
-        var resolvedClass = resolveClassName(className);
-        var trimmedClass = StringTools.trim(resolvedClass);
-        if (trimmedClass == "") return [];
-
         var data = readUserSkillsObject();
         if (data == null) return [];
 
-        var classObj:Dynamic = Reflect.field(data, trimmedClass);
-        if (classObj == null) {
-            var lowerClass = trimmedClass.toLowerCase();
-            for (cKey in Reflect.fields(data)) {
-                if (cKey.toLowerCase() == lowerClass) {
-                    classObj = Reflect.field(data, cKey);
-                    break;
-                }
-            }
-        }
+        var targetKey = findTargetClassKey(data, className);
+        if (targetKey == null) return [];
 
+        var classObj:Dynamic = Reflect.field(data, targetKey);
         var modes:Array<String> = [];
         if (classObj != null && !Std.isOfType(classObj, Array)) {
             for (mKey in Reflect.fields(classObj)) {
@@ -241,8 +282,6 @@ class UserSkillsManager {
 
     /**
      * Saves or updates a mode in userSkills.json and registers it in memory.
-     * Retains exact in-game names with spaces and capital letters.
-     * Mode properties are strictly lowercase: mode, timeout, combo.
      */
     public static function saveMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
@@ -256,14 +295,9 @@ class UserSkillsManager {
             var data:Dynamic = readUserSkillsObject();
             if (data == null) data = {};
 
-            // Exact key first, then case-insensitive
-            var targetClassKey:String = trimmedClass;
-            var lowerClass = trimmedClass.toLowerCase();
-            for (cKey in Reflect.fields(data)) {
-                if (cKey.toLowerCase() == lowerClass) {
-                    targetClassKey = cKey;
-                    break;
-                }
+            var targetClassKey:String = findTargetClassKey(data, trimmedClass);
+            if (targetClassKey == null) {
+                targetClassKey = trimmedClass;
             }
 
             var classObj:Dynamic = Reflect.field(data, targetClassKey);
@@ -319,17 +353,7 @@ class UserSkillsManager {
         try {
             var data:Dynamic = readUserSkillsObject();
             if (data != null) {
-                if (Reflect.hasField(data, trimmedClass)) {
-                    targetClassKey = trimmedClass;
-                } else {
-                    var lowerClass = trimmedClass.toLowerCase();
-                    for (cKey in Reflect.fields(data)) {
-                        if (cKey.toLowerCase() == lowerClass) {
-                            targetClassKey = cKey;
-                            break;
-                        }
-                    }
-                }
+                targetClassKey = findTargetClassKey(data, trimmedClass);
 
                 if (targetClassKey != null) {
                     var classObj:Dynamic = Reflect.field(data, targetClassKey);
@@ -381,18 +405,9 @@ class UserSkillsManager {
                     var soObj:Dynamic = haxe.Json.parse(soTxt);
                     if (soObj != null && !Std.isOfType(soObj, Array)) {
                         var soRemoved:Bool = false;
-                        var soTargetClass:String = targetClassKey != null ? targetClassKey : trimmedClass;
+                        var soTargetClass:String = (targetClassKey != null) ? targetClassKey : findTargetClassKey(soObj, trimmedClass);
+                        if (soTargetClass == null) soTargetClass = trimmedClass;
                         var soClassObj:Dynamic = Reflect.field(soObj, soTargetClass);
-                        if (soClassObj == null) {
-                            var lowerClass = trimmedClass.toLowerCase();
-                            for (cKey in Reflect.fields(soObj)) {
-                                if (cKey.toLowerCase() == lowerClass) {
-                                    soTargetClass = cKey;
-                                    soClassObj = Reflect.field(soObj, cKey);
-                                    break;
-                                }
-                            }
-                        }
                         if (soClassObj != null && !Std.isOfType(soClassObj, Array)) {
                             var soModeKey:String = null;
                             if (Reflect.hasField(soClassObj, trimmedMode)) {
@@ -454,37 +469,31 @@ class UserSkillsManager {
         try {
             var data:Dynamic = readUserSkillsObject();
             if (data != null) {
-                var classObj:Dynamic = Reflect.field(data, trimmedClass);
-                if (classObj == null) {
-                    var lowerClass = trimmedClass.toLowerCase();
-                    for (cKey in Reflect.fields(data)) {
-                        if (cKey.toLowerCase() == lowerClass) {
-                            classObj = Reflect.field(data, cKey);
-                            break;
-                        }
-                    }
-                }
-                if (classObj != null && !Std.isOfType(classObj, Array)) {
-                    var mObj:Dynamic = Reflect.field(classObj, trimmedMode);
-                    if (mObj == null) {
-                        var lowerMode = trimmedMode.toLowerCase();
-                        for (mKey in Reflect.fields(classObj)) {
-                            if (mKey.toLowerCase() == lowerMode) {
-                                mObj = Reflect.field(classObj, mKey);
-                                break;
+                var targetKey = findTargetClassKey(data, trimmedClass);
+                if (targetKey != null) {
+                    var classObj:Dynamic = Reflect.field(data, targetKey);
+                    if (classObj != null && !Std.isOfType(classObj, Array)) {
+                        var mObj:Dynamic = Reflect.field(classObj, trimmedMode);
+                        if (mObj == null) {
+                            var lowerMode = trimmedMode.toLowerCase();
+                            for (mKey in Reflect.fields(classObj)) {
+                                if (mKey.toLowerCase() == lowerMode) {
+                                    mObj = Reflect.field(classObj, mKey);
+                                    break;
+                                }
                             }
                         }
-                    }
-                    if (mObj != null) {
-                        var mVal:String = (mObj.mode != null && mObj.mode != "") ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown");
-                        var toVal:Int = (mObj.timeout != null) ? AqwUtils.parseInt(mObj.timeout, 100) : (mObj.skillTimeout != null ? AqwUtils.parseInt(mObj.skillTimeout, 100) : 100);
-                        var cVal:String = (mObj.combo != null) ? Std.string(mObj.combo) : "";
-                        return {
-                            skillUseMode: mVal,
-                            timeout: toVal,
-                            combo: cVal,
-                            isUser: true
-                        };
+                        if (mObj != null) {
+                            var mVal:String = (mObj.mode != null && mObj.mode != "") ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown");
+                            var toVal:Int = (mObj.timeout != null) ? AqwUtils.parseInt(mObj.timeout, 100) : (mObj.skillTimeout != null ? AqwUtils.parseInt(mObj.skillTimeout, 100) : 100);
+                            var cVal:String = (mObj.combo != null) ? Std.string(mObj.combo) : "";
+                            return {
+                                skillUseMode: mVal,
+                                timeout: toVal,
+                                combo: cVal,
+                                isUser: true
+                            };
+                        }
                     }
                 }
             }
