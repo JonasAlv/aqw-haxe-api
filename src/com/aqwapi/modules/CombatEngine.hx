@@ -255,9 +255,9 @@ class CombatEngine {
             var targetKey:String = cKey;
             var targetClass:Dynamic = Reflect.field(skillsData, cKey);
             if (targetClass == null) {
-                var cleanC:String = cleanClassName(cKey);
+                var lowerC = cKey.toLowerCase();
                 for (existingKey in Reflect.fields(skillsData)) {
-                    if (existingKey.toLowerCase() == cKey.toLowerCase() || (cleanC != "" && cleanClassName(existingKey) == cleanC)) {
+                    if (existingKey.toLowerCase() == lowerC) {
                         targetKey = existingKey;
                         targetClass = Reflect.field(skillsData, existingKey);
                         break;
@@ -865,7 +865,10 @@ class CombatEngine {
         if (!_skillsLoaded) init();
         if (_skillsData == null || className == null || className == "") return null;
 
-        if (className.toLowerCase() == "current") {
+        var trimmed = StringTools.trim(className);
+        if (trimmed == "") return null;
+
+        if (trimmed.toLowerCase() == "current") {
             var cur:String = getCurrentClassName();
             if (cur != "" && cur.toLowerCase() != "current") {
                 return findClassConfig(cur);
@@ -873,45 +876,30 @@ class CombatEngine {
             return null;
         }
 
-        var lower:String = className.toLowerCase();
+        // 1. Exact match in _skillsData
+        if (Reflect.hasField(_skillsData, trimmed)) {
+            return Reflect.field(_skillsData, trimmed);
+        }
+
+        // 2. Case-insensitive match in _skillsData (without stripping characters)
+        var lower:String = trimmed.toLowerCase();
         for (key in Reflect.fields(_skillsData)) {
             if (key.toLowerCase() == lower) return Reflect.field(_skillsData, key);
         }
 
-        var cleanTarget:String = cleanClassName(className);
-        if (cleanTarget != "") {
-            for (key in Reflect.fields(_skillsData)) {
-                if (cleanClassName(key) == cleanTarget) {
-                    return Reflect.field(_skillsData, key);
-                }
-            }
-            var bestMatchKey:String = null;
-            var bestMatchLen:Int = 0;
-            for (key in Reflect.fields(_skillsData)) {
-                var cleanKey:String = cleanClassName(key);
-                if (cleanKey != "") {
-                    if (cleanTarget == cleanKey) {
-                        return Reflect.field(_skillsData, key);
-                    }
-                    if (cleanTarget.indexOf(cleanKey) != -1 || cleanKey.indexOf(cleanTarget) != -1) {
-                        if (cleanKey.length > bestMatchLen) {
-                            bestMatchLen = cleanKey.length;
-                            bestMatchKey = key;
-                        }
-                    }
-                }
-            }
-            if (bestMatchKey != null) {
-                return Reflect.field(_skillsData, bestMatchKey);
-            }
-        }
-
-        // Also check UserSkillsManager if class was not found in _skillsData
+        // 3. UserSkillsManager lookup if class was not found in _skillsData
         try {
             var userObj = UserSkillsManager.readUserSkillsObject();
             if (userObj != null) {
+                if (Reflect.hasField(userObj, trimmed)) {
+                    var customClassObj = Reflect.field(userObj, trimmed);
+                    compileSkillsData(userObj);
+                    if (_skillsData == null) _skillsData = {};
+                    Reflect.setField(_skillsData, trimmed, customClassObj);
+                    return customClassObj;
+                }
                 for (cKey in Reflect.fields(userObj)) {
-                    if (cKey.toLowerCase() == lower || (cleanTarget != "" && cleanClassName(cKey) == cleanTarget)) {
+                    if (cKey.toLowerCase() == lower) {
                         var customClassObj = Reflect.field(userObj, cKey);
                         compileSkillsData(userObj);
                         if (_skillsData == null) _skillsData = {};
@@ -949,12 +937,14 @@ class CombatEngine {
         if (!_skillsLoaded) init();
         if (_skillsData == null) _skillsData = {};
 
-        var targetKey:String = className;
-        var targetClass:Dynamic = Reflect.field(_skillsData, className);
+        var trimmedClass = StringTools.trim(className);
+        var trimmedMode = StringTools.trim(modeName);
+        var targetKey:String = trimmedClass;
+        var targetClass:Dynamic = Reflect.field(_skillsData, trimmedClass);
         if (targetClass == null) {
-            var cleanC:String = cleanClassName(className);
+            var lowerClass = trimmedClass.toLowerCase();
             for (existingKey in Reflect.fields(_skillsData)) {
-                if (existingKey.toLowerCase() == className.toLowerCase() || (cleanC != "" && cleanClassName(existingKey) == cleanC)) {
+                if (existingKey.toLowerCase() == lowerClass) {
                     targetKey = existingKey;
                     targetClass = Reflect.field(_skillsData, existingKey);
                     break;
@@ -968,37 +958,58 @@ class CombatEngine {
 
         var parsedCombo:Array<Dynamic> = com.aqwapi.utils.SkillDslParser.parseCombo(combo);
         var modeObj:Dynamic = {
+            mode: skillUseMode,
+            timeout: timeout,
             skillUseMode: skillUseMode,
             skillTimeout: timeout,
             skills: parsedCombo,
             combo: combo
         };
-        Reflect.setField(targetClass, modeName, modeObj);
-        ApiLogger.info("Skills", "Registered custom mode [" + targetKey + " : " + modeName + "] in memory!");
+        Reflect.setField(targetClass, trimmedMode, modeObj);
+        ApiLogger.info("Skills", "Registered custom mode [" + targetKey + " : " + trimmedMode + "] in memory!");
     }
 
     public static function unregisterCustomMode(className:String, modeName:String):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
         if (_skillsData == null) return false;
 
-        var cleanTarget:String = cleanClassName(className);
-        var lower:String = className.toLowerCase();
-        var modeClean:String = StringTools.trim(modeName).toLowerCase();
-        var removed:Bool = false;
-
-        for (cKey in Reflect.fields(_skillsData)) {
-            if (cKey.toLowerCase() == lower || (cleanTarget != "" && cleanClassName(cKey) == cleanTarget)) {
-                var targetClass:Dynamic = Reflect.field(_skillsData, cKey);
-                if (targetClass != null && !Std.isOfType(targetClass, Array)) {
-                    for (f in Reflect.fields(targetClass)) {
-                        if (f != null && (f.toLowerCase() == modeClean || StringTools.trim(f).toLowerCase() == modeClean)) {
-                            Reflect.deleteField(targetClass, f);
-                            removed = true;
-                            ApiLogger.info("Skills", "Unregistered custom mode [" + cKey + " : " + f + "] from memory!");
-                        }
-                    }
+        var trimmedClass = StringTools.trim(className);
+        var trimmedMode = StringTools.trim(modeName);
+        var targetClassKey:String = null;
+        if (Reflect.hasField(_skillsData, trimmedClass)) {
+            targetClassKey = trimmedClass;
+        } else {
+            var lower = trimmedClass.toLowerCase();
+            for (cKey in Reflect.fields(_skillsData)) {
+                if (cKey.toLowerCase() == lower) {
+                    targetClassKey = cKey;
+                    break;
                 }
             }
+        }
+
+        if (targetClassKey == null) return false;
+
+        var targetClass:Dynamic = Reflect.field(_skillsData, targetClassKey);
+        if (targetClass == null || Std.isOfType(targetClass, Array)) return false;
+
+        var removed:Bool = false;
+        if (Reflect.hasField(targetClass, trimmedMode)) {
+            Reflect.deleteField(targetClass, trimmedMode);
+            removed = true;
+        } else {
+            var modeClean = trimmedMode.toLowerCase();
+            for (f in Reflect.fields(targetClass)) {
+                if (f != null && f.toLowerCase() == modeClean) {
+                    Reflect.deleteField(targetClass, f);
+                    removed = true;
+                    break;
+                }
+            }
+        }
+
+        if (removed) {
+            ApiLogger.info("Skills", "Unregistered custom mode [" + targetClassKey + " : " + trimmedMode + "] from memory!");
         }
         return removed;
     }

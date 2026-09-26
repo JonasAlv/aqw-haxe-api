@@ -1,6 +1,7 @@
 package com.aqwapi.modules;
 
 import com.aqwapi.utils.ApiLogger;
+import com.aqwapi.utils.AqwStorage;
 import com.aqwapi.utils.AqwUtils;
 import com.aqwapi.utils.SkillDslParser;
 
@@ -11,19 +12,19 @@ class UserSkillsManager {
      * Ensures userSkills.json is created on disk if not already present.
      */
     public static function ensureStorageInitialized():Void {
-        com.aqwapi.utils.AqwStorage.ensureFiles();
+        AqwStorage.ensureFiles();
     }
 
     /**
-     * Reads userSkills object from userSkills.json (with automatic SharedObject recovery & sync).
+     * Reads userSkills object from userSkills.json.
      */
     public static function readUserSkillsObject():Dynamic {
         if (_userSkillsCache != null) return _userSkillsCache;
 
         var rawJson:String = null;
         try {
-            com.aqwapi.utils.AqwStorage.ensureFiles();
-            rawJson = com.aqwapi.utils.AqwStorage.readText("userSkills.json");
+            AqwStorage.ensureFiles();
+            rawJson = AqwStorage.readText("userSkills.json");
         } catch (_:Dynamic) {}
 
         var parsedData:Dynamic = null;
@@ -38,7 +39,7 @@ class UserSkillsManager {
             parsedData = {};
         }
 
-        // Recover custom modes from SharedObject ONLY if disk was empty or missing!
+        // Recover from SharedObject ONLY if storage was empty or missing
         if (Reflect.fields(parsedData).length == 0) {
             try {
                 var so:Dynamic = null;
@@ -55,7 +56,7 @@ class UserSkillsManager {
                         if (soObj != null && !Std.isOfType(soObj, Array) && Reflect.fields(soObj).length > 0) {
                             parsedData = soObj;
                             try {
-                                com.aqwapi.utils.AqwStorage.writeText("userSkills.json", haxe.Json.stringify(parsedData, null, "  "));
+                                AqwStorage.writeText("userSkills.json", haxe.Json.stringify(parsedData, null, "  "));
                             } catch (_:Dynamic) {}
                         }
                     }
@@ -63,7 +64,7 @@ class UserSkillsManager {
             } catch (_:Dynamic) {}
         }
 
-        // Fallback: Default embedded user skills if completely empty
+        // Fallback: Default embedded user skills if still completely empty
         if (Reflect.fields(parsedData).length == 0) {
             try {
                 var defJson = DefaultSkillsData.getDefaultUserSkills();
@@ -78,7 +79,7 @@ class UserSkillsManager {
     }
 
     /**
-     * Reads userSkills as JSON string (backwards compatibility).
+     * Reads userSkills as JSON string.
      */
     public static function readUserSkills():String {
         var obj = readUserSkillsObject();
@@ -89,7 +90,7 @@ class UserSkillsManager {
     }
 
     /**
-     * Writes userSkills object to userSkills.json and SharedObject.
+     * Writes userSkills object to userSkills.json and SharedObject backup.
      */
     public static function writeUserSkillsObject(data:Dynamic):Bool {
         if (data == null) data = {};
@@ -105,12 +106,12 @@ class UserSkillsManager {
 
         var ok:Bool = false;
         try {
-            com.aqwapi.utils.AqwStorage.ensureFiles();
-            ok = com.aqwapi.utils.AqwStorage.writeText("userSkills.json", jsonStr);
+            AqwStorage.ensureFiles();
+            ok = AqwStorage.writeText("userSkills.json", jsonStr);
             if (ok) {
-                ApiLogger.info("UserSkills", "Saved userSkills.json to data folder");
+                ApiLogger.info("UserSkills", "Saved userSkills.json to applicationStorageDirectory");
             } else {
-                ApiLogger.warn("UserSkills", "Failed to save userSkills.json to data folder");
+                ApiLogger.warn("UserSkills", "Failed to save userSkills.json");
             }
         } catch (e:Dynamic) {
             ApiLogger.warn("UserSkills", "Storage write error: " + e);
@@ -169,22 +170,36 @@ class UserSkillsManager {
 
     /**
      * Checks if a specific mode for a class was user-created in userSkills.json.
+     * Retains exact in-game class names and mode names.
      */
     public static function isUserMode(className:String, modeName:String):Bool {
         if (className == null || modeName == null) return false;
         var resolvedClass = resolveClassName(className);
+        var trimmedClass = StringTools.trim(resolvedClass);
+        var trimmedMode = StringTools.trim(modeName);
+        if (trimmedClass == "" || trimmedMode == "" || trimmedMode == "[+ New Mode]") return false;
+
         var data = readUserSkillsObject();
         if (data == null) return false;
 
-        var cleanClass:String = CombatEngine.cleanClassName(resolvedClass);
-        for (cKey in Reflect.fields(data)) {
-            if (cKey.toLowerCase() == resolvedClass.toLowerCase() || cKey.toLowerCase() == className.toLowerCase() || (cleanClass != "" && CombatEngine.cleanClassName(cKey) == cleanClass)) {
-                var cObj:Dynamic = Reflect.field(data, cKey);
-                if (cObj != null && !Std.isOfType(cObj, Array)) {
-                    for (mKey in Reflect.fields(cObj)) {
-                        if (mKey.toLowerCase() == modeName.toLowerCase() || StringTools.trim(mKey).toLowerCase() == StringTools.trim(modeName).toLowerCase()) return true;
-                    }
+        // 1. Exact match
+        var classObj:Dynamic = Reflect.field(data, trimmedClass);
+        if (classObj == null) {
+            // 2. Case-insensitive fallback (no stripping of spaces or characters)
+            var lowerClass = trimmedClass.toLowerCase();
+            for (cKey in Reflect.fields(data)) {
+                if (cKey.toLowerCase() == lowerClass) {
+                    classObj = Reflect.field(data, cKey);
+                    break;
                 }
+            }
+        }
+
+        if (classObj != null && !Std.isOfType(classObj, Array)) {
+            if (Reflect.hasField(classObj, trimmedMode)) return true;
+            var lowerMode = trimmedMode.toLowerCase();
+            for (mKey in Reflect.fields(classObj)) {
+                if (mKey.toLowerCase() == lowerMode) return true;
             }
         }
         return false;
@@ -196,21 +211,28 @@ class UserSkillsManager {
     public static function getUserModesForClass(className:String):Array<String> {
         if (className == null || className == "") return [];
         var resolvedClass = resolveClassName(className);
+        var trimmedClass = StringTools.trim(resolvedClass);
+        if (trimmedClass == "") return [];
+
         var data = readUserSkillsObject();
         if (data == null) return [];
 
-        var modes:Array<String> = [];
-        var cleanClass = CombatEngine.cleanClassName(resolvedClass);
+        var classObj:Dynamic = Reflect.field(data, trimmedClass);
+        if (classObj == null) {
+            var lowerClass = trimmedClass.toLowerCase();
+            for (cKey in Reflect.fields(data)) {
+                if (cKey.toLowerCase() == lowerClass) {
+                    classObj = Reflect.field(data, cKey);
+                    break;
+                }
+            }
+        }
 
-        for (cKey in Reflect.fields(data)) {
-            if (cKey.toLowerCase() == resolvedClass.toLowerCase() || cKey.toLowerCase() == className.toLowerCase() || (cleanClass != "" && CombatEngine.cleanClassName(cKey) == cleanClass)) {
-                var cObj:Dynamic = Reflect.field(data, cKey);
-                if (cObj != null && !Std.isOfType(cObj, Array)) {
-                    for (mKey in Reflect.fields(cObj)) {
-                        if (mKey != null && mKey != "" && modes.indexOf(mKey) == -1) {
-                            modes.push(mKey);
-                        }
-                    }
+        var modes:Array<String> = [];
+        if (classObj != null && !Std.isOfType(classObj, Array)) {
+            for (mKey in Reflect.fields(classObj)) {
+                if (mKey != null && mKey != "" && modes.indexOf(mKey) == -1) {
+                    modes.push(mKey);
                 }
             }
         }
@@ -219,21 +241,26 @@ class UserSkillsManager {
 
     /**
      * Saves or updates a mode in userSkills.json and registers it in memory.
+     * Retains exact in-game names with spaces and capital letters.
+     * Mode properties are strictly lowercase: mode, timeout, combo.
      */
     public static function saveMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
         var resolvedClass = resolveClassName(className);
-        if (resolvedClass == null || resolvedClass == "" || resolvedClass.toLowerCase() == "current") return false;
+        var trimmedClass = StringTools.trim(resolvedClass);
+        var trimmedMode = StringTools.trim(modeName);
+        if (trimmedClass == "" || trimmedClass.toLowerCase() == "current") return false;
+        if (trimmedMode == "" || trimmedMode == "[+ New Mode]") return false;
 
         try {
             var data:Dynamic = readUserSkillsObject();
             if (data == null) data = {};
 
-            var cleanTargetClass = CombatEngine.cleanClassName(resolvedClass);
-            var targetClassKey = resolvedClass;
-
+            // Exact key first, then case-insensitive
+            var targetClassKey:String = trimmedClass;
+            var lowerClass = trimmedClass.toLowerCase();
             for (cKey in Reflect.fields(data)) {
-                if (cKey.toLowerCase() == resolvedClass.toLowerCase() || (cleanTargetClass != "" && CombatEngine.cleanClassName(cKey) == cleanTargetClass)) {
+                if (cKey.toLowerCase() == lowerClass) {
                     targetClassKey = cKey;
                     break;
                 }
@@ -254,18 +281,15 @@ class UserSkillsManager {
                 timeout: effectiveTimeout,
                 combo: effectiveCombo
             };
-            Reflect.setField(classObj, modeName, modeEntry);
+            Reflect.setField(classObj, trimmedMode, modeEntry);
 
             writeUserSkillsObject(data);
 
             // Instant in-memory registration into CombatEngine
             try {
-                CombatEngine.registerCustomMode(targetClassKey, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
-                if (targetClassKey != resolvedClass) {
-                    CombatEngine.registerCustomMode(resolvedClass, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
-                }
-                if (resolvedClass != className) {
-                    CombatEngine.registerCustomMode(className, modeName, effectiveMode, effectiveTimeout, effectiveCombo);
+                CombatEngine.registerCustomMode(targetClassKey, trimmedMode, effectiveMode, effectiveTimeout, effectiveCombo);
+                if (targetClassKey != trimmedClass) {
+                    CombatEngine.registerCustomMode(trimmedClass, trimmedMode, effectiveMode, effectiveTimeout, effectiveCombo);
                 }
             } catch (ce:Dynamic) {
                 ApiLogger.error("UserSkills", "Error registering custom mode: " + ce);
@@ -284,37 +308,56 @@ class UserSkillsManager {
     public static function deleteMode(className:String, modeName:String):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
         var resolvedClass = resolveClassName(className);
-        if (resolvedClass == null || resolvedClass == "") resolvedClass = className;
-        var cleanTargetClass = CombatEngine.cleanClassName(resolvedClass);
-        var cleanOrigClass = CombatEngine.cleanClassName(className);
-        var targetModeClean = StringTools.trim(modeName).toLowerCase();
+        var trimmedClass = StringTools.trim(resolvedClass);
+        var trimmedMode = StringTools.trim(modeName);
+        if (trimmedClass == "" || trimmedMode == "") return false;
 
         var removed:Bool = false;
+        var targetClassKey:String = null;
 
-        // 1. Delete from in-memory cache and disk object
+        // 1. Delete from in-memory cache and userSkills.json
         try {
             var data:Dynamic = readUserSkillsObject();
             if (data != null) {
-                for (cKey in Reflect.fields(data)) {
-                    var cClean = CombatEngine.cleanClassName(cKey);
-                    var cLower = cKey.toLowerCase();
-                    if (cLower == resolvedClass.toLowerCase() || cLower == className.toLowerCase() ||
-                        (cleanTargetClass != "" && cClean == cleanTargetClass) ||
-                        (cleanOrigClass != "" && cClean == cleanOrigClass)) {
-                        var classObj:Dynamic = Reflect.field(data, cKey);
-                        if (classObj != null && !Std.isOfType(classObj, Array)) {
-                            for (mKey in Reflect.fields(classObj)) {
-                                if (mKey.toLowerCase() == targetModeClean || StringTools.trim(mKey).toLowerCase() == targetModeClean) {
-                                    Reflect.deleteField(classObj, mKey);
-                                    removed = true;
-                                }
-                            }
-                            if (Reflect.fields(classObj).length == 0) {
-                                Reflect.deleteField(data, cKey);
-                            }
+                if (Reflect.hasField(data, trimmedClass)) {
+                    targetClassKey = trimmedClass;
+                } else {
+                    var lowerClass = trimmedClass.toLowerCase();
+                    for (cKey in Reflect.fields(data)) {
+                        if (cKey.toLowerCase() == lowerClass) {
+                            targetClassKey = cKey;
+                            break;
                         }
                     }
                 }
+
+                if (targetClassKey != null) {
+                    var classObj:Dynamic = Reflect.field(data, targetClassKey);
+                    if (classObj != null && !Std.isOfType(classObj, Array)) {
+                        var targetModeKey:String = null;
+                        if (Reflect.hasField(classObj, trimmedMode)) {
+                            targetModeKey = trimmedMode;
+                        } else {
+                            var lowerMode = trimmedMode.toLowerCase();
+                            for (mKey in Reflect.fields(classObj)) {
+                                if (mKey.toLowerCase() == lowerMode) {
+                                    targetModeKey = mKey;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (targetModeKey != null) {
+                            Reflect.deleteField(classObj, targetModeKey);
+                            removed = true;
+                        }
+
+                        if (Reflect.fields(classObj).length == 0) {
+                            Reflect.deleteField(data, targetClassKey);
+                        }
+                    }
+                }
+
                 if (removed) {
                     writeUserSkillsObject(data);
                 }
@@ -323,7 +366,7 @@ class UserSkillsManager {
             ApiLogger.error("UserSkills", "deleteMode data removal error: " + e);
         }
 
-        // 2. Also ensure deleted from SharedObject directly (in case disk and SO differed)
+        // 2. Also ensure deleted from SharedObject backup
         try {
             var so:Dynamic = null;
             #if flash
@@ -338,25 +381,38 @@ class UserSkillsManager {
                     var soObj:Dynamic = haxe.Json.parse(soTxt);
                     if (soObj != null && !Std.isOfType(soObj, Array)) {
                         var soRemoved:Bool = false;
-                        for (cKey in Reflect.fields(soObj)) {
-                            var cClean = CombatEngine.cleanClassName(cKey);
-                            var cLower = cKey.toLowerCase();
-                            if (cLower == resolvedClass.toLowerCase() || cLower == className.toLowerCase() ||
-                                (cleanTargetClass != "" && cClean == cleanTargetClass) ||
-                                (cleanOrigClass != "" && cClean == cleanOrigClass)) {
-                                var cObj:Dynamic = Reflect.field(soObj, cKey);
-                                if (cObj != null && !Std.isOfType(cObj, Array)) {
-                                    for (mKey in Reflect.fields(cObj)) {
-                                        if (mKey.toLowerCase() == targetModeClean || StringTools.trim(mKey).toLowerCase() == targetModeClean) {
-                                            Reflect.deleteField(cObj, mKey);
-                                            soRemoved = true;
-                                            removed = true;
-                                        }
-                                    }
-                                    if (Reflect.fields(cObj).length == 0) {
-                                        Reflect.deleteField(soObj, cKey);
+                        var soTargetClass:String = targetClassKey != null ? targetClassKey : trimmedClass;
+                        var soClassObj:Dynamic = Reflect.field(soObj, soTargetClass);
+                        if (soClassObj == null) {
+                            var lowerClass = trimmedClass.toLowerCase();
+                            for (cKey in Reflect.fields(soObj)) {
+                                if (cKey.toLowerCase() == lowerClass) {
+                                    soTargetClass = cKey;
+                                    soClassObj = Reflect.field(soObj, cKey);
+                                    break;
+                                }
+                            }
+                        }
+                        if (soClassObj != null && !Std.isOfType(soClassObj, Array)) {
+                            var soModeKey:String = null;
+                            if (Reflect.hasField(soClassObj, trimmedMode)) {
+                                soModeKey = trimmedMode;
+                            } else {
+                                var lowerMode = trimmedMode.toLowerCase();
+                                for (mKey in Reflect.fields(soClassObj)) {
+                                    if (mKey.toLowerCase() == lowerMode) {
+                                        soModeKey = mKey;
+                                        break;
                                     }
                                 }
+                            }
+                            if (soModeKey != null) {
+                                Reflect.deleteField(soClassObj, soModeKey);
+                                soRemoved = true;
+                                removed = true;
+                            }
+                            if (Reflect.fields(soClassObj).length == 0) {
+                                Reflect.deleteField(soObj, soTargetClass);
                             }
                         }
                         if (soRemoved) {
@@ -370,21 +426,14 @@ class UserSkillsManager {
             ApiLogger.error("UserSkills", "deleteMode SharedObject removal error: " + e2);
         }
 
-        // 3. Unregister from CombatEngine in-memory registry across all matching keys
+        // 3. Unregister from CombatEngine in-memory registry
         try {
-            var ceRemoved1 = CombatEngine.unregisterCustomMode(resolvedClass, modeName);
+            var ceRemoved1 = CombatEngine.unregisterCustomMode(trimmedClass, trimmedMode);
             var ceRemoved2 = false;
-            if (resolvedClass != className) {
-                ceRemoved2 = CombatEngine.unregisterCustomMode(className, modeName);
+            if (targetClassKey != null && targetClassKey != trimmedClass) {
+                ceRemoved2 = CombatEngine.unregisterCustomMode(targetClassKey, trimmedMode);
             }
-            var ceRemoved3 = false;
-            if (cleanTargetClass != "") {
-                ceRemoved3 = CombatEngine.unregisterCustomMode(cleanTargetClass, modeName);
-            }
-            if (cleanOrigClass != "" && cleanOrigClass != cleanTargetClass) {
-                CombatEngine.unregisterCustomMode(cleanOrigClass, modeName);
-            }
-            if (ceRemoved1 || ceRemoved2 || ceRemoved3) {
+            if (ceRemoved1 || ceRemoved2) {
                 removed = true;
             }
         } catch (_:Dynamic) {}
@@ -397,47 +446,58 @@ class UserSkillsManager {
      */
     public static function getModeDetails(className:String, modeName:String):Dynamic {
         if (className == null || className == "" || modeName == null || modeName == "") return null;
-
         var resolvedClass = resolveClassName(className);
+        var trimmedClass = StringTools.trim(resolvedClass);
+        var trimmedMode = StringTools.trim(modeName);
 
         // 1. Direct check in userSkills.json
         try {
             var data:Dynamic = readUserSkillsObject();
             if (data != null) {
-                var cleanTarget = CombatEngine.cleanClassName(resolvedClass);
-                for (cKey in Reflect.fields(data)) {
-                    if (cKey.toLowerCase() == resolvedClass.toLowerCase() || cKey.toLowerCase() == className.toLowerCase() || (cleanTarget != "" && CombatEngine.cleanClassName(cKey) == cleanTarget)) {
-                        var classObj:Dynamic = Reflect.field(data, cKey);
-                        if (classObj != null) {
-                            for (mKey in Reflect.fields(classObj)) {
-                                if (mKey.toLowerCase() == modeName.toLowerCase() || StringTools.trim(mKey).toLowerCase() == StringTools.trim(modeName).toLowerCase()) {
-                                    var mObj:Dynamic = Reflect.field(classObj, mKey);
-                                    if (mObj != null) {
-                                        var mVal:String = (mObj.mode != null && mObj.mode != "") ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown");
-                                        var toVal:Int = (mObj.timeout != null) ? AqwUtils.parseInt(mObj.timeout, 100) : (mObj.skillTimeout != null ? AqwUtils.parseInt(mObj.skillTimeout, 100) : 100);
-                                        var cVal:String = (mObj.combo != null) ? Std.string(mObj.combo) : "";
-                                        return {
-                                            skillUseMode: mVal,
-                                            timeout: toVal,
-                                            combo: cVal,
-                                            isUser: true
-                                        };
-                                    }
-                                }
+                var classObj:Dynamic = Reflect.field(data, trimmedClass);
+                if (classObj == null) {
+                    var lowerClass = trimmedClass.toLowerCase();
+                    for (cKey in Reflect.fields(data)) {
+                        if (cKey.toLowerCase() == lowerClass) {
+                            classObj = Reflect.field(data, cKey);
+                            break;
+                        }
+                    }
+                }
+                if (classObj != null && !Std.isOfType(classObj, Array)) {
+                    var mObj:Dynamic = Reflect.field(classObj, trimmedMode);
+                    if (mObj == null) {
+                        var lowerMode = trimmedMode.toLowerCase();
+                        for (mKey in Reflect.fields(classObj)) {
+                            if (mKey.toLowerCase() == lowerMode) {
+                                mObj = Reflect.field(classObj, mKey);
+                                break;
                             }
                         }
+                    }
+                    if (mObj != null) {
+                        var mVal:String = (mObj.mode != null && mObj.mode != "") ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown");
+                        var toVal:Int = (mObj.timeout != null) ? AqwUtils.parseInt(mObj.timeout, 100) : (mObj.skillTimeout != null ? AqwUtils.parseInt(mObj.skillTimeout, 100) : 100);
+                        var cVal:String = (mObj.combo != null) ? Std.string(mObj.combo) : "";
+                        return {
+                            skillUseMode: mVal,
+                            timeout: toVal,
+                            combo: cVal,
+                            isUser: true
+                        };
                     }
                 }
             }
         } catch (_:Dynamic) {}
 
         // 2. Check CombatEngine _skillsData (bundled modes from skills.json)
-        var classObj = CombatEngine.findClassConfig(resolvedClass);
-        if (classObj != null) {
-            var modeObj:Dynamic = Reflect.field(classObj, modeName);
+        var classObj = CombatEngine.findClassConfig(trimmedClass);
+        if (classObj != null && !Std.isOfType(classObj, Array)) {
+            var modeObj:Dynamic = Reflect.field(classObj, trimmedMode);
             if (modeObj == null) {
+                var lowerMode = trimmedMode.toLowerCase();
                 for (f in Reflect.fields(classObj)) {
-                    if (f.toLowerCase() == modeName.toLowerCase() || StringTools.trim(f).toLowerCase() == StringTools.trim(modeName).toLowerCase()) {
+                    if (f.toLowerCase() == lowerMode) {
                         modeObj = Reflect.field(classObj, f);
                         break;
                     }
@@ -456,7 +516,7 @@ class UserSkillsManager {
                     skillUseMode: modeType,
                     timeout: timeout,
                     combo: (comboStr != null) ? comboStr : "",
-                    isUser: isUserMode(resolvedClass, modeName)
+                    isUser: isUserMode(trimmedClass, trimmedMode)
                 };
             }
         }
