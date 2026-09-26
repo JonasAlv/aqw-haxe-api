@@ -9,7 +9,7 @@ import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
 
 class ScriptCommands {
-    private static inline function _parseInt(v:Dynamic, def:Int = 0):Int {
+    private static function _parseInt(v:Dynamic, def:Int = 0):Int {
         return com.aqwapi.utils.AqwUtils.parseInt(v, def);
     }
 

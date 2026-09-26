@@ -2,50 +2,47 @@ package com.aqwapi.utils;
 
 class AqwUtils {
     /**
-     * Cross-platform check for NaN.
-     * Uses IEEE 754 (v != v).
+     * Cross-platform check for NaN using standard Haxe Math.isNaN.
      */
-    public static inline function isNaN(v:Float):Bool {
-        return v != v;
+    public static function isNaN(v:Float):Bool {
+        return Math.isNaN(v);
     }
 
     /**
-     * Cross-platform check for finite numbers.
+     * Cross-platform check for finite numbers using standard Haxe Math.isFinite.
      */
-    public static inline function isFinite(v:Float):Bool {
-        return (v == v) && (v > Math.NEGATIVE_INFINITY) && (v < Math.POSITIVE_INFINITY);
+    public static function isFinite(v:Float):Bool {
+        return Math.isFinite(v);
     }
 
     /**
-     * Parses an integer safely with a default fallback.
-     * Fast-paths numeric types without string allocation.
+     * Parses an integer safely with a default fallback using standard Haxe Std.parseInt.
      */
-    public static inline function parseInt(x:Dynamic, def:Int = 0):Int {
+    public static function parseInt(x:Dynamic, def:Int = 0):Int {
         if (x == null) return def;
         if (Std.isOfType(x, Int)) return cast x;
         if (Std.isOfType(x, Float)) {
             var f:Float = cast x;
-            return (f != f) ? def : Std.int(f);
+            return Math.isNaN(f) ? def : Std.int(f);
         }
         var str:String = StringTools.trim(Std.string(x));
         if (str == "") return def;
-        var res = Std.parseInt(str);
-        return (res != null && res == res) ? res : def;
+        var res:Null<Int> = Std.parseInt(str);
+        return (res != null) ? res : def;
     }
 
     /**
-     * Parses a float safely with a default fallback.
-     * Fast-paths numeric types without string allocation.
+     * Parses a float safely with a default fallback using standard Haxe Std.parseFloat.
      */
-    public static inline function parseFloat(x:Dynamic, def:Float = 0.0):Float {
+    public static function parseFloat(x:Dynamic, def:Float = 0.0):Float {
         if (x == null) return def;
         if (Std.isOfType(x, Float) || Std.isOfType(x, Int)) {
             var f:Float = cast x;
-            return (f != f) ? def : f;
+            return Math.isNaN(f) ? def : f;
         }
         var str:String = StringTools.trim(Std.string(x));
         if (str == "") return def;
-        var res = Std.parseFloat(str);
-        return (res != res || Math.isNaN(res)) ? def : res;
+        var res:Float = Std.parseFloat(str);
+        return Math.isNaN(res) ? def : res;
     }
 }

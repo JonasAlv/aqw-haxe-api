@@ -182,16 +182,20 @@ class CombatEngine {
             var cObj:Dynamic = Reflect.field(data, cKey);
             if (cObj == null || Std.isOfType(cObj, Array)) continue;
             for (mKey in Reflect.fields(cObj)) {
-                var mObj:Dynamic = Reflect.field(cObj, mKey);
-                if (mObj == null) continue;
-                if (mObj.mode != null && mObj.skillUseMode == null) {
-                    mObj.skillUseMode = mObj.mode;
-                }
-                if (mObj.timeout != null && mObj.skillTimeout == null) {
-                    mObj.skillTimeout = mObj.timeout;
-                }
-                if (mObj.combo != null && (mObj.skills == null || !Std.isOfType(mObj.skills, Array) || (cast mObj.skills : Array<Dynamic>).length == 0)) {
-                    mObj.skills = SkillDslParser.parseCombo(Std.string(mObj.combo));
+                try {
+                    var mObj:Dynamic = Reflect.field(cObj, mKey);
+                    if (mObj == null) continue;
+                    if (mObj.mode != null && mObj.skillUseMode == null) {
+                        mObj.skillUseMode = mObj.mode;
+                    }
+                    if (mObj.timeout != null && mObj.skillTimeout == null) {
+                        mObj.skillTimeout = mObj.timeout;
+                    }
+                    if (mObj.combo != null && (mObj.skills == null || !Std.isOfType(mObj.skills, Array) || (cast mObj.skills : Array<Dynamic>).length == 0)) {
+                        mObj.skills = SkillDslParser.parseCombo(Std.string(mObj.combo));
+                    }
+                } catch (me:Dynamic) {
+                    ApiLogger.warn("Skills", "Error compiling mode [" + cKey + " : " + mKey + "]: " + me);
                 }
             }
         }
