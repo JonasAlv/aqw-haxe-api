@@ -51,14 +51,58 @@ class CombatEngine {
     private static var _lastLoggedMode:String = null;
     private static var _skillsLoaded:Bool = false;
 
+    private static var NULL_CONFIG:Dynamic = { __null: true };
+    private static var _classConfigCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+    private static var _skillsDataLower:Map<String, Dynamic> = new Map<String, Dynamic>();
+    private static var _skillsDataClean:Map<String, Dynamic> = new Map<String, Dynamic>();
+    private static var _cachedCleanKeys:Array<{ key:String, clean:String, len:Int }> = [];
+    private static var _cachedKnownClasses:Array<String> = null;
+
+    public static function rebuildClassIndex():Void {
+        _classConfigCache = new Map<String, Dynamic>();
+        _skillsDataLower = new Map<String, Dynamic>();
+        _skillsDataClean = new Map<String, Dynamic>();
+        _cachedCleanKeys = [];
+        var known:Array<String> = [];
+
+        if (_skillsData != null) {
+            for (key in Reflect.fields(_skillsData)) {
+                if (key == null || key == "") continue;
+                var obj:Dynamic = Reflect.field(_skillsData, key);
+                if (obj == null) continue;
+
+                known.push(key);
+
+                var lower = key.toLowerCase();
+                _skillsDataLower.set(lower, obj);
+
+                var clean = cleanClassName(key);
+                if (clean != "") {
+                    _skillsDataClean.set(clean, obj);
+                    _cachedCleanKeys.push({ key: key, clean: clean, len: clean.length });
+                }
+            }
+        }
+
+        known.sort(function(a, b) {
+            var la:String = a.toLowerCase();
+            var lb:String = b.toLowerCase();
+            if (la < lb) return -1;
+            if (la > lb) return 1;
+            return 0;
+        });
+        _cachedKnownClasses = known;
+    }
+
     public static function init():Void {
+        if (_skillsLoaded && _skillsData != null) return;
         _skillsLoaded = true;
-        reloadSkills();
+        reloadSkills(true);
     }
 
     public static function toggleSmart():Void {
         if (IS_ON && isSmart) { stop(); return; }
-        reloadSkills();
+        if (!_skillsLoaded || _skillsData == null) reloadSkills();
         start(true);
     }
 
@@ -69,7 +113,7 @@ class CombatEngine {
 
     public static function start(smart:Bool, silent:Bool = false):Void {
         stop();
-        reloadSkills(silent);
+        if (!_skillsLoaded || _skillsData == null) reloadSkills(silent);
         isSmart = smart;
         if (isSmart) {
             var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : getSettingString("api_smart_class", "Current");
@@ -268,8 +312,10 @@ class CombatEngine {
             }
 
             UserSkillsManager.ensureStorageInitialized();
+            rebuildClassIndex();
         } catch (e:Dynamic) {
             _skillsData = {};
+            rebuildClassIndex();
             var msg:String = Std.string(e);
             #if flash
             try {
@@ -912,74 +958,89 @@ class CombatEngine {
             return null;
         }
 
+        // Fast cache check
+        if (_classConfigCache != null && _classConfigCache.exists(trimmed)) {
+            var cached:Dynamic = _classConfigCache.get(trimmed);
+            if (cached == NULL_CONFIG) return null;
+            return cached;
+        }
+
+        var result:Dynamic = null;
+
         // 1. Exact match in _skillsData
         if (Reflect.hasField(_skillsData, trimmed)) {
-            return Reflect.field(_skillsData, trimmed);
+            result = Reflect.field(_skillsData, trimmed);
         }
 
-        // 2. Case-insensitive match in _skillsData
-        var lower:String = trimmed.toLowerCase();
-        for (key in Reflect.fields(_skillsData)) {
-            if (key.toLowerCase() == lower) return Reflect.field(_skillsData, key);
-        }
-
-        // 3. Clean and fuzzy substring match (e.g. "Master Ranger" matches "Master Ranger (Rank 10)")
-        var cleanTarget:String = cleanClassName(trimmed);
-        if (cleanTarget != "") {
-            for (key in Reflect.fields(_skillsData)) {
-                if (cleanClassName(key) == cleanTarget) {
-                    return Reflect.field(_skillsData, key);
-                }
+        // 2. Fast O(1) case-insensitive match
+        if (result == null && _skillsDataLower != null) {
+            var lower:String = trimmed.toLowerCase();
+            if (_skillsDataLower.exists(lower)) {
+                result = _skillsDataLower.get(lower);
             }
-            var bestMatchKey:String = null;
-            var bestMatchLen:Int = 0;
-            for (key in Reflect.fields(_skillsData)) {
-                var cleanKey:String = cleanClassName(key);
-                if (cleanKey != "") {
-                    if (cleanTarget == cleanKey) {
-                        return Reflect.field(_skillsData, key);
-                    }
-                    if (cleanTarget.indexOf(cleanKey) != -1 || cleanKey.indexOf(cleanTarget) != -1) {
-                        if (cleanKey.length > bestMatchLen) {
-                            bestMatchLen = cleanKey.length;
-                            bestMatchKey = key;
+        }
+
+        // 3. Fast O(1) clean match and precomputed fuzzy substring match
+        var cleanTarget:String = cleanClassName(trimmed);
+        if (result == null && cleanTarget != "") {
+            if (_skillsDataClean != null && _skillsDataClean.exists(cleanTarget)) {
+                result = _skillsDataClean.get(cleanTarget);
+            } else if (_cachedCleanKeys != null) {
+                var bestMatchKey:String = null;
+                var bestMatchLen:Int = 0;
+                for (item in _cachedCleanKeys) {
+                    if (cleanTarget.indexOf(item.clean) != -1 || item.clean.indexOf(cleanTarget) != -1) {
+                        if (item.len > bestMatchLen) {
+                            bestMatchLen = item.len;
+                            bestMatchKey = item.key;
                         }
                     }
                 }
-            }
-            if (bestMatchKey != null) {
-                return Reflect.field(_skillsData, bestMatchKey);
+                if (bestMatchKey != null) {
+                    result = Reflect.field(_skillsData, bestMatchKey);
+                }
             }
         }
 
         // 4. UserSkillsManager lookup if class was not found in _skillsData
-        try {
-            var userObj = UserSkillsManager.readUserSkillsObject();
-            if (userObj != null) {
-                if (Reflect.hasField(userObj, trimmed)) {
-                    var customClassObj = Reflect.field(userObj, trimmed);
-                    compileSkillsData(userObj);
-                    if (_skillsData == null) _skillsData = {};
-                    Reflect.setField(_skillsData, trimmed, customClassObj);
-                    return customClassObj;
-                }
-                for (cKey in Reflect.fields(userObj)) {
-                    if (cKey.toLowerCase() == lower || (cleanTarget != "" && cleanClassName(cKey) == cleanTarget)) {
-                        var customClassObj = Reflect.field(userObj, cKey);
+        if (result == null) {
+            try {
+                var userObj = UserSkillsManager.readUserSkillsObject();
+                if (userObj != null) {
+                    var lower = trimmed.toLowerCase();
+                    if (Reflect.hasField(userObj, trimmed)) {
+                        result = Reflect.field(userObj, trimmed);
                         compileSkillsData(userObj);
-                        if (_skillsData == null) _skillsData = {};
-                        Reflect.setField(_skillsData, cKey, customClassObj);
-                        return customClassObj;
+                        Reflect.setField(_skillsData, trimmed, result);
+                    } else {
+                        for (cKey in Reflect.fields(userObj)) {
+                            if (cKey.toLowerCase() == lower || (cleanTarget != "" && cleanClassName(cKey) == cleanTarget)) {
+                                result = Reflect.field(userObj, cKey);
+                                compileSkillsData(userObj);
+                                Reflect.setField(_skillsData, cKey, result);
+                                break;
+                            }
+                        }
                     }
                 }
-            }
-        } catch (_:Dynamic) {}
+            } catch (_:Dynamic) {}
+        }
 
-        return null;
+        // Cache result (memoizes NULL_CONFIG for non-classes to make subsequent checks instantaneous)
+        if (_classConfigCache != null) {
+            if (result != null) {
+                _classConfigCache.set(trimmed, result);
+            } else {
+                _classConfigCache.set(trimmed, NULL_CONFIG);
+            }
+        }
+
+        return result;
     }
 
     public static function getKnownClasses():Array<String> {
         if (!_skillsLoaded) init();
+        if (_cachedKnownClasses != null) return _cachedKnownClasses.copy();
         if (_skillsData == null) return [];
         var list:Array<String> = [];
         for (key in Reflect.fields(_skillsData)) {
@@ -994,7 +1055,8 @@ class CombatEngine {
             if (la > lb) return 1;
             return 0;
         });
-        return list;
+        _cachedKnownClasses = list;
+        return list.copy();
     }
 
     public static function registerCustomMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String):Void {
@@ -1032,6 +1094,7 @@ class CombatEngine {
             combo: combo
         };
         Reflect.setField(targetClass, trimmedMode, modeObj);
+        rebuildClassIndex();
         ApiLogger.info("Skills", "Registered custom mode [" + targetKey + " : " + trimmedMode + "] in memory!");
     }
 
@@ -1076,6 +1139,7 @@ class CombatEngine {
         }
 
         if (removed) {
+            rebuildClassIndex();
             ApiLogger.info("Skills", "Unregistered custom mode [" + targetClassKey + " : " + trimmedMode + "] from memory!");
         }
         return removed;

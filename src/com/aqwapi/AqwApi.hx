@@ -51,9 +51,28 @@ class AqwApi {
         com.aqwapi.utils.AqwStorage.ensureFiles();
     }
 
-    public static function init(gameReference:Dynamic):Void {
+    public static function preloadAssets():Void {
         ensureMathShims();
         ensureStorage();
+        try {
+            com.aqwapi.modules.CombatEngine.init();
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Api", "CombatEngine preload error: " + e);
+        }
+        try {
+            com.aqwapi.modules.UserSkillsManager.ensureStorageInitialized();
+            com.aqwapi.modules.UserSkillsManager.readUserSkillsObject();
+        } catch (_:Dynamic) {}
+        try {
+            com.aqwapi.modules.QuestDataLoader.ensureLoaded(true);
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Api", "QuestDataLoader preload error: " + e);
+        }
+    }
+
+    public static function init(gameReference:Dynamic):Void {
+        ensureMathShims();
+        preloadAssets();
         game = cast gameReference;
         transport = new TransportAdapter(game);
         map = new MapManager(game);
