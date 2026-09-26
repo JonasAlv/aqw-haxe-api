@@ -283,7 +283,7 @@ class UserSkillsManager {
             };
             Reflect.setField(classObj, trimmedMode, modeEntry);
 
-            writeUserSkillsObject(data);
+            var ok = writeUserSkillsObject(data);
 
             // Instant in-memory registration into CombatEngine
             try {
@@ -295,7 +295,7 @@ class UserSkillsManager {
                 ApiLogger.error("UserSkills", "Error registering custom mode: " + ce);
             }
 
-            return true;
+            return ok;
         } catch (e:Dynamic) {
             ApiLogger.error("UserSkills", "saveMode exception: " + e);
             return false;

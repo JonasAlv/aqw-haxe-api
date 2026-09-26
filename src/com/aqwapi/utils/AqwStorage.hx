@@ -25,7 +25,7 @@ class AqwStorage {
             var fsCls:Dynamic = getFileStreamClass();
             if (fsCls == null) return null;
             var stream:Dynamic = Type.createInstance(fsCls, []);
-            if (stream != null && Reflect.field(stream, "open") != null) {
+            if (stream != null) {
                 stream.open(file, "read");
                 var txt:String = stream.readUTFBytes(stream.bytesAvailable);
                 stream.close();
@@ -43,7 +43,7 @@ class AqwStorage {
             var fsCls:Dynamic = getFileStreamClass();
             if (fsCls == null) return false;
             var stream:Dynamic = Type.createInstance(fsCls, []);
-            if (stream != null && Reflect.field(stream, "open") != null) {
+            if (stream != null) {
                 stream.open(file, "write");
                 stream.writeUTFBytes(content);
                 stream.close();
@@ -61,7 +61,7 @@ class AqwStorage {
             var fsCls:Dynamic = getFileStreamClass();
             if (fsCls == null) return false;
             var stream:Dynamic = Type.createInstance(fsCls, []);
-            if (stream != null && Reflect.field(stream, "open") != null) {
+            if (stream != null) {
                 stream.open(file, "write");
                 stream.writeBytes(bytes);
                 stream.close();
@@ -150,6 +150,15 @@ class AqwStorage {
         try {
             var FileClass:Dynamic = getFileClass();
             if (FileClass != null) {
+                #if flash
+                try {
+                    var direct:Dynamic = untyped FileClass.applicationStorageDirectory;
+                    if (direct != null) {
+                        _dataDir = direct;
+                        return _dataDir;
+                    }
+                } catch (_:Dynamic) {}
+                #end
                 var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
                 if (appStorage != null) {
                     _dataDir = appStorage;
@@ -233,7 +242,15 @@ class AqwStorage {
         try {
             var FileClass:Dynamic = getFileClass();
             if (FileClass != null) {
-                var appDir:Dynamic = getStaticProp(FileClass, "applicationDirectory");
+                var appDir:Dynamic = null;
+                #if flash
+                try {
+                    appDir = untyped FileClass.applicationDirectory;
+                } catch (_:Dynamic) {}
+                #end
+                if (appDir == null) {
+                    appDir = getStaticProp(FileClass, "applicationDirectory");
+                }
                 if (appDir != null) {
                     var f1 = appDir.resolvePath("assets/" + clean);
                     var txt1 = readFileStream(f1);

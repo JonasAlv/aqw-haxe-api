@@ -70,7 +70,7 @@ class ApiLogger {
                 if (fileCls.applicationStorageDirectory != null) {
                     var candidate = fileCls.applicationStorageDirectory.resolvePath("bot.log");
                     var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null && Reflect.field(fs, "open") != null) {
+                    if (fs != null) {
                         fs.open(candidate, "append");
                         fs.writeUTFBytes("");
                         fs.close();
@@ -88,7 +88,7 @@ class ApiLogger {
                     fileCls.applicationDirectory.parent.parent != null) {
                     var candidate = fileCls.applicationDirectory.parent.parent.resolvePath("bot.log");
                     var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null && Reflect.field(fs, "open") != null) {
+                    if (fs != null) {
                         fs.open(candidate, "append");
                         fs.writeUTFBytes("");
                         fs.close();
@@ -104,7 +104,7 @@ class ApiLogger {
                 if (fileCls.userDirectory != null) {
                     var candidate = fileCls.userDirectory.resolvePath("bot.log");
                     var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null && Reflect.field(fs, "open") != null) {
+                    if (fs != null) {
                         fs.open(candidate, "append");
                         fs.writeUTFBytes("");
                         fs.close();
