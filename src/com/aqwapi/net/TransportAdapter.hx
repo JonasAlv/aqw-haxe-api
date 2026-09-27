@@ -1,7 +1,7 @@
 package com.aqwapi.net;
 
 import com.aqwapi.events.GameEvent;
-import com.aqwapi.AqwApi;
+import com.aqwapi.Api;
 import com.aqwapi.utils.ApiLogger;
 
 class TransportAdapter {
@@ -66,17 +66,17 @@ class TransportAdapter {
                 cmd = Std.string(event.params.dataObj.name);
         }
 
-        if (AqwApi.hscript != null) {
-            AqwApi.hscript.handlePacket(type, cmd, dataObj);
+        if (Api.hscript != null) {
+            Api.hscript.handlePacket(type, cmd, dataObj);
         }
 
         switch (cmd) {
             case "moveToArea":
-                AqwApi.dispatcher.dispatchEvent(new GameEvent(GameEvent.ZONE_ENTERED, dataObj));
+                Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.ZONE_ENTERED, dataObj));
             case "getQuests", "getQuests2", "getQuest":
-                AqwApi.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));
+                Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));
             case "equipItem", "unequipItem", "buyItem", "sellItem", "getDrop", "bankFromInv", "bankToInv", "loadBank":
-                AqwApi.dispatcher.dispatchEvent(new GameEvent(GameEvent.INVENTORY_CHANGED, dataObj));
+                Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.INVENTORY_CHANGED, dataObj));
             default:
         }
 

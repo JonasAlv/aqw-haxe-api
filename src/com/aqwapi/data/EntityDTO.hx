@@ -1,5 +1,7 @@
 package com.aqwapi.data;
 
+import com.aqwapi.Api;
+
 class EntityDTO {
     public var id:String = "";
     public var name:String = "";
@@ -196,8 +198,8 @@ class EntityDTO {
             if (odAuras != null) auraSources.push(odAuras);
         }
 
-        if (AqwApi.game != null && AqwApi.game.world != null) {
-            var w:Dynamic = AqwApi.game.world;
+        if (Api.game != null && Api.game.world != null) {
+            var w:Dynamic = Api.game.world;
             if (this.mapId != "" && w.monTree != null) {
                 try {
                     var mLeaf = Reflect.field(w.monTree, this.mapId);

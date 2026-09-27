@@ -131,7 +131,7 @@ class ApiLogger {
             default: "LOG";
         };
 
-        var formatted:String = "[AqwApi:" + tag + ":" + levelStr + "] " + message;
+        var formatted:String = "[Api:" + tag + ":" + levelStr + "] " + message;
 
         if (printToConsole) {
             try {
@@ -197,7 +197,8 @@ class ApiLogger {
 
     public static function pushChat(type:String, text:String, sender:String = "API"):Void {
         try {
-            var apiCls:Dynamic = Type.resolveClass("com.aqwapi.AqwApi");
+            var apiCls:Dynamic = Type.resolveClass("com.aqwapi.Api");
+            if (apiCls == null) apiCls = Type.resolveClass("com.aqwapi.AqwApi");
             if (apiCls != null) {
                 var g:Dynamic = Reflect.field(apiCls, "game");
                 if (g != null && g.chatF != null && g.chatF.pushMsg != null) {

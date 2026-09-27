@@ -1,6 +1,6 @@
 package com.aqwapi.scripting;
 
-import com.aqwapi.AqwApi;
+import com.aqwapi.Api;
 import com.aqwapi.events.ApiEvent;
 import com.aqwapi.events.GameEvent;
 import com.aqwapi.modules.CombatEngine;
@@ -54,9 +54,9 @@ class HScriptEngine {
         _timer = new Timer(tickInterval);
         _timer.addEventListener(TimerEvent.TIMER, onTimerTick, false, 0, true);
 
-        AqwApi.dispatcher.addEventListener(GameEvent.ZONE_ENTERED, onGameZoneEntered);
-        AqwApi.dispatcher.addEventListener(GameEvent.QUEST_UPDATED, onGameQuestUpdated);
-        AqwApi.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, onGameInventoryChanged);
+        Api.dispatcher.addEventListener(GameEvent.ZONE_ENTERED, onGameZoneEntered);
+        Api.dispatcher.addEventListener(GameEvent.QUEST_UPDATED, onGameQuestUpdated);
+        Api.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, onGameInventoryChanged);
 
         _resetSandbox();
     }
@@ -103,17 +103,19 @@ class HScriptEngine {
         _interp = new Interp();
 
         // Core API
-        _interp.variables.set("api", AqwApi);
-        _interp.variables.set("bot", AqwApi);
-        _interp.variables.set("player", AqwApi.player);
-        _interp.variables.set("combat", AqwApi.combat);
-        _interp.variables.set("map", AqwApi.map);
-        _interp.variables.set("quest", AqwApi.quest);
-        _interp.variables.set("inventory", AqwApi.inventory);
-        _interp.variables.set("drop", AqwApi.drop);
-        _interp.variables.set("shop", AqwApi.shop);
-        _interp.variables.set("monster", AqwApi.monster);
-        _interp.variables.set("events", AqwApi.dispatcher);
+        _interp.variables.set("api", Api);
+        _interp.variables.set("bot", Api);
+        _interp.variables.set("Api", Api);
+        _interp.variables.set("Bot", Api);
+        _interp.variables.set("player", Api.player);
+        _interp.variables.set("combat", Api.combat);
+        _interp.variables.set("map", Api.map);
+        _interp.variables.set("quest", Api.quest);
+        _interp.variables.set("inventory", Api.inventory);
+        _interp.variables.set("drop", Api.drop);
+        _interp.variables.set("shop", Api.shop);
+        _interp.variables.set("monster", Api.monster);
+        _interp.variables.set("events", Api.dispatcher);
 
         // Logging & Notifications
         _interp.variables.set("log", function(msg:Dynamic):Void {
@@ -129,7 +131,7 @@ class HScriptEngine {
             ApiLogger.clearLog();
         });
         _interp.variables.set("notify", function(msg:Dynamic):Void {
-            AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, Std.string(msg)));
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, Std.string(msg)));
         });
 
         // Async Delay
@@ -139,67 +141,67 @@ class HScriptEngine {
 
         // Common API Shortcuts
         _interp.variables.set("join", function(mapName:String, cell:String = "Enter", pad:String = "Spawn"):Void {
-            AqwApi.map.join(mapName, cell, pad);
+            Api.map.join(mapName, cell, pad);
         });
         _interp.variables.set("joinHouse", function(username:String = ""):Void {
-            AqwApi.map.joinHouse(username);
+            Api.map.joinHouse(username);
         });
         _interp.variables.set("jump", function(cell:String, pad:String = "Enter"):Void {
-            AqwApi.map.jump(cell, pad);
+            Api.map.jump(cell, pad);
         });
         _interp.variables.set("snapTo", function(target:Dynamic):Void {
-            AqwApi.map.snapTo(target);
+            Api.map.snapTo(target);
         });
         _interp.variables.set("getMapItem", function(itemId:Int):Bool {
-            return AqwApi.map.getMapItem(itemId);
+            return Api.map.getMapItem(itemId);
         });
         _interp.variables.set("attack", function(monster:Dynamic):Void {
-            AqwApi.combat.attack(Std.string(monster));
+            Api.combat.attack(Std.string(monster));
         });
         _interp.variables.set("selectTarget", function(monster:Dynamic):Void {
-            AqwApi.combat.selectTarget(Std.string(monster));
+            Api.combat.selectTarget(Std.string(monster));
         });
         _interp.variables.set("target", function(monster:Dynamic):Void {
-            AqwApi.combat.selectTarget(Std.string(monster));
+            Api.combat.selectTarget(Std.string(monster));
         });
         _interp.variables.set("hasItem", function(itemName:String, quantity:Int = 1):Bool {
-            return AqwApi.inventory.hasItem(itemName, quantity);
+            return Api.inventory.hasItem(itemName, quantity);
         });
         _interp.variables.set("getItemCount", function(itemName:String):Int {
-            return AqwApi.inventory.getQuestQuantity(itemName);
+            return Api.inventory.getQuestQuantity(itemName);
         });
         _interp.variables.set("getDrop", function(drops:Dynamic):Void {
             if (Std.isOfType(drops, Array)) {
-                AqwApi.drop.acceptPendingDrops(cast drops);
+                Api.drop.acceptPendingDrops(cast drops);
             } else if (drops != null) {
                 var str = Std.string(drops);
                 if (str.indexOf(",") != -1) {
                     var parts:Array<Dynamic> = [];
                     for (p in str.split(",")) parts.push(StringTools.trim(p));
-                    AqwApi.drop.acceptPendingDrops(parts);
+                    Api.drop.acceptPendingDrops(parts);
                 } else {
-                    AqwApi.drop.getDrop(str);
+                    Api.drop.getDrop(str);
                 }
             }
         });
         _interp.variables.set("getDrops", function(drops:Dynamic = "all"):Void {
             if (drops == null || drops == "all" || drops == "any" || drops == "*") {
-                AqwApi.drop.acceptPendingDrops(["all"]);
+                Api.drop.acceptPendingDrops(["all"]);
             } else if (Std.isOfType(drops, Array)) {
-                AqwApi.drop.acceptPendingDrops(cast drops);
+                Api.drop.acceptPendingDrops(cast drops);
             } else {
                 var str = Std.string(drops);
                 if (str.indexOf(",") != -1) {
                     var parts:Array<Dynamic> = [];
                     for (p in str.split(",")) parts.push(StringTools.trim(p));
-                    AqwApi.drop.acceptPendingDrops(parts);
+                    Api.drop.acceptPendingDrops(parts);
                 } else {
-                    AqwApi.drop.getDrop(str);
+                    Api.drop.getDrop(str);
                 }
             }
         });
         _interp.variables.set("loadQuest", function(questId:Int):Void {
-            AqwApi.quest.load(questId);
+            Api.quest.load(questId);
         });
         _interp.variables.set("loadQuests", function(questIds:Dynamic):Void {
             if (Std.isOfType(questIds, Array)) {
@@ -209,23 +211,23 @@ class HScriptEngine {
                     var qid = com.aqwapi.utils.AqwUtils.parseInt(item, 0);
                     if (qid > 0) intArr.push(qid);
                 }
-                AqwApi.quest.loadMultiple(intArr);
+                Api.quest.loadMultiple(intArr);
             } else if (questIds != null) {
                 var qid = com.aqwapi.utils.AqwUtils.parseInt(questIds, 0);
-                if (qid > 0) AqwApi.quest.load(qid);
+                if (qid > 0) Api.quest.load(qid);
             }
         });
         _interp.variables.set("isQuestLoaded", function(questId:Int):Bool {
-            return AqwApi.quest.isLoaded(questId);
+            return Api.quest.isLoaded(questId);
         });
         _interp.variables.set("showQuests", function(questIds:Dynamic):Void {
-            AqwApi.quest.showQuests(Std.string(questIds));
+            Api.quest.showQuests(Std.string(questIds));
         });
         _interp.variables.set("openQuest", function(questId:Int):Void {
-            AqwApi.quest.showQuests(Std.string(questId));
+            Api.quest.showQuests(Std.string(questId));
         });
         _interp.variables.set("acceptQuest", function(questId:Int):Void {
-            AqwApi.quest.accept(questId);
+            Api.quest.accept(questId);
         });
         _interp.variables.set("acceptQuests", function(questIds:Dynamic):Void {
             if (Std.isOfType(questIds, Array)) {
@@ -235,17 +237,17 @@ class HScriptEngine {
                     var qid = com.aqwapi.utils.AqwUtils.parseInt(item, 0);
                     if (qid > 0) intArr.push(qid);
                 }
-                AqwApi.quest.acceptMultiple(intArr);
+                Api.quest.acceptMultiple(intArr);
             } else if (questIds != null) {
                 var qid = com.aqwapi.utils.AqwUtils.parseInt(questIds, 0);
-                if (qid > 0) AqwApi.quest.accept(qid);
+                if (qid > 0) Api.quest.accept(qid);
             }
         });
         _interp.variables.set("ensureAccept", function(questId:Int):Void {
-            AqwApi.quest.accept(questId);
+            Api.quest.accept(questId);
         });
         _interp.variables.set("completeQuest", function(questId:Int, itemId:Int = -1):Void {
-            AqwApi.quest.complete(questId, itemId);
+            Api.quest.complete(questId, itemId);
         });
         _interp.variables.set("completeQuests", function(questIds:Dynamic):Void {
             if (Std.isOfType(questIds, Array)) {
@@ -255,14 +257,14 @@ class HScriptEngine {
                     var qid = com.aqwapi.utils.AqwUtils.parseInt(item, 0);
                     if (qid > 0) intArr.push(qid);
                 }
-                AqwApi.quest.completeMultiple(intArr);
+                Api.quest.completeMultiple(intArr);
             } else if (questIds != null) {
                 var qid = com.aqwapi.utils.AqwUtils.parseInt(questIds, 0);
-                if (qid > 0 && AqwApi.quest.isAccepted(qid)) AqwApi.quest.complete(qid);
+                if (qid > 0 && Api.quest.isAccepted(qid)) Api.quest.complete(qid);
             }
         });
         _interp.variables.set("turnIn", function(questId:Int, itemId:Int = -1):Void {
-            AqwApi.quest.complete(questId, itemId);
+            Api.quest.complete(questId, itemId);
         });
         _interp.variables.set("turnInQuests", function(questIds:Dynamic):Void {
             if (Std.isOfType(questIds, Array)) {
@@ -272,227 +274,227 @@ class HScriptEngine {
                     var qid = com.aqwapi.utils.AqwUtils.parseInt(item, 0);
                     if (qid > 0) intArr.push(qid);
                 }
-                AqwApi.quest.completeMultiple(intArr);
+                Api.quest.completeMultiple(intArr);
             } else if (questIds != null) {
                 var qid = com.aqwapi.utils.AqwUtils.parseInt(questIds, 0);
-                if (qid > 0 && AqwApi.quest.isAccepted(qid)) AqwApi.quest.complete(qid);
+                if (qid > 0 && Api.quest.isAccepted(qid)) Api.quest.complete(qid);
             }
         });
         _interp.variables.set("isQuestComplete", function(questId:Int):Bool {
-            return AqwApi.quest.isComplete(questId);
+            return Api.quest.isComplete(questId);
         });
         _interp.variables.set("isQuestAccepted", function(questId:Int):Bool {
-            return AqwApi.quest.isAccepted(questId);
+            return Api.quest.isAccepted(questId);
         });
         _interp.variables.set("isQuestAvailable", function(questId:Int):Bool {
-            return AqwApi.quest.isAvailable(questId);
+            return Api.quest.isAvailable(questId);
         });
         _interp.variables.set("isQuestUnlocked", function(questId:Int):Bool {
-            return AqwApi.quest.isUnlocked(questId);
+            return Api.quest.isUnlocked(questId);
         });
         _interp.variables.set("hasBeenCompleted", function(questId:Int):Bool {
-            return AqwApi.quest.hasBeenCompleted(questId);
+            return Api.quest.hasBeenCompleted(questId);
         });
         _interp.variables.set("isDailyComplete", function(questId:Int):Bool {
-            return AqwApi.quest.isDailyComplete(questId);
+            return Api.quest.isDailyComplete(questId);
         });
         _interp.variables.set("canCompleteQuest", function(questId:Int):Bool {
-            return AqwApi.quest.canComplete(questId);
+            return Api.quest.canComplete(questId);
         });
         _interp.variables.set("canTurnInQuest", function(questId:Int):Bool {
-            return AqwApi.quest.canComplete(questId);
+            return Api.quest.canComplete(questId);
         });
         _interp.variables.set("getQuestValue", function(slot:Int):Int {
-            return AqwApi.quest.getQuestValue(slot);
+            return Api.quest.getQuestValue(slot);
         });
         _interp.variables.set("dropCombat", function():Void {
-            AqwApi.combat.dropCombat();
+            Api.combat.dropCombat();
         });
         _interp.variables.set("cancelAutoAttack", function():Void {
-            AqwApi.combat.cancelAutoAttack();
+            Api.combat.cancelAutoAttack();
         });
         _interp.variables.set("cancelTarget", function():Void {
-            AqwApi.combat.cancelTarget();
+            Api.combat.cancelTarget();
         });
         _interp.variables.set("pauseCombat", function():Void {
-            AqwApi.combat.pauseCombat();
+            Api.combat.pauseCombat();
         });
         _interp.variables.set("pauseAttack", function():Void {
-            AqwApi.combat.pauseCombat();
+            Api.combat.pauseCombat();
         });
         _interp.variables.set("approach", function():Void {
-            AqwApi.combat.approachTarget();
+            Api.combat.approachTarget();
         });
         _interp.variables.set("approachTarget", function():Void {
-            AqwApi.combat.approachTarget();
+            Api.combat.approachTarget();
         });
         _interp.variables.set("attackTarget", function(target:Dynamic = null):Void {
             if (target == null) {
-                AqwApi.combat.attack("*");
+                Api.combat.attack("*");
             } else if (Reflect.hasField(target, "mapId")) {
-                AqwApi.combat.attack(Std.string(Reflect.field(target, "mapId")));
+                Api.combat.attack(Std.string(Reflect.field(target, "mapId")));
             } else {
-                AqwApi.combat.attack(Std.string(target));
+                Api.combat.attack(Std.string(target));
             }
-            AqwApi.combat.approachTarget();
+            Api.combat.approachTarget();
         });
         _interp.variables.set("setInfiniteRange", function(enabled:Bool = true):Void {
-            AqwApi.combat.setInfiniteRange(enabled);
+            Api.combat.setInfiniteRange(enabled);
         });
         _interp.variables.set("infiniteRange", function(enabled:Bool = true):Void {
-            AqwApi.combat.setInfiniteRange(enabled);
+            Api.combat.setInfiniteRange(enabled);
         });
         _interp.variables.set("magnetize", function():Void {
-            AqwApi.combat.magnetize();
+            Api.combat.magnetize();
         });
         _interp.variables.set("setSpawnPoint", function(cell:String = null, pad:String = null):Void {
-            AqwApi.player.setSpawnPoint(cell, pad);
+            Api.player.setSpawnPoint(cell, pad);
         });
         _interp.variables.set("setDeathSpawn", function(enabled:Bool = true):Void {
-            AqwApi.map.autoDeathSpawn = enabled;
+            Api.map.autoDeathSpawn = enabled;
         });
         _interp.variables.set("deathSpawn", function(enabled:Bool = true):Void {
-            AqwApi.map.autoDeathSpawn = enabled;
+            Api.map.autoDeathSpawn = enabled;
         });
         _interp.variables.set("walkTo", function(x:Float, y:Float, speed:Float = 16):Void {
-            if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
+            if (Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null) {
                 try {
-                    var avt:Dynamic = AqwApi.game.world.myAvatar;
+                    var avt:Dynamic = Api.game.world.myAvatar;
                     if (avt.pMC != null) {
                         if (avt.pMC.walkTo != null) avt.pMC.walkTo(x, y, speed);
-                        if (AqwApi.game.world.pushMove != null) AqwApi.game.world.pushMove(avt.pMC, x, y, speed);
+                        if (Api.game.world.pushMove != null) Api.game.world.pushMove(avt.pMC, x, y, speed);
                     }
                 } catch (e:Dynamic) {}
             }
         });
         _interp.variables.set("useSkill", function(index:Int):Bool {
-            return AqwApi.combat.useSkill(index);
+            return Api.combat.useSkill(index);
         });
         _interp.variables.set("canUseSkill", function(index:Int):Bool {
-            return AqwApi.combat.canUseSkill(index);
+            return Api.combat.canUseSkill(index);
         });
         _interp.variables.set("equip", function(itemName:String):Void {
-            AqwApi.inventory.equip(itemName);
+            Api.inventory.equip(itemName);
         });
         _interp.variables.set("equipClass", function(type:String):Bool {
-            return AqwApi.combat.equipLoadout(type);
+            return Api.combat.equipLoadout(type);
         });
         _interp.variables.set("equipLoadout", function(type:String):Bool {
-            return AqwApi.combat.equipLoadout(type);
+            return Api.combat.equipLoadout(type);
         });
         _interp.variables.set("stop", function():Void {
             stop();
         });
         _interp.variables.set("isCombatOn", function():Bool {
-            return AqwApi.combat != null && AqwApi.combat.isAutoRunning;
+            return Api.combat != null && Api.combat.isAutoRunning;
         });
         _interp.variables.set("startCombat", function(smart:Bool = true):Void {
-            if (AqwApi.combat != null) {
-                if (smart) AqwApi.combat.startSmart();
-                else AqwApi.combat.startCustom("");
+            if (Api.combat != null) {
+                if (smart) Api.combat.startSmart();
+                else Api.combat.startCustom("");
             }
         });
         _interp.variables.set("stopCombat", function():Void {
-            if (AqwApi.combat != null) AqwApi.combat.stopAuto();
+            if (Api.combat != null) Api.combat.stopAuto();
         });
 
         // Bank Operations
         _interp.variables.set("loadBank", function():Void {
-            AqwApi.inventory.loadBank();
+            Api.inventory.loadBank();
         });
         _interp.variables.set("openBank", function():Void {
-            AqwApi.inventory.toggleBank();
+            Api.inventory.toggleBank();
         });
         _interp.variables.set("toggleBank", function():Void {
-            AqwApi.inventory.toggleBank();
+            Api.inventory.toggleBank();
         });
         _interp.variables.set("bank", function(itemName:String):Void {
-            AqwApi.inventory.bank(itemName);
+            Api.inventory.bank(itemName);
         });
         _interp.variables.set("bankItem", function(itemName:String):Void {
-            AqwApi.inventory.bank(itemName);
+            Api.inventory.bank(itemName);
         });
         _interp.variables.set("unbank", function(itemName:String):Void {
-            AqwApi.inventory.unbank(itemName);
+            Api.inventory.unbank(itemName);
         });
         _interp.variables.set("unbankItem", function(itemName:String):Void {
-            AqwApi.inventory.unbank(itemName);
+            Api.inventory.unbank(itemName);
         });
         _interp.variables.set("isInBank", function(itemNameOrId:String):Bool {
-            return AqwApi.inventory.isInBank(itemNameOrId);
+            return Api.inventory.isInBank(itemNameOrId);
         });
         _interp.variables.set("isBankLoaded", function():Bool {
-            return AqwApi.inventory.isBankLoaded;
+            return Api.inventory.isBankLoaded;
         });
 
         // Inventory Capacity
         _interp.variables.set("isInventoryFull", function():Bool {
-            return AqwApi.inventory.isFull;
+            return Api.inventory.isFull;
         });
         _interp.variables.set("isBagFull", function():Bool {
-            return AqwApi.inventory.isFull;
+            return Api.inventory.isFull;
         });
         _interp.variables.set("freeSlots", function():Int {
-            return AqwApi.inventory.freeSlots;
+            return Api.inventory.freeSlots;
         });
         _interp.variables.set("usedSlots", function():Int {
-            return AqwApi.inventory.usedSlots;
+            return Api.inventory.usedSlots;
         });
         _interp.variables.set("maxSlots", function():Int {
-            return AqwApi.inventory.maxSlots;
+            return Api.inventory.maxSlots;
         });
 
         // Shop Operations
         _interp.variables.set("loadShop", function(shopId:Int):Void {
-            AqwApi.shop.loadShop(shopId);
+            Api.shop.loadShop(shopId);
         });
         _interp.variables.set("buyItem", function(shopId:Dynamic, itemNameOrId:String = null, quantity:Int = 1):Void {
             if (itemNameOrId == null) {
-                AqwApi.shop.buyItem(Std.string(shopId), quantity);
+                Api.shop.buyItem(Std.string(shopId), quantity);
             } else {
                 var sId:Int = com.aqwapi.utils.AqwUtils.parseInt(shopId, 0);
-                if (sId > 0 && !AqwApi.shop.isShopLoaded) AqwApi.shop.loadShop(sId);
-                AqwApi.shop.buyItem(itemNameOrId, quantity);
+                if (sId > 0 && !Api.shop.isShopLoaded) Api.shop.loadShop(sId);
+                Api.shop.buyItem(itemNameOrId, quantity);
             }
         });
         _interp.variables.set("sellItem", function(itemNameOrId:String, quantity:Int = 1):Void {
-            AqwApi.shop.sellItem(itemNameOrId, quantity);
+            Api.shop.sellItem(itemNameOrId, quantity);
         });
         _interp.variables.set("isShopLoaded", function():Bool {
-            return AqwApi.shop.isShopLoaded;
+            return Api.shop.isShopLoaded;
         });
 
         // Packets & Network
         _interp.variables.set("sendPacket", function(packet:String):Void {
-            if (AqwApi.game != null && AqwApi.game.sfc != null) {
-                AqwApi.game.sfc.sendString(packet);
+            if (Api.game != null && Api.game.sfc != null) {
+                Api.game.sfc.sendString(packet);
             }
         });
         _interp.variables.set("sendXt", function(cmd:String, args:Array<Dynamic> = null):Void {
-            if (AqwApi.transport != null) {
-                AqwApi.transport.sendExtensionCommand(cmd, args != null ? args : []);
+            if (Api.transport != null) {
+                Api.transport.sendExtensionCommand(cmd, args != null ? args : []);
             }
         });
         _interp.variables.set("dungeonQueue", function(mapName:String, roomNum:Int = -1):Void {
-            AqwApi.map.dungeonQueue(mapName, roomNum);
+            Api.map.dungeonQueue(mapName, roomNum);
         });
         _interp.variables.set("setPrivateRoom", function(enabled:Bool, roomNumber:Int = 100000):Void {
-            AqwApi.map.usePrivateRoom = enabled;
-            if (roomNumber > 0) AqwApi.map.privateRoomNumber = roomNumber;
+            Api.map.usePrivateRoom = enabled;
+            if (roomNumber > 0) Api.map.privateRoomNumber = roomNumber;
         });
         _interp.variables.set("isPrivateRoom", function():Bool {
-            return AqwApi.map.usePrivateRoom;
+            return Api.map.usePrivateRoom;
         });
 
         // Target & Auras
         _interp.variables.set("getTarget", function():Dynamic {
-            return AqwApi.player.target;
+            return Api.player.target;
         });
         _interp.variables.set("hasTargetAura", function(auraName:String):Bool {
-            var t = AqwApi.player.target;
+            var t = Api.player.target;
             if (t != null && t.hasAura(auraName)) return true;
-            if (AqwApi.player != null && AqwApi.monster != null) {
-                var cellMonsters = AqwApi.monster.getByCell(AqwApi.player.cell);
+            if (Api.player != null && Api.monster != null) {
+                var cellMonsters = Api.monster.getByCell(Api.player.cell);
                 for (m in cellMonsters) {
                     if (m != null && m.alive && m.hasAura(auraName)) return true;
                 }
@@ -500,13 +502,13 @@ class HScriptEngine {
             return false;
         });
         _interp.variables.set("hasPlayerAura", function(auraName:String):Bool {
-            return AqwApi.player.hasAura(auraName);
+            return Api.player.hasAura(auraName);
         });
         _interp.variables.set("targetHasAura", function(auraName:String):Bool {
-            var t = AqwApi.player.target;
+            var t = Api.player.target;
             if (t != null && t.hasAura(auraName)) return true;
-            if (AqwApi.player != null && AqwApi.monster != null) {
-                var cellMonsters = AqwApi.monster.getByCell(AqwApi.player.cell);
+            if (Api.player != null && Api.monster != null) {
+                var cellMonsters = Api.monster.getByCell(Api.player.cell);
                 for (m in cellMonsters) {
                     if (m != null && m.alive && m.hasAura(auraName)) return true;
                 }
@@ -514,12 +516,12 @@ class HScriptEngine {
             return false;
         });
         _interp.variables.set("playerHasAura", function(auraName:String):Bool {
-            return AqwApi.player.hasAura(auraName);
+            return Api.player.hasAura(auraName);
         });
         _interp.variables.set("hasMonsterAura", function(auraName:String, cell:String = null):Bool {
-            var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            if (AqwApi.monster != null) {
-                var cellMonsters = AqwApi.monster.getByCell(c);
+            var c = (cell != null && cell != "") ? cell : (Api.player != null ? Api.player.cell : "");
+            if (Api.monster != null) {
+                var cellMonsters = Api.monster.getByCell(c);
                 for (m in cellMonsters) {
                     if (m != null && m.alive && m.hasAura(auraName)) return true;
                 }
@@ -527,11 +529,11 @@ class HScriptEngine {
             return false;
         });
         _interp.variables.set("hasAura", function(auraName:String, targetOnly:Bool = false):Bool {
-            if (!targetOnly && AqwApi.player != null && AqwApi.player.hasAura(auraName)) return true;
-            var t = AqwApi.player.target;
+            if (!targetOnly && Api.player != null && Api.player.hasAura(auraName)) return true;
+            var t = Api.player.target;
             if (t != null && t.hasAura(auraName)) return true;
-            if (AqwApi.player != null && AqwApi.monster != null) {
-                var cellMonsters = AqwApi.monster.getByCell(AqwApi.player.cell);
+            if (Api.player != null && Api.monster != null) {
+                var cellMonsters = Api.monster.getByCell(Api.player.cell);
                 for (m in cellMonsters) {
                     if (m != null && m.alive && m.hasAura(auraName)) return true;
                 }
@@ -541,51 +543,51 @@ class HScriptEngine {
 
         // Player Status Helpers
         _interp.variables.set("hpPercent", function():Float {
-            if (AqwApi.player == null || AqwApi.player.maxHp <= 0) return 0.0;
-            return AqwApi.player.hp / AqwApi.player.maxHp;
+            if (Api.player == null || Api.player.maxHp <= 0) return 0.0;
+            return Api.player.hp / Api.player.maxHp;
         });
         _interp.variables.set("mpPercent", function():Float {
-            if (AqwApi.player == null || AqwApi.player.maxMp <= 0) return 0.0;
-            return AqwApi.player.mp / AqwApi.player.maxMp;
+            if (Api.player == null || Api.player.maxMp <= 0) return 0.0;
+            return Api.player.mp / Api.player.maxMp;
         });
         _interp.variables.set("isAlive", function():Bool {
-            return AqwApi.player != null && AqwApi.player.isAlive;
+            return Api.player != null && Api.player.isAlive;
         });
         _interp.variables.set("isDead", function():Bool {
-            return AqwApi.player == null || !AqwApi.player.isAlive;
+            return Api.player == null || !Api.player.isAlive;
         });
         _interp.variables.set("inCombat", function():Bool {
-            return AqwApi.player != null && AqwApi.player.isInCombat;
+            return Api.player != null && Api.player.isInCombat;
         });
         _interp.variables.set("gold", function():Int {
-            return (AqwApi.player != null) ? AqwApi.player.gold : 0;
+            return (Api.player != null) ? Api.player.gold : 0;
         });
         _interp.variables.set("coins", function():Int {
-            return (AqwApi.player != null) ? AqwApi.player.coins : 0;
+            return (Api.player != null) ? Api.player.coins : 0;
         });
         _interp.variables.set("ac", function():Int {
-            return (AqwApi.player != null) ? AqwApi.player.ac : 0;
+            return (Api.player != null) ? Api.player.ac : 0;
         });
         _interp.variables.set("xp", function():Int {
-            return (AqwApi.player != null) ? AqwApi.player.xp : 0;
+            return (Api.player != null) ? Api.player.xp : 0;
         });
         _interp.variables.set("maxXp", function():Int {
-            return (AqwApi.player != null) ? AqwApi.player.maxXp : 0;
+            return (Api.player != null) ? Api.player.maxXp : 0;
         });
         _interp.variables.set("isMember", function():Bool {
-            return (AqwApi.player != null) && AqwApi.player.isMember;
+            return (Api.player != null) && Api.player.isMember;
         });
 
         // Monster & Cell Query
         _interp.variables.set("isMonsterAliveInCell", function(cell:String):Bool {
-            var list = AqwApi.monster.getByCell(cell);
+            var list = Api.monster.getByCell(cell);
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return true;
             }
             return false;
         });
         _interp.variables.set("getLivingMonstersInCell", function(cell:String):Array<Dynamic> {
-            var list = AqwApi.monster.getByCell(cell);
+            var list = Api.monster.getByCell(cell);
             var res:Array<Dynamic> = [];
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) res.push(m);
@@ -593,24 +595,24 @@ class HScriptEngine {
             return res;
         });
         _interp.variables.set("isRoomClear", function(cell:String = null):Bool {
-            var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            var list = AqwApi.monster.getByCell(c);
+            var c = (cell != null && cell != "") ? cell : (Api.player != null ? Api.player.cell : "");
+            var list = Api.monster.getByCell(c);
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return false;
             }
             return true;
         });
         _interp.variables.set("isCellClear", function(cell:String = null):Bool {
-            var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            var list = AqwApi.monster.getByCell(c);
+            var c = (cell != null && cell != "") ? cell : (Api.player != null ? Api.player.cell : "");
+            var list = Api.monster.getByCell(c);
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return false;
             }
             return true;
         });
         _interp.variables.set("getMonsters", function(cell:String = null):Array<Dynamic> {
-            var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            var list = AqwApi.monster.getByCell(c);
+            var c = (cell != null && cell != "") ? cell : (Api.player != null ? Api.player.cell : "");
+            var list = Api.monster.getByCell(c);
             var res:Array<Dynamic> = [];
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) res.push(m);
@@ -618,8 +620,8 @@ class HScriptEngine {
             return res;
         });
         _interp.variables.set("getFirstMonster", function(cell:String = null):Dynamic {
-            var c = (cell != null && cell != "") ? cell : (AqwApi.player != null ? AqwApi.player.cell : "");
-            var list = AqwApi.monster.getByCell(c);
+            var c = (cell != null && cell != "") ? cell : (Api.player != null ? Api.player.cell : "");
+            var list = Api.monster.getByCell(c);
             for (m in list) {
                 if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return m;
             }
@@ -628,9 +630,9 @@ class HScriptEngine {
 
         // Cutscene & UI
         _interp.variables.set("skipCutscene", function():Void {
-            if (AqwApi.game != null) {
+            if (Api.game != null) {
                 try {
-                    var g:Dynamic = AqwApi.game;
+                    var g:Dynamic = Api.game;
                     var w:Dynamic = g.world;
 
                     // 1. Cancel active cutscene handler
@@ -700,8 +702,8 @@ class HScriptEngine {
     }
 
     public function loadScript(scriptCode:String):Bool {
-        if ((AqwApi.game == null || AqwApi.game.world == null) && AqwApi.game != null) {
-            AqwApi.init(AqwApi.game);
+        if ((Api.game == null || Api.game.world == null) && Api.game != null) {
+            Api.init(Api.game);
         }
 
         reset();
@@ -717,13 +719,13 @@ class HScriptEngine {
             var msg = "Parse error at line " + _parser.line + ": " + Printer.errorToString(e);
             ApiLogger.error("HScript", msg);
             statusText = msg;
-            AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, msg));
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, msg));
             return false;
         } catch (e:Dynamic) {
             var msg = "Parse error: " + Std.string(e);
             ApiLogger.error("HScript", msg);
             statusText = msg;
-            AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, msg));
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, msg));
             return false;
         }
 
@@ -733,7 +735,7 @@ class HScriptEngine {
             var msg = "Execution error on load: " + Std.string(e);
             ApiLogger.error("HScript", msg);
             statusText = msg;
-            AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, msg));
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, msg));
             return false;
         }
 
@@ -751,8 +753,8 @@ class HScriptEngine {
     }
 
     public function start():Void {
-        if ((AqwApi.game == null || AqwApi.game.world == null) && AqwApi.game != null) {
-            AqwApi.init(AqwApi.game);
+        if ((Api.game == null || Api.game.world == null) && Api.game != null) {
+            Api.init(Api.game);
         }
         if (_program == null) {
             ApiLogger.warn("HScript", "Cannot start: no script loaded.");
@@ -766,13 +768,13 @@ class HScriptEngine {
         waitTimer = 0;
 
         // Scripting ergonomics: Infinite Range and Death Spawn are always ON by default during scripts
-        if (AqwApi.combat != null) AqwApi.combat.setInfiniteRange(true);
-        if (AqwApi.map != null) AqwApi.map.autoDeathSpawn = true;
+        if (Api.combat != null) Api.combat.setInfiniteRange(true);
+        if (Api.map != null) Api.map.autoDeathSpawn = true;
 
         _timer.delay = tickInterval;
         _timer.start();
         statusText = "Running HScript...";
-        AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STARTED, "HScript Started!"));
+        Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STARTED, "HScript Started!"));
         ApiLogger.info("HScript", "HScript Started!");
 
         if (_hasOnStart) {
@@ -800,20 +802,20 @@ class HScriptEngine {
             }
         }
 
-        AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STOPPED, "HScript Stopped!"));
+        Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STOPPED, "HScript Stopped!"));
         ApiLogger.info("HScript", "HScript Stopped!");
 
-        if (AqwApi.quest != null) AqwApi.quest.stopAuto();
-        if (AqwApi.combat != null) AqwApi.combat.stopAuto();
+        if (Api.quest != null) Api.quest.stopAuto();
+        if (Api.combat != null) Api.combat.stopAuto();
         else CombatEngine.stop();
     }
 
 
     private function onTimerTick(e:TimerEvent):Void {
         if (!isRunning) return;
-        if (AqwApi.game == null || AqwApi.game.world == null) return;
+        if (Api.game == null || Api.game.world == null) return;
 
-        var world = AqwApi.game.world;
+        var world = Api.game.world;
         if (world.myAvatar != null && world.myAvatar.dataLeaf != null && world.myAvatar.dataLeaf.intState == 0) {
             statusText = "Waiting for respawn...";
             return;
@@ -831,14 +833,14 @@ class HScriptEngine {
             }
         } else {
             var bgCombat = CombatEngine.IS_ON;
-            var bgQuest = AqwApi.quest != null && AqwApi.quest.isAutoRunning;
+            var bgQuest = Api.quest != null && Api.quest.isAutoRunning;
             if (bgCombat || bgQuest) {
                 statusText = bgCombat ? "Auto-combat running" : "Auto-quest running";
                 return;
             }
             stop();
             statusText = "Script Finished!";
-            AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Script Finished!"));
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Script Finished!"));
             ApiLogger.info("HScript", "Script Finished!");
         }
     }
@@ -877,7 +879,7 @@ class HScriptEngine {
         }
         ApiLogger.error("HScript", fullMsg);
         statusText = "Error: " + msg;
-        AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "HScript Error: " + msg));
+        Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "HScript Error: " + msg));
         stop();
     }
 }

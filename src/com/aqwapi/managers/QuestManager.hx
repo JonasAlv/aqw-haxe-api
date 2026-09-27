@@ -3,7 +3,7 @@ package com.aqwapi.managers;
 import flash.utils.Timer;
 import flash.events.TimerEvent;
 import com.aqwapi.events.ApiEvent;
-import com.aqwapi.AqwApi;
+import com.aqwapi.Api;
 import com.aqwapi.data.QuestDTO;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
@@ -82,7 +82,7 @@ class QuestManager {
         // If quest genuinely has no requirements, it's considered met
         if (reqs == null || reqs.length == 0) return true;
 
-        if (AqwApi.inventory == null) return false;
+        if (Api.inventory == null) return false;
 
         for (req in reqs) {
             if (req == null) continue;
@@ -102,16 +102,16 @@ class QuestManager {
 
             // 2. Check by ItemName if not satisfied by ID
             if (curQty < reqQty && itemName != "") {
-                var questQty = AqwApi.inventory.getQuestQuantity(itemName);
-                var invQty = AqwApi.inventory.getQuantity(itemName);
+                var questQty = Api.inventory.getQuestQuantity(itemName);
+                var invQty = Api.inventory.getQuantity(itemName);
                 var bestQty = questQty > invQty ? questQty : invQty;
                 if (bestQty > curQty) curQty = bestQty;
             }
 
             // 3. Fallback check by ID string
             if (curQty < reqQty && itemId > 0) {
-                var questIdQty = AqwApi.inventory.getQuestQuantity(Std.string(itemId));
-                var idQty = AqwApi.inventory.getQuantity(Std.string(itemId));
+                var questIdQty = Api.inventory.getQuestQuantity(Std.string(itemId));
+                var idQty = Api.inventory.getQuantity(Std.string(itemId));
                 var bestIdQty = questIdQty > idQty ? questIdQty : idQty;
                 if (bestIdQty > curQty) curQty = bestIdQty;
             }
@@ -431,7 +431,7 @@ class QuestManager {
             _timer = new Timer(1500);
             _timer.addEventListener(TimerEvent.TIMER, onAutoTick, false, 0, true);
             _timer.start();
-            AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Auto Quest started: " + parts.join(", ")));
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Auto Quest started: " + parts.join(", ")));
             ApiLogger.info("Quest", "Auto Quest started: " + parts.join(", "));
         }
     }
@@ -441,7 +441,7 @@ class QuestManager {
             _timer.stop();
             _timer.removeEventListener(TimerEvent.TIMER, onAutoTick);
             _timer = null;
-            AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Quests Stopped!"));
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Quests Stopped!"));
             ApiLogger.info("Quest", "Quests Stopped!");
         }
     }

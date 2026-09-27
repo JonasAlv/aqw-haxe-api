@@ -1,6 +1,6 @@
 package com.aqwapi.modules;
 
-import com.aqwapi.AqwApi;
+import com.aqwapi.Api;
 import com.aqwapi.scripting.HScriptEngine;
 
 class ScriptManager {
@@ -23,8 +23,8 @@ class ScriptManager {
     }
 
     public function loadScript(scriptText:String):Void {
-        if ((AqwApi.game == null || AqwApi.game.world == null) && AqwApi.game != null) {
-            AqwApi.init(AqwApi.game);
+        if ((Api.game == null || Api.game.world == null) && Api.game != null) {
+            Api.init(Api.game);
         }
         HScriptEngine.SINGLETON.loadScript(scriptText);
     }
@@ -34,8 +34,8 @@ class ScriptManager {
     }
 
     public function start():Void {
-        if (AqwApi.game == null || AqwApi.game.world == null) {
-            if (AqwApi.game != null) AqwApi.init(AqwApi.game);
+        if (Api.game == null || Api.game.world == null) {
+            if (Api.game != null) Api.init(Api.game);
         }
         HScriptEngine.SINGLETON.start();
     }
@@ -61,6 +61,6 @@ class ScriptManager {
     public function set_statusText(v:String):String { HScriptEngine.SINGLETON.statusText = v; return v; }
 
     public function getItemCount(searchName:String):Int {
-        return (AqwApi.inventory != null) ? AqwApi.inventory.getQuestQuantity(searchName) : 0;
+        return (Api.inventory != null) ? Api.inventory.getQuestQuantity(searchName) : 0;
     }
 }

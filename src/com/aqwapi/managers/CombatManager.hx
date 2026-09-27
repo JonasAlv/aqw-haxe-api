@@ -1,7 +1,7 @@
 package com.aqwapi.managers;
 
 import com.aqwapi.modules.CombatEngine;
-import com.aqwapi.AqwApi;
+import com.aqwapi.Api;
 
 class CombatManager {
     private var _game:AqwGame;
@@ -53,7 +53,7 @@ class CombatManager {
         // 1. Wildcard / any monster in current cell
         if (targetName == "*" || targetName == "any" || targetName == "") {
             var currentCell = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
-            var living = AqwApi.monster.getByCell(currentCell);
+            var living = Api.monster.getByCell(currentCell);
             for (m in living) {
                 if (m != null && m.alive && m.raw != null && Reflect.field(m.raw, "pMC") != null) {
                     targetMonster = m.raw;
@@ -77,7 +77,7 @@ class CombatManager {
 
         // 3. Fallback to findByMapId
         if (targetMonster == null) {
-            var ent:com.aqwapi.data.EntityDTO = AqwApi.monster.findByMapId(sName, true);
+            var ent:com.aqwapi.data.EntityDTO = Api.monster.findByMapId(sName, true);
             if (ent != null && ent.raw != null && Reflect.field(ent.raw, "pMC") != null) {
                 targetMonster = ent.raw;
             }
@@ -85,7 +85,7 @@ class CombatManager {
 
         // 4. Fallback to findByName
         if (targetMonster == null) {
-            var entName:com.aqwapi.data.EntityDTO = AqwApi.monster.findByName(sName, true);
+            var entName:com.aqwapi.data.EntityDTO = Api.monster.findByName(sName, true);
             if (entName != null && entName.raw != null && Reflect.field(entName.raw, "pMC") != null) {
                 targetMonster = entName.raw;
             }
@@ -206,7 +206,7 @@ class CombatManager {
         else if (type == "boss") { c = CombatEngine.bossClass; m = CombatEngine.bossMode; }
         else if (type == "dodge") { c = CombatEngine.dodgeClass; m = CombatEngine.dodgeMode; }
         else return false;
-        if (c != null && c != "" && c != "Current" && AqwApi.inventory != null) AqwApi.inventory.equip(c);
+        if (c != null && c != "" && c != "Current" && Api.inventory != null) Api.inventory.equip(c);
         if (m != null && m != "") CombatEngine.skillMode = m;
         return true;
     }

@@ -1,7 +1,7 @@
 package com.aqwapi.modules;
 
 import com.aqwapi.events.ApiEvent;
-import com.aqwapi.AqwApi;
+import com.aqwapi.Api;
 import com.aqwapi.data.EntityDTO;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
@@ -117,8 +117,8 @@ class CombatEngine {
         if (isSmart) {
             var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : getSettingString("api_smart_class", "Current");
             if (confClass != null && confClass != "" && confClass != "Current") {
-                if (AqwApi.inventory != null) {
-                    AqwApi.inventory.equip(confClass);
+                if (Api.inventory != null) {
+                    Api.inventory.equip(confClass);
                 }
             }
             var confMode = getSettingString("api_smart_mode", "");
@@ -139,8 +139,8 @@ class CombatEngine {
         _stepFirstFailTime = -1;
         _lastLoggedMode = null;
 
-        if (lockedMMID == null && AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
-            var avatar:Dynamic = AqwApi.game.world.myAvatar;
+        if (lockedMMID == null && Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null) {
+            var avatar:Dynamic = Api.game.world.myAvatar;
             if (avatar.target != null) {
                 var ent = new EntityDTO(avatar.target);
                 if (ent.mapId != "") lockedMMID = ent.mapId;
@@ -151,7 +151,7 @@ class CombatEngine {
             }
         }
 
-        AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.COMBAT_TOGGLED, isSmart ? "Smart Combat Activated" : "Custom Combat Activated"));
+        Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.COMBAT_TOGGLED, isSmart ? "Smart Combat Activated" : "Custom Combat Activated"));
         if (!silent) {
             if (isSmart) {
                 var cName = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : "Current";
@@ -177,14 +177,14 @@ class CombatEngine {
         _lastTargetMMID = null;
         _skillWaitStart = 0;
         _lastLoggedMode = null;
-        if (AqwApi.game != null && AqwApi.game.world != null) {
+        if (Api.game != null && Api.game.world != null) {
             try {
-                if (AqwApi.game.world.cancelAutoAttack != null) {
-                    AqwApi.game.world.cancelAutoAttack();
+                if (Api.game.world.cancelAutoAttack != null) {
+                    Api.game.world.cancelAutoAttack();
                 }
             } catch (e:Dynamic) {}
         }
-        AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.COMBAT_TOGGLED, "Combat Stopped"));
+        Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.COMBAT_TOGGLED, "Combat Stopped"));
         ApiLogger.info("Combat", "Combat Stopped");
     }
 
@@ -370,9 +370,9 @@ class CombatEngine {
     }
 
     private static function onTick(e:TimerEvent):Void {
-        if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return;
+        if (Api.game == null || Api.game.world == null || Api.game.world.myAvatar == null) return;
 
-        var world:Dynamic  = AqwApi.game.world;
+        var world:Dynamic  = Api.game.world;
         var avatar:Dynamic = world.myAvatar;
 
         if (avatar.dataLeaf != null && avatar.dataLeaf.intState == 0) return;
@@ -395,7 +395,7 @@ class CombatEngine {
 
         if (target == null) {
             try {
-                var currentMonsters:Array<EntityDTO> = AqwApi.monster.getByCell(Std.string(world.strFrame));
+                var currentMonsters:Array<EntityDTO> = Api.monster.getByCell(Std.string(world.strFrame));
                 for (monsterTarget in currentMonsters) {
                     if (monsterTarget == null || !monsterTarget.alive || !monsterTarget.hasGraphic) continue;
                     var raw = monsterTarget.raw;
@@ -458,7 +458,7 @@ class CombatEngine {
                     if (helperCls != null) infRange = (helperCls.getBool("api_infinite_range", false) == true);
                 } catch (re:Dynamic) {
                     // Fallback: read from CombatManager field via untyped
-                    if (AqwApi.combat != null) infRange = (untyped AqwApi.combat._infiniteRange == true);
+                    if (Api.combat != null) infRange = (untyped Api.combat._infiniteRange == true);
                 }
 
                 if (infRange) {
@@ -944,8 +944,8 @@ class CombatEngine {
 
     public static function getCurrentClassName():String {
         try {
-            if (AqwApi.game != null && AqwApi.game.world != null && AqwApi.game.world.myAvatar != null) {
-                var av:Dynamic = AqwApi.game.world.myAvatar;
+            if (Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null) {
+                var av:Dynamic = Api.game.world.myAvatar;
                 // Primary: objData.strClassName (fastest, always set when a class is equipped)
                 if (av.objData != null && av.objData.strClassName != null) {
                     var c:String = Std.string(av.objData.strClassName);
@@ -1326,7 +1326,7 @@ class CombatEngine {
             var infRange:Bool = false;
             var helperCls:Dynamic = Type.resolveClass("util.HelperSetting");
             if (helperCls != null) infRange = (helperCls.getBool("api_infinite_range", false) == true);
-            else if (AqwApi.combat != null) infRange = (untyped AqwApi.combat._infiniteRange == true);
+            else if (Api.combat != null) infRange = (untyped Api.combat._infiniteRange == true);
             if (infRange) actObj.range = 20000;
         } catch (e:Dynamic) {}
 
@@ -1349,19 +1349,19 @@ class CombatEngine {
     }
 
     public static function tryFireSkillPublic(idx:Int):Bool {
-        if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return false;
-        return fireSkill(AqwApi.game.world, AqwApi.game.world.myAvatar, idx) == SR_FIRED;
+        if (Api.game == null || Api.game.world == null || Api.game.world.myAvatar == null) return false;
+        return fireSkill(Api.game.world, Api.game.world.myAvatar, idx) == SR_FIRED;
     }
 
     public static function canFireSkill(idx:Int):Bool {
-        if (AqwApi.game == null || AqwApi.game.world == null || AqwApi.game.world.myAvatar == null) return false;
-        var res = fireSkill(AqwApi.game.world, AqwApi.game.world.myAvatar, idx);
+        if (Api.game == null || Api.game.world == null || Api.game.world.myAvatar == null) return false;
+        var res = fireSkill(Api.game.world, Api.game.world.myAvatar, idx);
         return res == SR_FIRED || res == SR_TIMING;
     }
 
     private static function getSkillAction(idx:Int):Dynamic {
-        if (AqwApi.game != null && AqwApi.game.world != null) {
-            var world:Dynamic = AqwApi.game.world;
+        if (Api.game != null && Api.game.world != null) {
+            var world:Dynamic = Api.game.world;
             // 1. Native actionMap: exact slot-to-action mapping as used by Game.as keyboard dispatch
             try {
                 if (world.actionMap != null && world.actionMap[idx] != null && world.getActionByRef != null) {
@@ -1394,8 +1394,8 @@ class CombatEngine {
     }
 
     private static function getIcon(idx:Int):Dynamic {
-        if (AqwApi.game == null || AqwApi.game.ui == null || AqwApi.game.ui.mcInterface == null || AqwApi.game.ui.mcInterface.actBar == null) return null;
+        if (Api.game == null || Api.game.ui == null || Api.game.ui.mcInterface == null || Api.game.ui.mcInterface.actBar == null) return null;
         var childName:String = (idx == 0) ? "i1" : ("i" + (idx + 1));
-        return AqwApi.game.ui.mcInterface.actBar.getChildByName(childName);
+        return Api.game.ui.mcInterface.actBar.getChildByName(childName);
     }
 }

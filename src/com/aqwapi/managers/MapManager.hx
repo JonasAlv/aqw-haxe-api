@@ -1,5 +1,7 @@
 package com.aqwapi.managers;
 
+import com.aqwapi.Api;
+
 class MapManager {
     private var _game:AqwGame;
 
@@ -36,20 +38,20 @@ class MapManager {
         if (_game.world.setReturnInfo != null) {
             try { _game.world.setReturnInfo(targetMap, cell, pad); } catch (e:Dynamic) {}
         }
-        if (AqwApi.transport != null) {
-            AqwApi.transport.send("zm", "cmd", ["1", "tfer", username, targetMap, cell, pad]);
+        if (Api.transport != null) {
+            Api.transport.send("zm", "cmd", ["1", "tfer", username, targetMap, cell, pad]);
         }
     }
 
     public function joinHouse(username:String = ""):Void {
         if (_game == null || _game.world == null) return;
         var un:String = username != null ? StringTools.trim(username) : "";
-        if (un == "" && AqwApi.player != null) un = AqwApi.player.username;
+        if (un == "" && Api.player != null) un = Api.player.username;
         if (_game.world.gotoHouse != null) {
             try { _game.world.gotoHouse(un); return; } catch (e:Dynamic) {}
         }
-        if (AqwApi.transport != null) {
-            AqwApi.transport.send("zm", "house", [un]);
+        if (Api.transport != null) {
+            Api.transport.send("zm", "house", [un]);
         }
     }
 
@@ -81,12 +83,12 @@ class MapManager {
 
     public function checkAutoDeathSpawn():Void {
         if (!_autoDeathSpawn || _game == null || _game.world == null) return;
-        if (AqwApi.player != null && !AqwApi.player.isAlive) return;
+        if (Api.player != null && !Api.player.isAlive) return;
         var curCell:String = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
         var curPad:String = (_game.world.strPad != null) ? Std.string(_game.world.strPad) : "Spawn";
         if (curCell != "" && curCell != _lastSpawnCell && curCell.toLowerCase().indexOf("cut") == -1) {
             _lastSpawnCell = curCell;
-            AqwApi.player.setSpawnPoint(curCell, curPad);
+            Api.player.setSpawnPoint(curCell, curPad);
         }
     }
 
@@ -99,7 +101,7 @@ class MapManager {
         }
         if (_autoDeathSpawn && cell != null && cell != "" && cell.toLowerCase().indexOf("cut") == -1) {
             _lastSpawnCell = cell;
-            AqwApi.player.setSpawnPoint(cell, pad);
+            Api.player.setSpawnPoint(cell, pad);
         }
     }
 

@@ -1,7 +1,7 @@
 package com.aqwapi.managers;
 
 import com.aqwapi.events.GameEvent;
-import com.aqwapi.AqwApi;
+import com.aqwapi.Api;
 import com.aqwapi.data.ItemDTO;
 import com.aqwapi.utils.Promise;
 import haxe.Timer;
@@ -143,7 +143,7 @@ class InventoryManager {
 
             var cleanup = function() {
                 if (timeoutTimer != null) { timeoutTimer.stop(); timeoutTimer = null; }
-                AqwApi.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
+                Api.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
             };
 
             listener = function(e:Dynamic) {
@@ -151,7 +151,7 @@ class InventoryManager {
                 resolve(e);
             };
 
-            AqwApi.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
+            Api.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
             timeoutTimer = Timer.delay(function() {
                 cleanup();
                 resolve(null);
@@ -196,7 +196,7 @@ class InventoryManager {
 
             var cleanup = function() {
                 if (timeoutTimer != null) { timeoutTimer.stop(); timeoutTimer = null; }
-                AqwApi.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
+                Api.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
             };
 
             listener = function(e:Dynamic) {
@@ -204,7 +204,7 @@ class InventoryManager {
                 resolve(e);
             };
 
-            AqwApi.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
+            Api.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
             timeoutTimer = Timer.delay(function() {
                 cleanup();
                 resolve(null);
@@ -236,7 +236,7 @@ class InventoryManager {
 
             var cleanup = function() {
                 if (timeoutTimer != null) { timeoutTimer.stop(); timeoutTimer = null; }
-                AqwApi.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
+                Api.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
             };
 
             listener = function(e:Dynamic) {
@@ -244,7 +244,7 @@ class InventoryManager {
                 resolve(e);
             };
 
-            AqwApi.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
+            Api.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
             timeoutTimer = Timer.delay(function() {
                 cleanup();
                 resolve(null);
@@ -377,8 +377,8 @@ class InventoryManager {
     }
 
     public function sellItem(itemNameOrId:String, quantity:Int = 1):Void {
-        if (AqwApi.shop != null) {
-            AqwApi.shop.sellItem(itemNameOrId, quantity);
+        if (Api.shop != null) {
+            Api.shop.sellItem(itemNameOrId, quantity);
         }
     }
 }

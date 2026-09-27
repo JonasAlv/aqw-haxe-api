@@ -8,5 +8,7 @@
 -swf bin/AqwApi.swc
 
 --macro include('com.aqwapi')
+Api
+Bot
 hscript.Parser
 hscript.Interp
