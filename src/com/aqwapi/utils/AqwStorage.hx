@@ -12,68 +12,16 @@ class AqwStorage {
         return n;
     }
 
-    public static function isBundledAsset(fileName:String):Bool {
-        if (fileName == null) return false;
-        var clean = cleanFileName(fileName).toLowerCase();
-        return (clean == "skills.json" || clean == "skills.txt" ||
-                clean == "quests.json" || clean == "quests.txt");
-    }
-
-    public static function readFileStream(file:Dynamic):String {
-        if (file == null) return null;
+    public static function isDesktop():Bool {
+        #if flash
         try {
-            var exists:Bool = false;
-            try { exists = (file.exists == true); } catch (_:Dynamic) {}
-            if (!exists) return null;
-
-            var fsCls:Dynamic = getFileStreamClass();
-            if (fsCls == null) return null;
-            var stream:Dynamic = Type.createInstance(fsCls, []);
-            if (stream != null) {
-                stream.open(file, "read");
-                var txt:String = stream.readUTFBytes(stream.bytesAvailable);
-                stream.close();
-                return txt;
+            var capCls = flash.system.Capabilities;
+            if (capCls != null && capCls.os != null) {
+                var os = capCls.os.toLowerCase();
+                if (os.indexOf("windows") != -1 || os.indexOf("linux") != -1 || os.indexOf("mac") != -1) return true;
             }
-        } catch (e:Dynamic) {
-            ApiLogger.debug("Storage", "readFileStream error: " + e);
-        }
-        return null;
-    }
-
-    public static function writeFileStream(file:Dynamic, content:String):Bool {
-        if (file == null || content == null) return false;
-        try {
-            var fsCls:Dynamic = getFileStreamClass();
-            if (fsCls == null) return false;
-            var stream:Dynamic = Type.createInstance(fsCls, []);
-            if (stream != null) {
-                stream.open(file, "write");
-                stream.writeUTFBytes(content);
-                stream.close();
-                return true;
-            }
-        } catch (e:Dynamic) {
-            ApiLogger.debug("Storage", "writeFileStream error: " + e);
-        }
-        return false;
-    }
-
-    public static function writeBytesStream(file:Dynamic, bytes:Dynamic):Bool {
-        if (file == null || bytes == null) return false;
-        try {
-            var fsCls:Dynamic = getFileStreamClass();
-            if (fsCls == null) return false;
-            var stream:Dynamic = Type.createInstance(fsCls, []);
-            if (stream != null) {
-                stream.open(file, "write");
-                stream.writeBytes(bytes);
-                stream.close();
-                return true;
-            }
-        } catch (e:Dynamic) {
-            ApiLogger.debug("Storage", "writeBytesStream error: " + e);
-        }
+        } catch (_:Dynamic) {}
+        #end
         return false;
     }
 
@@ -115,17 +63,6 @@ class AqwStorage {
         return cls;
     }
 
-    public static function getByteArrayClass():Dynamic {
-        var cls:Dynamic = null;
-        #if flash
-        try { cls = untyped __global__["flash.utils.ByteArray"]; } catch (_:Dynamic) {}
-        #end
-        if (cls == null) {
-            try { cls = Type.resolveClass("flash.utils.ByteArray"); } catch (_:Dynamic) {}
-        }
-        return cls;
-    }
-
     public static function getStaticProp(cls:Dynamic, prop:String):Dynamic {
         if (cls == null) return null;
         #if flash
@@ -138,40 +75,58 @@ class AqwStorage {
             var val:Dynamic = Reflect.field(cls, prop);
             if (val != null) return val;
         } catch (_:Dynamic) {}
-        try {
-            var val:Dynamic = Reflect.getProperty(cls, prop);
-            if (val != null) return val;
-        } catch (_:Dynamic) {}
         return null;
     }
 
     /**
-     * Default writable storage directory (app-storage:/).
-     * Guaranteed writable across Android and Desktop.
+     * Single data directory with read & write access:
+     * - Desktop: <game_folder>/assets/
+     * - Android: File.applicationStorageDirectory
      */
     public static function getDataDirectory():Dynamic {
         if (_dataDir != null) return _dataDir;
-        try {
-            var FileClass:Dynamic = getFileClass();
-            if (FileClass != null) {
-                #if flash
-                try {
-                    var direct:Dynamic = untyped FileClass.applicationStorageDirectory;
-                    if (direct != null) {
-                        _dataDir = direct;
-                        return _dataDir;
+        var FileClass:Dynamic = getFileClass();
+        if (FileClass == null) return null;
+
+        if (isDesktop()) {
+            try {
+                var appDir:Dynamic = getStaticProp(FileClass, "applicationDirectory");
+                if (appDir != null && appDir.nativePath != null) {
+                    var nativeAssetsPath:String = Std.string(appDir.nativePath) + "/assets";
+                    _dataDir = Type.createInstance(FileClass, [nativeAssetsPath]);
+                    if (_dataDir != null && !_dataDir.exists) {
+                        try { _dataDir.createDirectory(); } catch (_:Dynamic) {}
                     }
-                } catch (_:Dynamic) {}
-                #end
-                var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
-                if (appStorage != null) {
-                    _dataDir = appStorage;
+                    ApiLogger.info("Storage", "Desktop single storage path: " + _dataDir.nativePath);
                     return _dataDir;
                 }
+            } catch (e:Dynamic) {
+                ApiLogger.error("Storage", "Failed to resolve desktop assets directory: " + e);
+            }
+        }
+
+        // Android / Mobile: File.applicationStorageDirectory
+        try {
+            #if flash
+            try {
+                var direct:Dynamic = untyped FileClass.applicationStorageDirectory;
+                if (direct != null) {
+                    _dataDir = direct;
+                    ApiLogger.info("Storage", "Android single storage path: " + _dataDir.nativePath);
+                    return _dataDir;
+                }
+            } catch (_:Dynamic) {}
+            #end
+            var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
+            if (appStorage != null) {
+                _dataDir = appStorage;
+                ApiLogger.info("Storage", "Android single storage path: " + _dataDir.nativePath);
+                return _dataDir;
             }
         } catch (e:Dynamic) {
             ApiLogger.error("Storage", "Failed to resolve applicationStorageDirectory: " + e);
         }
+
         return null;
     }
 
@@ -197,127 +152,105 @@ class AqwStorage {
             }
         } catch (_:Dynamic) {}
 
-        // Ensure userSkills.json exists in applicationStorageDirectory
-        try {
-            var userFile = dir.resolvePath("userSkills.json");
-            var exists = false;
-            try { exists = (userFile != null && userFile.exists); } catch (_:Dynamic) {}
-            if (!exists) {
-                var bundled = readBundledAsset("userSkills.json");
-                if (bundled != null && StringTools.trim(bundled).length > 0) {
-                    writeFileStream(userFile, bundled);
-                    ApiLogger.info("Storage", "Provisioned userSkills.json from bundled asset");
-                }
-            }
-        } catch (e:Dynamic) {
-            ApiLogger.warn("Storage", "Failed to ensure userSkills.json: " + e);
-        }
-    }
-
-    public static function getDefaultSkillsResource():String {
-        try {
-            var def = com.aqwapi.modules.DefaultSkillsData.getDefaultSkills();
-            if (def != null && def.length > 0) return def;
-        } catch (_:Dynamic) {}
-        try {
-            var res = haxe.Resource.getString("default_skills");
-            if (res != null && res.length > 0) return res;
-        } catch (_:Dynamic) {}
-        return "";
-    }
-
-    public static function getDefaultUserSkillsResource():String {
-        try {
-            var def = com.aqwapi.modules.DefaultSkillsData.getDefaultUserSkills();
-            if (def != null && def.length > 0) return def;
-        } catch (_:Dynamic) {}
-        try {
-            var res = haxe.Resource.getString("default_user_skills");
-            if (res != null && res.length > 0) return res;
-        } catch (_:Dynamic) {}
-        return "";
-    }
-
-    /**
-     * Reads a bundled read-only asset from File.applicationDirectory (app:/assets/<fileName>).
-     */
-    public static function readBundledAsset(fileName:String):String {
-        var clean = cleanFileName(fileName);
-        try {
+        // On Android, copy seed files from APK assets to applicationStorageDirectory once on first run
+        if (!isDesktop()) {
             var FileClass:Dynamic = getFileClass();
-            if (FileClass != null) {
-                var appDir:Dynamic = null;
-                #if flash
-                try {
-                    appDir = untyped FileClass.applicationDirectory;
-                } catch (_:Dynamic) {}
-                #end
-                if (appDir == null) {
-                    appDir = getStaticProp(FileClass, "applicationDirectory");
-                }
-                if (appDir != null) {
-                    var f1 = appDir.resolvePath("assets/" + clean);
-                    var txt1 = readFileStream(f1);
-                    if (txt1 != null && StringTools.trim(txt1).length > 0) return txt1;
-
-                    var f2 = appDir.resolvePath(clean);
-                    var txt2 = readFileStream(f2);
-                    if (txt2 != null && StringTools.trim(txt2).length > 0) return txt2;
+            var appDir:Dynamic = (FileClass != null) ? getStaticProp(FileClass, "applicationDirectory") : null;
+            if (appDir != null) {
+                var seedFiles = ["skills.json", "userSkills.json", "quests.json"];
+                for (fname in seedFiles) {
+                    try {
+                        var target = dir.resolvePath(fname);
+                        if (!target.exists) {
+                            var src = appDir.resolvePath("assets/" + fname);
+                            var content = readFileStream(src);
+                            if (content != null && StringTools.trim(content).length > 0) {
+                                writeFileStream(target, content);
+                                ApiLogger.info("Storage", "Seeded " + fname + " to applicationStorageDirectory");
+                            }
+                        }
+                    } catch (e:Dynamic) {
+                        ApiLogger.warn("Storage", "Failed to seed " + fname + ": " + e);
+                    }
                 }
             }
+        }
+    }
+
+    public static function readFileStream(file:Dynamic):String {
+        if (file == null) return null;
+        try {
+            var exists:Bool = false;
+            try { exists = (file.exists == true); } catch (_:Dynamic) {}
+            if (!exists) return null;
+
+            var fsCls:Dynamic = getFileStreamClass();
+            if (fsCls == null) return null;
+            var stream:Dynamic = Type.createInstance(fsCls, []);
+            if (stream != null) {
+                stream.open(file, "read");
+                var txt:String = stream.readUTFBytes(stream.bytesAvailable);
+                stream.close();
+                return txt;
+            }
         } catch (e:Dynamic) {
-            ApiLogger.warn("Storage", "Error reading bundled asset " + clean + ": " + e);
+            ApiLogger.debug("Storage", "readFileStream error: " + e);
         }
-
-        if (clean == "skills.json" || clean == "skills.txt") {
-            var def = getDefaultSkillsResource();
-            if (def != null && StringTools.trim(def).length > 0) return def;
-        } else if (clean == "userSkills.json" || clean == "userSkills.txt") {
-            var defU = getDefaultUserSkillsResource();
-            if (defU != null && StringTools.trim(defU).length > 0) return defU;
-        }
-
         return null;
     }
 
-    /**
-     * Reads text for an asset.
-     * - Bundled assets (skills.json, quests.json): File.applicationDirectory.resolvePath("assets/" + fileName)
-     * - User writable assets (userSkills.json): File.applicationStorageDirectory.resolvePath("userSkills.json")
-     */
+    public static function writeFileStream(file:Dynamic, content:String):Bool {
+        if (file == null || content == null) return false;
+        try {
+            var fsCls:Dynamic = getFileStreamClass();
+            if (fsCls == null) return false;
+            var stream:Dynamic = Type.createInstance(fsCls, []);
+            if (stream != null) {
+                stream.open(file, "write");
+                stream.writeUTFBytes(content);
+                stream.close();
+                return true;
+            }
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Storage", "writeFileStream error: " + e);
+        }
+        return false;
+    }
+
+    public static function writeBytesStream(file:Dynamic, bytes:Dynamic):Bool {
+        if (file == null || bytes == null) return false;
+        try {
+            var fsCls:Dynamic = getFileStreamClass();
+            if (fsCls == null) return false;
+            var stream:Dynamic = Type.createInstance(fsCls, []);
+            if (stream != null) {
+                stream.open(file, "write");
+                stream.writeBytes(bytes);
+                stream.close();
+                return true;
+            }
+        } catch (e:Dynamic) {
+            ApiLogger.debug("Storage", "writeBytesStream error: " + e);
+        }
+        return false;
+    }
+
     public static function readText(fileName:String):String {
         var clean = cleanFileName(fileName);
         if (clean == "") return null;
 
-        if (isBundledAsset(clean)) {
-            return readBundledAsset(clean);
-        }
-
-        // User data: applicationStorageDirectory
         var dir = getDataDirectory();
         if (dir != null) {
             try {
                 var f = dir.resolvePath(clean);
-                var txt = readFileStream(f);
-                if (txt != null && StringTools.trim(txt).length > 0) return txt;
+                return readFileStream(f);
             } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "Error reading user asset " + clean + ": " + e);
+                ApiLogger.warn("Storage", "Error reading " + clean + ": " + e);
             }
         }
-
-        // First run fallback: read bundled seed asset and write to user storage
-        var bundled = readBundledAsset(clean);
-        if (bundled != null && StringTools.trim(bundled).length > 0) {
-            writeText(clean, bundled);
-            return bundled;
-        }
-
         return null;
     }
 
-    /**
-     * Writes text to File.applicationStorageDirectory.
-     */
     public static function writeText(fileName:String, content:String):Bool {
         var clean = cleanFileName(fileName);
         if (content == null) return false;
@@ -331,16 +264,14 @@ class AqwStorage {
                         try { target.parent.createDirectory(); } catch (_:Dynamic) {}
                     }
                     if (writeFileStream(target, content)) {
-                        ApiLogger.info("Storage", "Saved " + clean + " to applicationStorageDirectory");
+                        ApiLogger.info("Storage", "Saved " + clean + " to " + target.nativePath);
                         return true;
                     }
                 }
             } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "Error writing to storage: " + e);
+                ApiLogger.warn("Storage", "Error writing " + clean + ": " + e);
             }
         }
-
-        ApiLogger.error("Storage", "writeText failed for " + clean);
         return false;
     }
 
@@ -361,7 +292,7 @@ class AqwStorage {
                     }
                 }
             } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "Error writing bytes to storage: " + e);
+                ApiLogger.warn("Storage", "Error writing bytes: " + e);
             }
         }
         return false;

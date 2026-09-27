@@ -194,16 +194,23 @@ class QuestManager {
         if (_game == null || _game.world == null) return;
         if (isLoaded(questId)) {
             var accepted:Bool = false;
-            if (_game.world.acceptQuest != null) {
-                try {
-                    _game.world.acceptQuest(questId);
-                    accepted = true;
-                } catch (e:Dynamic) {}
-            }
-            if (!accepted && _game.sfc != null) {
+            if (_game.sfc != null) {
                 try {
                     var rId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.world.curRoom;
                     _game.sfc.sendString("%xt%zm%acceptQuest%" + rId + "%" + questId + "%");
+                    accepted = true;
+                    if (_game.world != null && _game.world.questTree != null) {
+                        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+                        if (qData != null && qData.status == null) {
+                            qData.status = "p";
+                        }
+                    }
+                } catch (e:Dynamic) {}
+            }
+            if (!accepted && _game.world.acceptQuest != null) {
+                try {
+                    _game.world.acceptQuest(questId);
+                    accepted = true;
                 } catch (e:Dynamic) {}
             }
         } else {

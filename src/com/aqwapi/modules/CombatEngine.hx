@@ -453,8 +453,11 @@ class CombatEngine {
                 }
 
                 if (infRange) {
-                    // Infinite range ON: fire AA directly (skill 0) without range check
-                    tryFireSkill(world, avatar, 0);
+                    // Infinite range ON: trigger AA only if not already actively auto-attacking and GCD is free
+                    var isAAActive:Bool = (world.autoActionTimer != null && world.autoActionTimer.running);
+                    if (!isAAActive && !isGcdActive(world)) {
+                        tryFireSkill(world, avatar, 0);
+                    }
                 } else {
                     // Normal: let world.approachTarget handle range check, walking, and AA firing
                     if (world.approachTarget != null) {
@@ -463,7 +466,11 @@ class CombatEngine {
                 }
             } catch (e:Dynamic) {}
 
-            runAdvancedRotation(world, avatar, target);
+            try {
+                runAdvancedRotation(world, avatar, target);
+            } catch (rotErr:Dynamic) {
+                ApiLogger.error("Combat", "Advanced rotation error: " + rotErr);
+            }
         } else {
             runSimpleRotation(world, avatar);
         }
@@ -666,6 +673,11 @@ class CombatEngine {
     }
 
     private static function runUseIfAvailable(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>):Void {
+        // If currently on Global Cooldown (GCD), do NOT evaluate rules or fire!
+        if (isGcdActive(world)) {
+            return;
+        }
+
         // Scan from index 0 every tick — fire the first skill whose rules pass AND timing is ready.
         // Resource-blocked and timing-blocked skills are both skipped (try the next one).
         for (i in 0...skills.length) {

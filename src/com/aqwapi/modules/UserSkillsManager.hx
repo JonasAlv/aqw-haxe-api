@@ -39,47 +39,6 @@ class UserSkillsManager {
             parsedData = {};
         }
 
-        // Recover from SharedObject ONLY if storage was empty or missing
-        if (Reflect.fields(parsedData).length == 0) {
-            try {
-                var so:Dynamic = null;
-                #if flash
-                so = flash.net.SharedObject.getLocal("aqw_user_skills_json");
-                #else
-                var soClass = Type.resolveClass("flash.net.SharedObject");
-                if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills_json"]);
-                #end
-                if (so != null && so.data != null && so.data.content != null) {
-                    var soTxt:String = Std.string(so.data.content);
-                    if (soTxt != null && StringTools.trim(soTxt).length > 0) {
-                        var soObj:Dynamic = haxe.Json.parse(soTxt);
-                        if (soObj != null && !Std.isOfType(soObj, Array) && Reflect.fields(soObj).length > 0) {
-                            parsedData = soObj;
-                            try {
-                                AqwStorage.writeText("userSkills.json", haxe.Json.stringify(parsedData, null, "  "));
-                            } catch (_:Dynamic) {}
-                        }
-                    }
-                }
-            } catch (_:Dynamic) {}
-        }
-
-        // Fallback: Default embedded user skills if still completely empty
-        if (Reflect.fields(parsedData).length == 0) {
-            try {
-                var defJson = DefaultSkillsData.getDefaultUserSkills();
-                if (defJson != null && StringTools.trim(defJson).length > 0) {
-                    var defObj:Dynamic = haxe.Json.parse(defJson);
-                    if (defObj != null && !Std.isOfType(defObj, Array) && Reflect.fields(defObj).length > 0) {
-                        parsedData = defObj;
-                        try {
-                            AqwStorage.writeText("userSkills.json", haxe.Json.stringify(parsedData, null, "  "));
-                        } catch (_:Dynamic) {}
-                    }
-                }
-            } catch (_:Dynamic) {}
-        }
-
         _userSkillsCache = parsedData;
         return _userSkillsCache;
     }
@@ -129,29 +88,13 @@ class UserSkillsManager {
             AqwStorage.ensureFiles();
             ok = AqwStorage.writeText("userSkills.json", jsonStr);
             if (ok) {
-                ApiLogger.info("UserSkills", "Saved userSkills.json to applicationStorageDirectory");
+                ApiLogger.info("UserSkills", "Saved userSkills.json");
             } else {
                 ApiLogger.warn("UserSkills", "Failed to save userSkills.json");
             }
         } catch (e:Dynamic) {
             ApiLogger.warn("UserSkills", "Storage write error: " + e);
         }
-
-        // SharedObject backup
-        try {
-            var so:Dynamic = null;
-            #if flash
-            so = flash.net.SharedObject.getLocal("aqw_user_skills_json");
-            #else
-            var soClass = Type.resolveClass("flash.net.SharedObject");
-            if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills_json"]);
-            #end
-            if (so != null && so.data != null) {
-                so.data.content = jsonStr;
-                try { so.flush(); } catch (_:Dynamic) {}
-                ok = true;
-            }
-        } catch (_:Dynamic) {}
 
         return ok;
     }
@@ -430,66 +373,7 @@ class UserSkillsManager {
             ApiLogger.error("UserSkills", "deleteMode data removal error: " + msg);
         }
 
-        // 2. Also ensure deleted from SharedObject backup
-        try {
-            var so:Dynamic = null;
-            #if flash
-            so = flash.net.SharedObject.getLocal("aqw_user_skills_json");
-            #else
-            var soClass = Type.resolveClass("flash.net.SharedObject");
-            if (soClass != null) so = Reflect.callMethod(soClass, Reflect.field(soClass, "getLocal"), ["aqw_user_skills_json"]);
-            #end
-            if (so != null && so.data != null && so.data.content != null) {
-                var soTxt:String = Std.string(so.data.content);
-                if (soTxt != null && soTxt.length > 0) {
-                    var soObj:Dynamic = haxe.Json.parse(soTxt);
-                    if (soObj != null && !Std.isOfType(soObj, Array)) {
-                        var soRemoved:Bool = false;
-                        var soTargetClass:String = (targetClassKey != null) ? targetClassKey : findTargetClassKey(soObj, trimmedClass);
-                        if (soTargetClass == null) soTargetClass = trimmedClass;
-                        var soClassObj:Dynamic = Reflect.field(soObj, soTargetClass);
-                        if (soClassObj != null && !Std.isOfType(soClassObj, Array)) {
-                            var soModeKey:String = null;
-                            if (Reflect.hasField(soClassObj, trimmedMode)) {
-                                soModeKey = trimmedMode;
-                            } else {
-                                var lowerMode = trimmedMode.toLowerCase();
-                                for (mKey in Reflect.fields(soClassObj)) {
-                                    if (mKey.toLowerCase() == lowerMode) {
-                                        soModeKey = mKey;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (soModeKey != null) {
-                                deleteFieldSafe(soClassObj, soModeKey);
-                                soRemoved = true;
-                                removed = true;
-                            }
-                            if (Reflect.fields(soClassObj).length == 0) {
-                                deleteFieldSafe(soObj, soTargetClass);
-                            }
-                        }
-                        if (soRemoved) {
-                            so.data.content = haxe.Json.stringify(soObj, null, "  ");
-                            try { so.flush(); } catch (_:Dynamic) {}
-                        }
-                    }
-                }
-            }
-        } catch (e2:Dynamic) {
-            var msg2:String = Std.string(e2);
-            #if flash
-            try {
-                if (Std.isOfType(e2, flash.errors.Error)) {
-                    var fe2:flash.errors.Error = cast e2;
-                    var st2:String = fe2.getStackTrace();
-                    if (st2 != null && st2 != "") msg2 += " @ " + st2;
-                }
-            } catch (_:Dynamic) {}
-            #end
-            ApiLogger.error("UserSkills", "deleteMode SharedObject removal error: " + msg2);
-        }
+
 
         // 3. Unregister from CombatEngine in-memory registry
         try {
