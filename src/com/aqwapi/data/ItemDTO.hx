@@ -15,6 +15,38 @@ class ItemDTO {
     public var isMember:Bool;
     public var raw:Dynamic;
 
+    public var enhPatternId(get, never):Int;
+    @:getter(enhPatternId)
+    public function get_enhPatternId_prop():Int { return get_enhPatternId(); }
+    public function get_enhPatternId():Int {
+        if (raw == null) return 0;
+        if (Reflect.hasField(raw, "EnhPatternID")) return Std.int(Reflect.field(raw, "EnhPatternID"));
+        if (Reflect.hasField(raw, "enhPID")) return Std.int(Reflect.field(raw, "enhPID"));
+        if (Reflect.hasField(raw, "PatternID")) return Std.int(Reflect.field(raw, "PatternID"));
+        return 0;
+    }
+
+    public var enhLevel(get, never):Int;
+    @:getter(enhLevel)
+    public function get_enhLevel_prop():Int { return get_enhLevel(); }
+    public function get_enhLevel():Int {
+        if (raw == null) return 0;
+        if (Reflect.hasField(raw, "EnhLvl")) return Std.int(Reflect.field(raw, "EnhLvl"));
+        if (Reflect.hasField(raw, "enhLvl")) return Std.int(Reflect.field(raw, "enhLvl"));
+        if (Reflect.hasField(raw, "iLvl")) return Std.int(Reflect.field(raw, "iLvl"));
+        return 0;
+    }
+
+    public var procId(get, never):Int;
+    @:getter(procId)
+    public function get_procId_prop():Int { return get_procId(); }
+    public function get_procId():Int {
+        if (raw == null) return 0;
+        if (Reflect.hasField(raw, "ProcID")) return Std.int(Reflect.field(raw, "ProcID"));
+        if (Reflect.hasField(raw, "procID")) return Std.int(Reflect.field(raw, "procID"));
+        return 0;
+    }
+
     public function new(rawData:Dynamic) {
         if (rawData == null) return;
         this.raw = rawData;

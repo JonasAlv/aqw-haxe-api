@@ -120,7 +120,26 @@ class HScriptEngine {
         _interp.variables.set("drop", Api.drop);
         _interp.variables.set("shop", Api.shop);
         _interp.variables.set("monster", Api.monster);
+        _interp.variables.set("enhancement", Api.enhancement);
+        _interp.variables.set("enhancements", Api.enhancement);
         _interp.variables.set("events", Api.dispatcher);
+
+        // Enhancement shortcuts
+        _interp.variables.set("smartEnhance", function(?className:String, force:Bool = false):Void {
+            Api.enhancement.smartEnhance(className, force);
+        });
+        _interp.variables.set("enhanceEquipped", function(type:String, ?cSpecial:String, ?hSpecial:String, ?wSpecial:String):Void {
+            Api.enhancement.enhanceEquipped(type, cSpecial, hSpecial, wSpecial);
+        });
+        _interp.variables.set("enhanceItem", function(item:Dynamic, type:String, ?cSpecial:String, ?hSpecial:String, ?wSpecial:String):Void {
+            Api.enhancement.enhanceItem(item, type, cSpecial, hSpecial, wSpecial);
+        });
+        _interp.variables.set("isAweUnlocked", function():Bool {
+            return Api.enhancement.isAweUnlocked();
+        });
+        _interp.variables.set("isForgeUnlocked", function(name:String):Bool {
+            return Api.enhancement.isForgeUnlocked(name);
+        });
 
         // Logging & Notifications
         _interp.variables.set("log", function(msg:Dynamic):Void {

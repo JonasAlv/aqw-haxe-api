@@ -157,7 +157,7 @@ class ApiStorage {
             var FileClass:Dynamic = getFileClass();
             var appDir:Dynamic = (FileClass != null) ? getStaticProp(FileClass, "applicationDirectory") : null;
             if (appDir != null) {
-                var seedFiles = ["skills.json", "userSkills.json"];
+                var seedFiles = ["skills.json", "userSkills.json", "enhancements.json"];
                 for (fname in seedFiles) {
                     try {
                         var target = dir.resolvePath(fname);

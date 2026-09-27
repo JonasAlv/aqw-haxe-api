@@ -21,6 +21,7 @@ class Api {
     public static var drop(default, null):DropManager = new DropManager(null);
     public static var shop(default, null):ShopManager = new ShopManager(null);
     public static var monster(default, null):MonsterManager = new MonsterManager(null);
+    public static var enhancement(default, null):EnhancementManager = new EnhancementManager(null);
 
     // Plural aliases (Skua / RBot convention)
     public static var quests(get, never):QuestManager;
@@ -43,7 +44,20 @@ class Api {
     public static function get_shops_prop():ShopManager { return shop; }
     public static function get_shops():ShopManager { return shop; }
 
+    public static var enhancements(get, never):EnhancementManager;
+    @:getter(enhancements)
+    public static function get_enhancements_prop():EnhancementManager { return enhancement; }
+    public static function get_enhancements():EnhancementManager { return enhancement; }
+
     // Direct script helpers on bot / api
+    public static inline function smartEnhance(?className:String, force:Bool = false):Void {
+        enhancement.smartEnhance(className, force);
+    }
+
+    public static inline function enhanceEquipped(type:String, ?cSpecial:String, ?hSpecial:String, ?wSpecial:String):Void {
+        enhancement.enhanceEquipped(type, cSpecial, hSpecial, wSpecial);
+    }
+
     public static inline function sleep(ms:Float):Void {
         HScriptEngine.SINGLETON.sleep(ms);
     }
@@ -126,6 +140,7 @@ class Api {
         drop = new DropManager(game);
         shop = new ShopManager(game);
         monster = new MonsterManager(game);
+        enhancement = new EnhancementManager(game);
         hscript = HScriptEngine.SINGLETON;
 
         if (transport != null) transport.start();
