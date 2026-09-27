@@ -74,7 +74,7 @@ class TransportAdapter {
         switch (cmd) {
             case "moveToArea":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.ZONE_ENTERED, dataObj));
-            case "getQuests", "getQuests2", "getQuest":
+            case "getQuests", "getQuests2", "getQuest", "acceptQuest", "cc":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));
             case "equipItem", "unequipItem", "buyItem", "sellItem", "getDrop", "bankFromInv", "bankToInv", "loadBank":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.INVENTORY_CHANGED, dataObj));

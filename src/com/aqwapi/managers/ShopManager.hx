@@ -13,6 +13,11 @@ class ShopManager {
     public function loadShop(shopId:Int):Void {
         if (_game == null || _game.world == null || shopId <= 0) return;
         if (isShopLoaded && loadedShopId == shopId) return;
+        if (_game.world.coolDown != null) {
+            try {
+                if (!_game.world.coolDown("loadShop")) return;
+            } catch (e:Dynamic) {}
+        }
         try {
             if (_game.world.sendLoadShopRequest != null)
                 _game.world.sendLoadShopRequest(shopId);
@@ -22,6 +27,11 @@ class ShopManager {
     public function buyItem(itemNameOrId:String, quantity:Int = 1):Void {
         if (quantity < 1) quantity = 1;
         if (_game == null || _game.world == null) return;
+        if (_game.world.coolDown != null) {
+            try {
+                if (!_game.world.coolDown("buyItem")) return;
+            } catch (e:Dynamic) {}
+        }
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
         var target:String = itemNameOrId.toLowerCase();
@@ -60,6 +70,11 @@ class ShopManager {
     public function sellItem(itemNameOrId:String, quantity:Int = 1):Void {
         if (quantity < 1) quantity = 1;
         if (_game == null || _game.world == null) return;
+        if (_game.world.coolDown != null) {
+            try {
+                if (!_game.world.coolDown("sellItem")) return;
+            } catch (e:Dynamic) {}
+        }
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
         var target:String = itemNameOrId.toLowerCase();

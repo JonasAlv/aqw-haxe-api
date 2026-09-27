@@ -16,6 +16,8 @@ class QuestManager {
     private var _questIDs:Array<Dynamic> = [];
     private var _lastTurnIns:Dynamic = {};
     private var _lastLoadRequests:Map<Int, Float> = new Map<Int, Float>();
+    private var _lastAcceptTime:Float = 0;
+    private var _lastCompleteTime:Float = 0;
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -200,7 +202,17 @@ class QuestManager {
     }
 
     public function accept(questId:Int):Void {
-        if (_game == null || _game.world == null) return;
+        if (_game == null || _game.world == null || questId <= 0) return;
+        if (isInProgress(questId)) return;
+        if (_game.world.coolDown != null) {
+            try {
+                if (!_game.world.coolDown("acceptQuest")) return;
+            } catch (e:Dynamic) {}
+        } else {
+            var now = ApiTime.now();
+            if (now - _lastAcceptTime < 1000) return;
+            _lastAcceptTime = now;
+        }
         if (isLoaded(questId)) {
             var accepted:Bool = false;
             if (_game.sfc != null) {
@@ -243,7 +255,18 @@ class QuestManager {
     }
 
     public function complete(questId:Int, itemId:Int = -1):Void {
-        if (_game != null && _game.world != null && _game.world.tryQuestComplete != null) {
+        if (_game == null || _game.world == null || questId <= 0) return;
+        if (!isInProgress(questId)) return;
+        if (_game.world.coolDown != null) {
+            try {
+                if (!_game.world.coolDown("tryQuestComplete")) return;
+            } catch (e:Dynamic) {}
+        } else {
+            var now = ApiTime.now();
+            if (now - _lastCompleteTime < 1250) return;
+            _lastCompleteTime = now;
+        }
+        if (_game.world.tryQuestComplete != null) {
             try {
                 if (itemId > 0) {
                     _game.world.tryQuestComplete(questId, itemId);
