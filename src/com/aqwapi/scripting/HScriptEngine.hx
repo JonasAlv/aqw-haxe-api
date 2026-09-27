@@ -125,14 +125,14 @@ class HScriptEngine {
         _interp.variables.set("events", Api.dispatcher);
 
         // Enhancement shortcuts
-        _interp.variables.set("smartEnhance", function(?className:String, force:Bool = false):Void {
-            Api.enhancement.smartEnhance(className, force);
+        _interp.variables.set("smartEnhance", function(?a:Dynamic, ?b:Dynamic, ?c:Dynamic):Void {
+            Api.smartEnhance(a, b, c);
         });
-        _interp.variables.set("enhanceEquipped", function(type:String, ?cSpecial:String, ?hSpecial:String, ?wSpecial:String):Void {
-            Api.enhancement.enhanceEquipped(type, cSpecial, hSpecial, wSpecial);
+        _interp.variables.set("enhanceEquipped", function(?a:Dynamic, ?b:Dynamic, ?c:Dynamic, ?d:Dynamic, ?e:Dynamic):Void {
+            Api.enhanceEquipped(a, b, c, d, e);
         });
-        _interp.variables.set("enhanceItem", function(item:Dynamic, type:String, ?cSpecial:String, ?hSpecial:String, ?wSpecial:String):Void {
-            Api.enhancement.enhanceItem(item, type, cSpecial, hSpecial, wSpecial);
+        _interp.variables.set("enhanceItem", function(?a:Dynamic, ?b:Dynamic, ?c:Dynamic, ?d:Dynamic, ?e:Dynamic, ?f:Dynamic):Void {
+            Api.enhanceItem(a, b, c, d, e, f);
         });
         _interp.variables.set("isAweUnlocked", function():Bool {
             return Api.enhancement.isAweUnlocked();

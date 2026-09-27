@@ -309,11 +309,26 @@ class EnhancementManager {
     // PUBLIC ENHANCEMENT COMMANDS
     // ==========================================
 
-    public function smartEnhance(?className:String, force:Bool = false, ?onComplete:Void->Void):Void {
-        var targetClass:String = (className != null && className != "") ? className : (Api.player != null ? Api.player.className : "");
+    public function smartEnhance(?className:Dynamic, ?force:Dynamic, ?onComplete:Dynamic):Void {
+        var cName:String = null;
+        var f:Bool = false;
+        var cb:Void->Void = null;
+
+        if (Reflect.isFunction(className)) {
+            cb = className;
+        } else if (Reflect.isFunction(force)) {
+            cName = (className != null) ? Std.string(className) : null;
+            cb = force;
+        } else {
+            cName = (className != null) ? Std.string(className) : null;
+            f = (force == true || force == 1 || force == "true");
+            if (Reflect.isFunction(onComplete)) cb = onComplete;
+        }
+
+        var targetClass:String = (cName != null && cName != "") ? cName : (Api.player != null ? Api.player.className : "");
         if (targetClass == null || targetClass == "") {
             ApiLogger.warn("Enhancement", "smartEnhance: No class name specified and player has no equipped class.");
-            if (onComplete != null) onComplete();
+            if (cb != null) cb();
             return;
         }
 
@@ -336,63 +351,74 @@ class EnhancementManager {
         ApiLogger.info("Enhancement", "SmartEnhance for '" + targetClass + "': Type=" + rec.type +
             ", Cape=" + rec.cape + ", Helm=" + rec.helm + ", Weapon=" + rec.weapon);
 
-        enhanceEquipped(rec.type, rec.cape, rec.helm, rec.weapon, onComplete);
+        enhanceEquipped(rec.type, rec.cape, rec.helm, rec.weapon, cb);
     }
 
-    public function enhanceEquipped(baseType:String, ?capeSpecial:String, ?helmSpecial:String, ?weaponSpecial:String, ?onComplete:Void->Void):Void {
+    public function enhanceEquipped(?baseType:Dynamic, ?capeSpecial:Dynamic, ?helmSpecial:Dynamic, ?weaponSpecial:Dynamic, ?onComplete:Dynamic):Void {
         if (isBusy) {
             ApiLogger.warn("Enhancement", "EnhancementManager is currently busy with another queue.");
             return;
         }
+
+        var t:String = (baseType != null && !Reflect.isFunction(baseType)) ? Std.string(baseType) : "Lucky";
+        var cSpec:String = (capeSpecial != null && !Reflect.isFunction(capeSpecial)) ? Std.string(capeSpecial) : "None";
+        var hSpec:String = (helmSpecial != null && !Reflect.isFunction(helmSpecial)) ? Std.string(helmSpecial) : "None";
+        var wSpec:String = (weaponSpecial != null && !Reflect.isFunction(weaponSpecial)) ? Std.string(weaponSpecial) : "None";
+        var cb:Void->Void = null;
+        if (Reflect.isFunction(onComplete)) cb = onComplete;
+        else if (Reflect.isFunction(weaponSpecial)) cb = weaponSpecial;
+        else if (Reflect.isFunction(helmSpecial)) cb = helmSpecial;
+        else if (Reflect.isFunction(capeSpecial)) cb = capeSpecial;
+        else if (Reflect.isFunction(baseType)) cb = baseType;
 
         var slots = getEquippedSlots();
         var tasks:Array<EnhanceTask> = [];
 
         // Weapon
         if (slots.weapon != null) {
-            var wSpec = (weaponSpecial != null && weaponSpecial != "" && weaponSpecial != "None") ? weaponSpecial : "None";
-            if (!isAlreadyEnhanced(slots.weapon, baseType, wSpec)) {
-                var wShopId = getWeaponShopId(baseType, wSpec);
+            var w = (wSpec != "" && wSpec != "None") ? wSpec : "None";
+            if (!isAlreadyEnhanced(slots.weapon, t, w)) {
+                var wShopId = getWeaponShopId(t, w);
                 var wMap = (wShopId == 2142) ? "forge" : null;
-                tasks.push({ item: slots.weapon, baseType: baseType, special: wSpec, shopId: wShopId, targetMap: wMap });
+                tasks.push({ item: slots.weapon, baseType: t, special: w, shopId: wShopId, targetMap: wMap });
             }
         }
 
         // Armor
         if (slots.armor != null) {
-            if (!isAlreadyEnhanced(slots.armor, baseType, "None")) {
-                var aShopId = getBaseShopId(baseType);
-                tasks.push({ item: slots.armor, baseType: baseType, special: "None", shopId: aShopId, targetMap: null });
+            if (!isAlreadyEnhanced(slots.armor, t, "None")) {
+                var aShopId = getBaseShopId(t);
+                tasks.push({ item: slots.armor, baseType: t, special: "None", shopId: aShopId, targetMap: null });
             }
         }
 
         // Helm
         if (slots.helm != null) {
-            var hSpec = (helmSpecial != null && helmSpecial != "" && helmSpecial != "None") ? helmSpecial : "None";
-            if (!isAlreadyEnhanced(slots.helm, baseType, hSpec)) {
-                var hShopId = (hSpec != "None") ? 2164 : getBaseShopId(baseType);
+            var h = (hSpec != "" && hSpec != "None") ? hSpec : "None";
+            if (!isAlreadyEnhanced(slots.helm, t, h)) {
+                var hShopId = (h != "None") ? 2164 : getBaseShopId(t);
                 var hMap = (hShopId == 2164) ? "forge" : null;
-                tasks.push({ item: slots.helm, baseType: baseType, special: hSpec, shopId: hShopId, targetMap: hMap });
+                tasks.push({ item: slots.helm, baseType: t, special: h, shopId: hShopId, targetMap: hMap });
             }
         }
 
         // Cape
         if (slots.cape != null) {
-            var cSpec = (capeSpecial != null && capeSpecial != "" && capeSpecial != "None") ? capeSpecial : "None";
-            if (!isAlreadyEnhanced(slots.cape, baseType, cSpec)) {
-                var cShopId = (cSpec != "None") ? 2143 : getBaseShopId(baseType);
+            var c = (cSpec != "" && cSpec != "None") ? cSpec : "None";
+            if (!isAlreadyEnhanced(slots.cape, t, c)) {
+                var cShopId = (c != "None") ? 2143 : getBaseShopId(t);
                 var cMap = (cShopId == 2143) ? "forge" : null;
-                tasks.push({ item: slots.cape, baseType: baseType, special: cSpec, shopId: cShopId, targetMap: cMap });
+                tasks.push({ item: slots.cape, baseType: t, special: c, shopId: cShopId, targetMap: cMap });
             }
         }
 
         if (tasks.length == 0) {
             ApiLogger.info("Enhancement", "All equipped items already have optimal enhancements at current level!");
-            if (onComplete != null) onComplete();
+            if (cb != null) cb();
             return;
         }
 
-        startQueue(tasks, onComplete);
+        startQueue(tasks, cb);
     }
 
     public function enhanceItem(itemOrName:Dynamic, baseType:String, ?capeSpecial:String, ?helmSpecial:String, ?weaponSpecial:String, ?onComplete:Void->Void):Void {
