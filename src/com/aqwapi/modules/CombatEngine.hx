@@ -47,6 +47,7 @@ class CombatEngine {
     private static var _skillsData:Dynamic = null;
     private static var _waitUntil:Dynamic  = {};
     private static var _lastTargetMMID:String = null;
+    private static var _targetChanged:Bool = false;
     private static var _skillWaitStart:Float = 0;
     private static var _stepFirstFailTime:Float = -1;  // when current step first failed to fire (GCD/CD block)
     private static var _lastLoggedMode:String = null;
@@ -176,6 +177,7 @@ class CombatEngine {
         lockedMMID = null;
         targetName = null;
         _lastTargetMMID = null;
+        _targetChanged = false;
         _skillWaitStart = 0;
         _lastLoggedMode = null;
         if (Api.game != null && Api.game.world != null) {
@@ -236,6 +238,9 @@ class CombatEngine {
                             }
                             if (mObj.timeout != null && mObj.skillTimeout == null) {
                                 mObj.skillTimeout = mObj.timeout;
+                            }
+                            if (mObj.resetComboOnTargetChange != null && mObj.resetOnTarget == null) {
+                                mObj.resetOnTarget = mObj.resetComboOnTargetChange;
                             }
                         } catch (me:Dynamic) {}
                     }
@@ -391,6 +396,8 @@ class CombatEngine {
                     try { world.cancelTarget(); } catch (e:Dynamic) {}
                 }
                 target = null;
+                _lastTargetMMID = null;
+                _targetChanged = true;
             }
         }
 
@@ -445,8 +452,9 @@ class CombatEngine {
         }
         if (curTargetMMID != null && curTargetMMID != _lastTargetMMID) {
             _lastTargetMMID = curTargetMMID;
-            _rotationIndex = 0;
+            _targetChanged = true;
             _skillWaitStart = ApiTime.now();
+            _stepFirstFailTime = -1;
         }
 
         if (isSmart) {
@@ -604,6 +612,22 @@ class CombatEngine {
         // UseIfAvailable has no timeout logic so this only applies to WaitForCooldown.
         if (useMode != "UseIfAvailable" && skillTimeout > 0 && skillTimeout < 2000) {
             skillTimeout = 2000;
+        }
+
+        var shouldResetOnTarget:Bool = true;
+        if (modeConfig != null) {
+            if (modeConfig.resetComboOnTargetChange != null) {
+                shouldResetOnTarget = (modeConfig.resetComboOnTargetChange == true || Std.string(modeConfig.resetComboOnTargetChange) == "true");
+            } else if (modeConfig.resetOnTarget != null) {
+                shouldResetOnTarget = (modeConfig.resetOnTarget == true || Std.string(modeConfig.resetOnTarget) == "true");
+            }
+        }
+
+        if (_targetChanged) {
+            if (shouldResetOnTarget) {
+                _rotationIndex = 0;
+            }
+            _targetChanged = false;
         }
 
         if (useMode == "UseIfAvailable") {
@@ -1238,6 +1262,11 @@ class CombatEngine {
 
     private static function runSimpleRotation(world:Dynamic, avatar:Dynamic):Void {
         if (_customRotation == null || _customRotation.length == 0) return;
+
+        if (_targetChanged) {
+            _rotationIndex = 0;
+            _targetChanged = false;
+        }
 
         if (customMode == "priority") {
             // PRIORITY: scan in order, fire the first skill that's timing-ready

@@ -5,6 +5,9 @@ import com.aqwapi.Game;
 
 class ShopManager {
     private var _game:Game;
+    private var _lastShopLoadTime:Float = 0;
+    private var _lastBuyTime:Float = 0;
+    private var _lastSellTime:Float = 0;
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -13,11 +16,9 @@ class ShopManager {
     public function loadShop(shopId:Int):Void {
         if (_game == null || _game.world == null || shopId <= 0) return;
         if (isShopLoaded && loadedShopId == shopId) return;
-        if (_game.world.coolDown != null) {
-            try {
-                if (!_game.world.coolDown("loadShop")) return;
-            } catch (e:Dynamic) {}
-        }
+        var now = com.aqwapi.utils.ApiTime.now();
+        if (now - _lastShopLoadTime < 1500) return;
+        _lastShopLoadTime = now;
         try {
             if (_game.world.sendLoadShopRequest != null)
                 _game.world.sendLoadShopRequest(shopId);
@@ -27,9 +28,13 @@ class ShopManager {
     public function buyItem(itemNameOrId:String, quantity:Int = 1):Void {
         if (quantity < 1) quantity = 1;
         if (_game == null || _game.world == null) return;
-        if (_game.world.coolDown != null) {
+        var now = com.aqwapi.utils.ApiTime.now();
+        if (now - _lastBuyTime < 1000) return;
+        _lastBuyTime = now;
+        if (_game.world.lock != null) {
             try {
-                if (!_game.world.coolDown("buyItem")) return;
+                var lObj:Dynamic = Reflect.field(_game.world.lock, "buyItem");
+                if (lObj != null) lObj.ts = Date.now().getTime();
             } catch (e:Dynamic) {}
         }
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
@@ -70,9 +75,13 @@ class ShopManager {
     public function sellItem(itemNameOrId:String, quantity:Int = 1):Void {
         if (quantity < 1) quantity = 1;
         if (_game == null || _game.world == null) return;
-        if (_game.world.coolDown != null) {
+        var now = com.aqwapi.utils.ApiTime.now();
+        if (now - _lastSellTime < 1000) return;
+        _lastSellTime = now;
+        if (_game.world.lock != null) {
             try {
-                if (!_game.world.coolDown("sellItem")) return;
+                var lObj:Dynamic = Reflect.field(_game.world.lock, "sellItem");
+                if (lObj != null) lObj.ts = Date.now().getTime();
             } catch (e:Dynamic) {}
         }
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);

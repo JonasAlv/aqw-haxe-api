@@ -204,15 +204,18 @@ class QuestManager {
     public function accept(questId:Int):Void {
         if (_game == null || _game.world == null || questId <= 0) return;
         if (isInProgress(questId)) return;
-        if (_game.world.coolDown != null) {
+
+        var now = ApiTime.now();
+        if (now - _lastAcceptTime < 1000) return;
+        _lastAcceptTime = now;
+
+        if (_game.world.lock != null) {
             try {
-                if (!_game.world.coolDown("acceptQuest")) return;
+                var lObj:Dynamic = Reflect.field(_game.world.lock, "acceptQuest");
+                if (lObj != null) lObj.ts = Date.now().getTime();
             } catch (e:Dynamic) {}
-        } else {
-            var now = ApiTime.now();
-            if (now - _lastAcceptTime < 1000) return;
-            _lastAcceptTime = now;
         }
+
         if (isLoaded(questId)) {
             var accepted:Bool = false;
             if (_game.sfc != null) {
@@ -222,7 +225,7 @@ class QuestManager {
                     accepted = true;
                     if (_game.world != null && _game.world.questTree != null) {
                         var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-                        if (qData != null && qData.status == null) {
+                        if (qData != null) {
                             qData.status = "p";
                         }
                     }
@@ -257,15 +260,30 @@ class QuestManager {
     public function complete(questId:Int, itemId:Int = -1):Void {
         if (_game == null || _game.world == null || questId <= 0) return;
         if (!isInProgress(questId)) return;
-        if (_game.world.coolDown != null) {
+
+        var now = ApiTime.now();
+        if (now - _lastCompleteTime < 1250) return;
+
+        var lastQTurnIn:Float = Reflect.hasField(_lastTurnIns, Std.string(questId)) ? Reflect.field(_lastTurnIns, Std.string(questId)) : 0.0;
+        if (now - lastQTurnIn < 2500) return;
+        Reflect.setField(_lastTurnIns, Std.string(questId), now);
+
+        _lastCompleteTime = now;
+
+        if (_game.world.lock != null) {
             try {
-                if (!_game.world.coolDown("tryQuestComplete")) return;
+                var lObj:Dynamic = Reflect.field(_game.world.lock, "tryQuestComplete");
+                if (lObj != null) lObj.ts = Date.now().getTime();
             } catch (e:Dynamic) {}
-        } else {
-            var now = ApiTime.now();
-            if (now - _lastCompleteTime < 1250) return;
-            _lastCompleteTime = now;
         }
+
+        if (_game.world != null && _game.world.questTree != null) {
+            try {
+                var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+                if (qData != null) qData.status = "";
+            } catch (e:Dynamic) {}
+        }
+
         if (_game.world.tryQuestComplete != null) {
             try {
                 if (itemId > 0) {
