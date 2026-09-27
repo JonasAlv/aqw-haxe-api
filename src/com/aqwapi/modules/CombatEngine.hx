@@ -379,18 +379,27 @@ class CombatEngine {
 
         var target:Dynamic = avatar.target;
 
-        if (target != null && target.dataLeaf != null && (target.dataLeaf.intHP <= 0 || target.dataLeaf.intState == 0)) {
-            if (world.cancelTarget != null) {
-                try { world.cancelTarget(); } catch (e:Dynamic) {}
+        if (target != null) {
+            var isInvalid:Bool = false;
+            if (target.pMC == null || target.dataLeaf == null || target.objData == null) isInvalid = true;
+            else if (target.dataLeaf.intHP != null && target.dataLeaf.intHP <= 0) isInvalid = true;
+            else if (target.dataLeaf.intState != null && target.dataLeaf.intState == 0) isInvalid = true;
+
+            if (isInvalid) {
+                if (world.cancelTarget != null) {
+                    try { world.cancelTarget(); } catch (e:Dynamic) {}
+                }
+                target = null;
             }
-            target = null;
         }
 
         if (target == null) {
             try {
                 var currentMonsters:Array<EntityDTO> = AqwApi.monster.getByCell(Std.string(world.strFrame));
                 for (monsterTarget in currentMonsters) {
-                    if (monsterTarget == null || !monsterTarget.alive) continue;
+                    if (monsterTarget == null || !monsterTarget.alive || !monsterTarget.hasGraphic) continue;
+                    var raw = monsterTarget.raw;
+                    if (raw == null || raw.pMC == null || raw.objData == null || raw.dataLeaf == null) continue;
                     if (lockedMMID != null && monsterTarget.mapId != lockedMMID) continue;
                     if (targetName != null && targetName != "*" && monsterTarget.name.toLowerCase().indexOf(targetName.toLowerCase()) == -1) continue;
                     if (world.setTarget != null) {
@@ -407,7 +416,7 @@ class CombatEngine {
                     if (world.getMonster != null) {
                         var monName:String = (targetName != null && targetName != "*") ? targetName.toLowerCase() : "Any";
                         var anyMon:Dynamic = world.getMonster(monName);
-                        if (anyMon != null) {
+                        if (anyMon != null && anyMon.pMC != null && anyMon.objData != null && anyMon.dataLeaf != null) {
                             var monHp:Int = (anyMon.dataLeaf != null && anyMon.dataLeaf.intHP != null) ? Std.int(anyMon.dataLeaf.intHP) : 1;
                             var monState:Int = (anyMon.dataLeaf != null && anyMon.dataLeaf.intState != null) ? Std.int(anyMon.dataLeaf.intState) : 1;
                             if (monHp > 0 && monState != 0) {
@@ -422,7 +431,7 @@ class CombatEngine {
             }
         }
 
-        if (target == null) {
+        if (target == null || target.pMC == null || target.objData == null || target.dataLeaf == null) {
             _lastTargetMMID = null;
             return;
         }
@@ -469,7 +478,17 @@ class CombatEngine {
             try {
                 runAdvancedRotation(world, avatar, target);
             } catch (rotErr:Dynamic) {
-                ApiLogger.error("Combat", "Advanced rotation error: " + rotErr);
+                var msg:String = Std.string(rotErr);
+                #if flash
+                try {
+                    if (Std.isOfType(rotErr, flash.errors.Error)) {
+                        var fe:flash.errors.Error = cast rotErr;
+                        var st:String = fe.getStackTrace();
+                        if (st != null && st != "") msg += "\n" + st;
+                    }
+                } catch (_:Dynamic) {}
+                #end
+                ApiLogger.error("Combat", "Advanced rotation error: " + msg);
             }
         } else {
             runSimpleRotation(world, avatar);
@@ -1312,7 +1331,13 @@ class CombatEngine {
         } catch (e:Dynamic) {}
 
         // 7. Fire
-        world.testAction(actObj);
+        try {
+            if (world != null && world.testAction != null) {
+                world.testAction(actObj);
+            }
+        } catch (te:Dynamic) {
+            return SR_RESOURCE;
+        }
         return SR_FIRED;
     }
 

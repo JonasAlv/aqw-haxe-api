@@ -97,6 +97,7 @@ class ScriptCommands {
 		if (curMapClean == targetMapClean && AqwApi.map.isLoaded) {
 			AqwApi.map.jump(cell, pad);
 			cmd.joinTimer = null;
+			manager.waitTimer = now + 1000; // Allow 1s for cellSetup, avatar, and monster spawns
 			manager.currentIndex++;
 			return;
 		}
