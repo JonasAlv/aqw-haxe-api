@@ -4,8 +4,9 @@ import com.aqwapi.events.ApiEvent;
 import com.aqwapi.Api;
 import com.aqwapi.data.EntityDTO;
 import com.aqwapi.utils.ApiLogger;
-import com.aqwapi.utils.AqwTime;
-import com.aqwapi.utils.AqwUtils;
+import com.aqwapi.utils.ApiTime;
+import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.utils.ApiStorage;
 import com.aqwapi.utils.SkillDslParser;
 import flash.events.TimerEvent;
 import flash.utils.Timer;
@@ -132,10 +133,10 @@ class CombatEngine {
         }
         IS_ON = true;
         _rotationIndex = 0;
-        _sequenceStepStartTime = AqwTime.now();
+        _sequenceStepStartTime = ApiTime.now();
         _waitUntil = {};
         _lastTargetMMID = null;
-        _skillWaitStart = AqwTime.now();
+        _skillWaitStart = ApiTime.now();
         _stepFirstFailTime = -1;
         _lastLoggedMode = null;
 
@@ -205,15 +206,15 @@ class CombatEngine {
             customMode = mode;
         }
         _rotationIndex = 0;
-        _sequenceStepStartTime = AqwTime.now();
+        _sequenceStepStartTime = ApiTime.now();
     }
 
     private static function readSkillsAsset():String {
         try {
-            com.aqwapi.utils.AqwStorage.ensureFiles();
-            var txt = com.aqwapi.utils.AqwStorage.readText("skills.json");
+            ApiStorage.ensureFiles();
+            var txt = ApiStorage.readText("skills.json");
             if (txt != null && txt.length > 0) return txt;
-            txt = com.aqwapi.utils.AqwStorage.readText("skills.txt");
+            txt = ApiStorage.readText("skills.txt");
             if (txt != null && txt.length > 0) return txt;
         } catch (_:Dynamic) {}
         return null;
@@ -445,7 +446,7 @@ class CombatEngine {
         if (curTargetMMID != null && curTargetMMID != _lastTargetMMID) {
             _lastTargetMMID = curTargetMMID;
             _rotationIndex = 0;
-            _skillWaitStart = AqwTime.now();
+            _skillWaitStart = ApiTime.now();
         }
 
         if (isSmart) {
@@ -595,7 +596,7 @@ class CombatEngine {
 
         var advancedSkills:Array<Dynamic> = cast modeConfig.skills;
         var useMode:String = modeConfig.skillUseMode != null ? Std.string(modeConfig.skillUseMode) : "WaitForCooldown";
-        var skillTimeout:Float = (modeConfig.skillTimeout != null) ? com.aqwapi.utils.AqwUtils.parseInt(modeConfig.skillTimeout, 5000) : 5000;
+        var skillTimeout:Float = (modeConfig.skillTimeout != null) ? ApiUtils.parseInt(modeConfig.skillTimeout, 5000) : 5000;
         // skillTimeout == 0  → wait indefinitely (only rule failure or successful fire advances the step)
         // skillTimeout >  0  → skip after N ms of being stuck (safety net)
         // For WaitForCooldown: clamp to at least 2000ms so legacy skillTimeout:100 configs
@@ -617,8 +618,8 @@ class CombatEngine {
         try {
             if (world.GCDTS != null && world.GCD != null) {
                 var now:Float = Date.now().getTime();
-                var gcdTs:Float = AqwUtils.parseFloat(world.GCDTS, 0);
-                var gcd:Float = AqwUtils.parseFloat(world.GCD, 1500);
+                var gcdTs:Float = ApiUtils.parseFloat(world.GCDTS, 0);
+                var gcd:Float = ApiUtils.parseFloat(world.GCD, 1500);
                 if (gcdTs > 0 && (now - gcdTs) < gcd) return true;
             }
         } catch (e:Dynamic) {}
@@ -637,7 +638,7 @@ class CombatEngine {
         }
 
         var skill:Dynamic = skills[_rotationIndex];
-        var skillId:Int = AqwUtils.parseInt(skill.skillId, 1);
+        var skillId:Int = ApiUtils.parseInt(skill.skillId, 1);
 
         // Check if skill has a Wait rule
         var hasWaitRule:Bool = false;
@@ -677,7 +678,7 @@ class CombatEngine {
                 // Per-skill CD not ready — wait, retry next tick (100ms).
                 // Safety-net: if stuck on this step for longer than skillTimeout, force-advance.
                 if (skillTimeout > 0) {
-                    var now:Float = AqwTime.now();
+                    var now:Float = ApiTime.now();
                     if (_stepFirstFailTime < 0) _stepFirstFailTime = now;
                     if ((now - _stepFirstFailTime) >= skillTimeout) advanceStep(len);
                 }
@@ -701,7 +702,7 @@ class CombatEngine {
         // Resource-blocked and timing-blocked skills are both skipped (try the next one).
         for (i in 0...skills.length) {
             var skill:Dynamic = skills[i];
-            var skillId:Int = AqwUtils.parseInt(skill.skillId, 1);
+            var skillId:Int = ApiUtils.parseInt(skill.skillId, 1);
             if (!evaluateSkillRules(skill, world, avatar, target, skillId)) continue;
             if (fireSkill(world, avatar, skillId) == SR_FIRED) return;
         }
@@ -766,8 +767,8 @@ class CombatEngine {
 
             case "Wait":
                 var wKey:String = "s" + skillId;
-                var now:Float = AqwTime.now();
-                var timeout:Float = rule.timeout != null ? com.aqwapi.utils.AqwUtils.parseInt(rule.timeout, 0) : 0;
+                var now:Float = ApiTime.now();
+                var timeout:Float = rule.timeout != null ? ApiUtils.parseInt(rule.timeout, 0) : 0;
                 var waitVal:Null<Float> = Reflect.field(_waitUntil, wKey);
                 if (waitVal == null || now >= waitVal) {
                     Reflect.setField(_waitUntil, wKey, now + timeout);
@@ -778,7 +779,7 @@ class CombatEngine {
             case "Health":
                 var hp:Float = getStat(pStats, avatar, "HP");
                 var maxHp:Float = getStat(pStats, avatar, "MaxHP");
-                var targetVal:Float = AqwUtils.parseFloat(rule.value, 0);
+                var targetVal:Float = ApiUtils.parseFloat(rule.value, 0);
                 var isPct:Bool = (rule.isPercentage == true);
                 if (rule.isPercentage == null) isPct = (targetVal <= 100);
                 var currentVal:Float = isPct ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
@@ -787,7 +788,7 @@ class CombatEngine {
             case "Mana":
                 var mp:Float = getStat(pStats, avatar, "MP");
                 var maxMp:Float = getStat(pStats, avatar, "MaxMP");
-                var targetVal:Float = AqwUtils.parseFloat(rule.value, 0);
+                var targetVal:Float = ApiUtils.parseFloat(rule.value, 0);
                 var isPct:Bool = (rule.isPercentage == true);
                 var currentVal:Float = isPct ? (maxMp > 0 ? (mp / maxMp * 100) : 0) : mp;
                 return compare(currentVal, targetVal, Std.string(rule.comparison));
@@ -799,7 +800,7 @@ class CombatEngine {
                 var auraName:String = (rule.auraName != null) ? Std.string(rule.auraName) : "";
                 var auraTarget:String = (rule.auraTarget != null) ? Std.string(rule.auraTarget) : "self";
                 var stacks:Float = getAuraStacks(auraName, auraTarget, world, avatar, target);
-                var threshold:Float = AqwUtils.parseFloat(rule.value, 0);
+                var threshold:Float = ApiUtils.parseFloat(rule.value, 0);
                 var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "greater";
                 if (comp == "greater") {
                     return (threshold > 0) ? (stacks >= threshold) : (stacks > 0);
@@ -817,7 +818,7 @@ class CombatEngine {
 
     private static function evaluatePartyHealth(rule:Dynamic, world:Dynamic, avatar:Dynamic):Bool {
         if (world == null || world.players == null) return false;
-        var threshold:Float = AqwUtils.parseFloat(rule.value, 0);
+        var threshold:Float = ApiUtils.parseFloat(rule.value, 0);
         var isPct:Bool = (rule.isPercentage == true || (rule.isPercentage == null && threshold <= 100));
         var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "less";
         var myFrame:String = (world.strFrame != null) ? Std.string(world.strFrame) : "";
@@ -909,7 +910,7 @@ class CombatEngine {
             var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : "");
             if (name != "" && name.toLowerCase() == search) {
                 var val:Dynamic = a.val;
-                totalStacks += (val == null) ? 1 : AqwUtils.parseFloat(val, 1);
+                totalStacks += (val == null) ? 1 : ApiUtils.parseFloat(val, 1);
             }
         };
 
@@ -1251,10 +1252,10 @@ class CombatEngine {
             if (res == SR_FIRED || res == SR_RESOURCE) {
                 // Advance on fire OR resource-block (skip stuck skills, don't hang forever)
                 _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
-                _sequenceStepStartTime = AqwTime.now();
+                _sequenceStepStartTime = ApiTime.now();
             } else {
                 // TimingBlocked — safety-net: if stuck > 8s, force advance
-                var now:Float = AqwTime.now();
+                var now:Float = ApiTime.now();
                 if ((now - _sequenceStepStartTime) > 8000) {
                     _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
                     _sequenceStepStartTime = now;
@@ -1310,11 +1311,11 @@ class CombatEngine {
 
         // 5. Resource guard (MP cost scaled by class multiplier sta.$cmc)
         // Exactly matches World.as L8606: Math.round(actionObj.mp * cLeaf.sta["$cmc"]) > cLeaf.intMP
-        var rawMp:Int = actObj.mp != null ? AqwUtils.parseInt(actObj.mp, 0) : 0;
+        var rawMp:Int = actObj.mp != null ? ApiUtils.parseInt(actObj.mp, 0) : 0;
         if (rawMp > 0 && dl != null) {
             var cmc:Float = 1.0;
             if (dl.sta != null && Reflect.field(dl.sta, "$cmc") != null) {
-                cmc = AqwUtils.parseFloat(Reflect.field(dl.sta, "$cmc"), 1.0);
+                cmc = ApiUtils.parseFloat(Reflect.field(dl.sta, "$cmc"), 1.0);
             }
             var effectiveMpCost:Int = Math.round(rawMp * cmc);
             var curMp:Int = (dl.intMP != null) ? Std.int(dl.intMP) : 0;

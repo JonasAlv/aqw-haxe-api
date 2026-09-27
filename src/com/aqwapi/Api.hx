@@ -22,6 +22,44 @@ class Api {
     public static var shop(default, null):ShopManager = new ShopManager(null);
     public static var monster(default, null):MonsterManager = new MonsterManager(null);
 
+    // Plural aliases (Skua / RBot convention)
+    public static var quests(get, never):QuestManager;
+    @:getter(quests)
+    public static function get_quests_prop():QuestManager { return quest; }
+    public static function get_quests():QuestManager { return quest; }
+
+    public static var drops(get, never):DropManager;
+    @:getter(drops)
+    public static function get_drops_prop():DropManager { return drop; }
+    public static function get_drops():DropManager { return drop; }
+
+    public static var monsters(get, never):MonsterManager;
+    @:getter(monsters)
+    public static function get_monsters_prop():MonsterManager { return monster; }
+    public static function get_monsters():MonsterManager { return monster; }
+
+    public static var shops(get, never):ShopManager;
+    @:getter(shops)
+    public static function get_shops_prop():ShopManager { return shop; }
+    public static function get_shops():ShopManager { return shop; }
+
+    // Direct script helpers on bot / api
+    public static inline function sleep(ms:Float):Void {
+        HScriptEngine.SINGLETON.sleep(ms);
+    }
+
+    public static inline function log(msg:Dynamic):Void {
+        ApiLogger.info("Bot", Std.string(msg));
+    }
+
+    public static inline function warn(msg:Dynamic):Void {
+        ApiLogger.warn("Bot", Std.string(msg));
+    }
+
+    public static inline function error(msg:Dynamic):Void {
+        ApiLogger.error("Bot", Std.string(msg));
+    }
+
     public static var transport(default, null):TransportAdapter;
     public static var hscript(default, null):HScriptEngine;
 
@@ -48,7 +86,7 @@ class Api {
     }
 
     public static function ensureStorage():Void {
-        com.aqwapi.utils.AqwStorage.ensureFiles();
+        com.aqwapi.utils.ApiStorage.ensureFiles();
     }
 
     public static function preloadAssets():Void {

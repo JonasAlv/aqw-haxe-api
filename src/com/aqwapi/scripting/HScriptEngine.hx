@@ -5,7 +5,8 @@ import com.aqwapi.events.ApiEvent;
 import com.aqwapi.events.GameEvent;
 import com.aqwapi.modules.CombatEngine;
 import com.aqwapi.utils.ApiLogger;
-import com.aqwapi.utils.AqwTime;
+import com.aqwapi.utils.ApiTime;
+import com.aqwapi.utils.ApiUtils;
 import flash.events.TimerEvent;
 import flash.utils.Timer;
 import hscript.Expr;
@@ -23,6 +24,10 @@ class HScriptEngine {
     public var waitTimer:Float = 0;
     public var statusText:String = "Stopped";
     public var tickInterval:Int = 100;
+
+    public function sleep(ms:Float):Void {
+        waitTimer = ApiTime.now() + ms;
+    }
 
     private var _hasOnStart:Bool = false;
     private var _hasOnTick:Bool = false;
@@ -136,7 +141,7 @@ class HScriptEngine {
 
         // Async Delay
         _interp.variables.set("sleep", function(ms:Float):Void {
-            waitTimer = AqwTime.now() + ms;
+            waitTimer = ApiTime.now() + ms;
         });
 
         // Common API Shortcuts
@@ -168,7 +173,7 @@ class HScriptEngine {
             return Api.inventory.hasItem(itemName, quantity);
         });
         _interp.variables.set("getItemCount", function(itemName:String):Int {
-            return Api.inventory.getQuestQuantity(itemName);
+            return Api.inventory.getItemCount(itemName);
         });
         _interp.variables.set("getDrop", function(drops:Dynamic):Void {
             if (Std.isOfType(drops, Array)) {
@@ -208,12 +213,12 @@ class HScriptEngine {
                 var arr:Array<Dynamic> = cast questIds;
                 var intArr:Array<Int> = [];
                 for (item in arr) {
-                    var qid = com.aqwapi.utils.AqwUtils.parseInt(item, 0);
+                    var qid = ApiUtils.parseInt(item, 0);
                     if (qid > 0) intArr.push(qid);
                 }
                 Api.quest.loadMultiple(intArr);
             } else if (questIds != null) {
-                var qid = com.aqwapi.utils.AqwUtils.parseInt(questIds, 0);
+                var qid = ApiUtils.parseInt(questIds, 0);
                 if (qid > 0) Api.quest.load(qid);
             }
         });
@@ -234,17 +239,26 @@ class HScriptEngine {
                 var arr:Array<Dynamic> = cast questIds;
                 var intArr:Array<Int> = [];
                 for (item in arr) {
-                    var qid = com.aqwapi.utils.AqwUtils.parseInt(item, 0);
+                    var qid = ApiUtils.parseInt(item, 0);
                     if (qid > 0) intArr.push(qid);
                 }
                 Api.quest.acceptMultiple(intArr);
             } else if (questIds != null) {
-                var qid = com.aqwapi.utils.AqwUtils.parseInt(questIds, 0);
+                var qid = ApiUtils.parseInt(questIds, 0);
                 if (qid > 0) Api.quest.accept(qid);
             }
         });
         _interp.variables.set("ensureAccept", function(questId:Int):Void {
-            Api.quest.accept(questId);
+            if (!Api.quest.isAccepted(questId)) {
+                if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);
+                Api.quest.accept(questId);
+            }
+        });
+        _interp.variables.set("ensureQuest", function(questId:Int):Void {
+            if (!Api.quest.isAccepted(questId)) {
+                if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);
+                Api.quest.accept(questId);
+            }
         });
         _interp.variables.set("completeQuest", function(questId:Int, itemId:Int = -1):Void {
             Api.quest.complete(questId, itemId);
@@ -254,12 +268,12 @@ class HScriptEngine {
                 var arr:Array<Dynamic> = cast questIds;
                 var intArr:Array<Int> = [];
                 for (item in arr) {
-                    var qid = com.aqwapi.utils.AqwUtils.parseInt(item, 0);
+                    var qid = ApiUtils.parseInt(item, 0);
                     if (qid > 0) intArr.push(qid);
                 }
                 Api.quest.completeMultiple(intArr);
             } else if (questIds != null) {
-                var qid = com.aqwapi.utils.AqwUtils.parseInt(questIds, 0);
+                var qid = ApiUtils.parseInt(questIds, 0);
                 if (qid > 0 && Api.quest.isAccepted(qid)) Api.quest.complete(qid);
             }
         });
@@ -271,12 +285,12 @@ class HScriptEngine {
                 var arr:Array<Dynamic> = cast questIds;
                 var intArr:Array<Int> = [];
                 for (item in arr) {
-                    var qid = com.aqwapi.utils.AqwUtils.parseInt(item, 0);
+                    var qid = ApiUtils.parseInt(item, 0);
                     if (qid > 0) intArr.push(qid);
                 }
                 Api.quest.completeMultiple(intArr);
             } else if (questIds != null) {
-                var qid = com.aqwapi.utils.AqwUtils.parseInt(questIds, 0);
+                var qid = ApiUtils.parseInt(questIds, 0);
                 if (qid > 0 && Api.quest.isAccepted(qid)) Api.quest.complete(qid);
             }
         });
@@ -302,6 +316,9 @@ class HScriptEngine {
             return Api.quest.canComplete(questId);
         });
         _interp.variables.set("canTurnInQuest", function(questId:Int):Bool {
+            return Api.quest.canComplete(questId);
+        });
+        _interp.variables.set("canTurnIn", function(questId:Int):Bool {
             return Api.quest.canComplete(questId);
         });
         _interp.variables.set("getQuestValue", function(slot:Int):Int {
@@ -452,7 +469,7 @@ class HScriptEngine {
             if (itemNameOrId == null) {
                 Api.shop.buyItem(Std.string(shopId), quantity);
             } else {
-                var sId:Int = com.aqwapi.utils.AqwUtils.parseInt(shopId, 0);
+                var sId:Int = ApiUtils.parseInt(shopId, 0);
                 if (sId > 0 && !Api.shop.isShopLoaded) Api.shop.loadShop(sId);
                 Api.shop.buyItem(itemNameOrId, quantity);
             }
@@ -578,6 +595,23 @@ class HScriptEngine {
             return (Api.player != null) && Api.player.isMember;
         });
 
+        // Map & Cell Shortcuts
+        _interp.variables.set("cell", function():String {
+            return Api.player != null ? Api.player.cell : "";
+        });
+        _interp.variables.set("pad", function():String {
+            return Api.player != null ? Api.player.pad : "";
+        });
+        _interp.variables.set("mapName", function():String {
+            return Api.map != null ? Api.map.name : "";
+        });
+        _interp.variables.set("isCell", function(cellName:String):Bool {
+            return Api.player != null && Api.player.cell.toLowerCase() == cellName.toLowerCase();
+        });
+        _interp.variables.set("isMap", function(mapName:String):Bool {
+            return Api.map != null && Api.map.name.toLowerCase() == mapName.toLowerCase();
+        });
+
         // Monster & Cell Query
         _interp.variables.set("isMonsterAliveInCell", function(cell:String):Bool {
             var list = Api.monster.getByCell(cell);
@@ -682,22 +716,32 @@ class HScriptEngine {
         _interp.variables.set("Std", Std);
         _interp.variables.set("StringTools", StringTools);
         _interp.variables.set("Date", Date);
-        _interp.variables.set("AqwTime", AqwTime);
+        _interp.variables.set("ApiTime", com.aqwapi.utils.ApiTime);
+        _interp.variables.set("ApiTimer", com.aqwapi.utils.ApiTime);
+        _interp.variables.set("AqwTime", com.aqwapi.utils.ApiTime);
         _interp.variables.set("now", function():Float {
-            return AqwTime.now();
+            return ApiTime.now();
         });
         _interp.variables.set("time", function():Float {
-            return AqwTime.now();
+            return ApiTime.now();
         });
-        _interp.variables.set("AqwUtils", com.aqwapi.utils.AqwUtils);
+        _interp.variables.set("ApiUtils", com.aqwapi.utils.ApiUtils);
+        _interp.variables.set("AqwUtils", com.aqwapi.utils.ApiUtils);
+        _interp.variables.set("ApiJson", com.aqwapi.utils.ApiJson);
+        _interp.variables.set("AqwJson", com.aqwapi.utils.ApiJson);
+        _interp.variables.set("ApiStorage", com.aqwapi.utils.ApiStorage);
+        _interp.variables.set("AqwStorage", com.aqwapi.utils.ApiStorage);
         _interp.variables.set("isNaN", function(v:Dynamic):Bool {
-            return com.aqwapi.utils.AqwUtils.isNaN(v);
+            return ApiUtils.isNaN(v);
         });
         _interp.variables.set("parseInt", function(v:Dynamic):Null<Int> {
-            return com.aqwapi.utils.AqwUtils.parseInt(v);
+            return ApiUtils.parseInt(v);
         });
         _interp.variables.set("parseFloat", function(v:Dynamic):Float {
-            return com.aqwapi.utils.AqwUtils.parseFloat(v);
+            return ApiUtils.parseFloat(v);
+        });
+        _interp.variables.set("delay", function(ms:Int, cb:Void->Void):Void {
+            ApiTime.delay(ms, cb);
         });
     }
 
@@ -823,7 +867,7 @@ class HScriptEngine {
             return;
         }
 
-        var now = AqwTime.now();
+        var now = ApiTime.now();
         if (waitTimer > 0 && now < waitTimer) return;
 
         if (_hasOnTick) {

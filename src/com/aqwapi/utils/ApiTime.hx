@@ -4,7 +4,7 @@ package com.aqwapi.utils;
 import flash.Lib;
 #end
 
-class AqwTime {
+class ApiTime {
     /**
      * Milliseconds elapsed since the application started.
      * Monotonic, high precision.
@@ -61,3 +61,6 @@ class AqwTime {
         return sMin + ":" + sSec;
     }
 }
+
+typedef ApiTimer = ApiTime;
+typedef AqwTime = ApiTime;

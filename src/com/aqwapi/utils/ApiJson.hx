@@ -1,6 +1,6 @@
 package com.aqwapi.utils;
 
-class AqwJson {
+class ApiJson {
     /**
      * Parse JSON string safely.
      * Tries native Flash JSON.parse first for top performance,
@@ -39,3 +39,5 @@ class AqwJson {
         return haxe.format.JsonPrinter.print(value);
     }
 }
+
+typedef AqwJson = ApiJson;

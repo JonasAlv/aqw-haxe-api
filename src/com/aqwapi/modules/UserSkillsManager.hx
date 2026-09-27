@@ -1,8 +1,8 @@
 package com.aqwapi.modules;
 
 import com.aqwapi.utils.ApiLogger;
-import com.aqwapi.utils.AqwStorage;
-import com.aqwapi.utils.AqwUtils;
+import com.aqwapi.utils.ApiStorage;
+import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.SkillDslParser;
 
 class UserSkillsManager {
@@ -12,7 +12,7 @@ class UserSkillsManager {
      * Ensures userSkills.json is created on disk if not already present.
      */
     public static function ensureStorageInitialized():Void {
-        AqwStorage.ensureFiles();
+        ApiStorage.ensureFiles();
     }
 
     /**
@@ -23,8 +23,8 @@ class UserSkillsManager {
 
         var rawJson:String = null;
         try {
-            AqwStorage.ensureFiles();
-            rawJson = AqwStorage.readText("userSkills.json");
+            ApiStorage.ensureFiles();
+            rawJson = ApiStorage.readText("userSkills.json");
         } catch (_:Dynamic) {}
 
         var parsedData:Dynamic = null;
@@ -85,8 +85,8 @@ class UserSkillsManager {
 
         var ok:Bool = false;
         try {
-            AqwStorage.ensureFiles();
-            ok = AqwStorage.writeText("userSkills.json", jsonStr);
+            ApiStorage.ensureFiles();
+            ok = ApiStorage.writeText("userSkills.json", jsonStr);
             if (ok) {
                 ApiLogger.info("UserSkills", "Saved userSkills.json");
             } else {
@@ -419,7 +419,7 @@ class UserSkillsManager {
                         }
                         if (mObj != null) {
                             var mVal:String = (mObj.mode != null && mObj.mode != "") ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown");
-                            var toVal:Int = (mObj.timeout != null) ? AqwUtils.parseInt(mObj.timeout, 100) : (mObj.skillTimeout != null ? AqwUtils.parseInt(mObj.skillTimeout, 100) : 100);
+                            var toVal:Int = (mObj.timeout != null) ? ApiUtils.parseInt(mObj.timeout, 100) : (mObj.skillTimeout != null ? ApiUtils.parseInt(mObj.skillTimeout, 100) : 100);
                             var cVal:String = (mObj.combo != null) ? Std.string(mObj.combo) : "";
                             return {
                                 skillUseMode: mVal,
@@ -448,7 +448,7 @@ class UserSkillsManager {
             }
             if (modeObj != null) {
                 var modeType:String = (modeObj.mode != null) ? Std.string(modeObj.mode) : ((modeObj.skillUseMode != null) ? Std.string(modeObj.skillUseMode) : "WaitForCooldown");
-                var timeout:Int = (modeObj.timeout != null) ? AqwUtils.parseInt(modeObj.timeout, 100) : ((modeObj.skillTimeout != null) ? AqwUtils.parseInt(modeObj.skillTimeout, 100) : 100);
+                var timeout:Int = (modeObj.timeout != null) ? ApiUtils.parseInt(modeObj.timeout, 100) : ((modeObj.skillTimeout != null) ? ApiUtils.parseInt(modeObj.skillTimeout, 100) : 100);
                 var comboStr:String = "";
                 if (modeObj.combo != null && Std.string(modeObj.combo) != "") {
                     comboStr = Std.string(modeObj.combo);

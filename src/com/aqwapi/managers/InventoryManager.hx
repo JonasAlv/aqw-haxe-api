@@ -3,6 +3,7 @@ package com.aqwapi.managers;
 import com.aqwapi.events.GameEvent;
 import com.aqwapi.Api;
 import com.aqwapi.data.ItemDTO;
+import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.Promise;
 import haxe.Timer;
 
@@ -42,7 +43,7 @@ class InventoryManager {
 
     public function getQuantity(itemNameOrId:String):Int {
         if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return 0;
-        var targetId:Int = com.aqwapi.utils.AqwUtils.parseInt(itemNameOrId, 0);
+        var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
         var targetName:String = itemNameOrId.toLowerCase();
         var items:Array<Dynamic> = cast _game.world.myAvatar.items;
@@ -53,6 +54,11 @@ class InventoryManager {
             if (matches) return (item.iQty != null) ? Std.int(item.iQty) : 1;
         }
         return 0;
+    }
+
+    public inline function getItemCount(itemNameOrId:String):Int {
+        var q = getQuestQuantity(itemNameOrId);
+        return q > 0 ? q : getQuantity(itemNameOrId);
     }
 
     public function getQuestQuantity(itemName:String):Int {
@@ -97,14 +103,14 @@ class InventoryManager {
         if (item == null) return 0;
         var itemName:String = (item.sName != null) ? Std.string(item.sName).toLowerCase() : "";
         for (targetName in targetNames) {
-            var targetId:Int = com.aqwapi.utils.AqwUtils.parseInt(targetName, 0);
+            var targetId:Int = ApiUtils.parseInt(targetName, 0);
             var isIdLookup:Bool = targetId > 0;
             var matches:Bool = isIdLookup ? (item.ItemID == targetId) : (itemName == targetName);
             if (matches) {
                 var uniqueKey:String = (item.ItemID != null) ? Std.string(item.ItemID) : targetName;
                 if (Reflect.hasField(countedNames, uniqueKey)) return 0;
                 Reflect.setField(countedNames, uniqueKey, true);
-                var qty:Int = com.aqwapi.utils.AqwUtils.parseInt(item.iQty, 1);
+                var qty:Int = ApiUtils.parseInt(item.iQty, 1);
                 return (qty < 1) ? 1 : qty;
             }
         }
@@ -113,7 +119,7 @@ class InventoryManager {
 
     private function _findItem(itemNameOrId:String):Dynamic {
         if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return null;
-        var itemId:Int = com.aqwapi.utils.AqwUtils.parseInt(itemNameOrId, 0);
+        var itemId:Int = ApiUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = itemId > 0;
         var targetName:String = itemNameOrId.toLowerCase();
         var bestMatch:Dynamic = null;
@@ -275,7 +281,7 @@ class InventoryManager {
 
     public function isInBank(itemNameOrId:String):Bool {
         if (_game == null || _game.world == null || _game.world.bankinfo == null || _game.world.bankinfo.items == null) return false;
-        var targetId:Int = com.aqwapi.utils.AqwUtils.parseInt(itemNameOrId, 0);
+        var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
         var targetName:String = itemNameOrId.toLowerCase();
         var bItems:Array<Dynamic> = cast _game.world.bankinfo.items;

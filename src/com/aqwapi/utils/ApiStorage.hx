@@ -1,6 +1,6 @@
 package com.aqwapi.utils;
 
-class AqwStorage {
+class ApiStorage {
     private static var _dataDir:Dynamic = null;
     private static var _provisioned:Bool = false;
 
@@ -298,3 +298,5 @@ class AqwStorage {
         return false;
     }
 }
+
+typedef AqwStorage = ApiStorage;

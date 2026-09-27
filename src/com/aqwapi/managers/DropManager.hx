@@ -1,5 +1,7 @@
 package com.aqwapi.managers;
 
+import com.aqwapi.utils.ApiUtils;
+
 class DropManager {
     private var _game:AqwGame;
     public var pendingDrops:Array<Dynamic> = [];
@@ -98,6 +100,18 @@ class DropManager {
         pendingDrops.splice(index, 1);
     }
 
+    public inline function accept(itemName:String = "all"):Int {
+        return acceptPendingDrops([itemName]);
+    }
+
+    public inline function pickup(itemName:String = "all"):Int {
+        return acceptPendingDrops([itemName]);
+    }
+
+    public inline function acceptAllDrops():Int {
+        return acceptPendingDrops(["all"]);
+    }
+
     public function acceptPendingDrops(itemNames:Array<Dynamic>):Int {
         if (_game == null || _game.sfc == null || itemNames == null || itemNames.length == 0) return 0;
         var accepted:Int = 0;
@@ -106,12 +120,12 @@ class DropManager {
             var pending:Dynamic = pendingDrops[i];
             if (pending != null && pending.sName != null) {
                 var pendingName:String = Std.string(pending.sName).toLowerCase();
-                var pendingId:Int = com.aqwapi.utils.AqwUtils.parseInt(pending.ItemID, 0);
+                var pendingId:Int = ApiUtils.parseInt(pending.ItemID, 0);
                 var matches:Bool = false;
 
                 for (itemName in itemNames) {
                     var inStr:String = Std.string(itemName);
-                    var inId:Int = com.aqwapi.utils.AqwUtils.parseInt(inStr, 0);
+                    var inId:Int = ApiUtils.parseInt(inStr, 0);
                     var inLower:String = inStr.toLowerCase();
                     var isIdLookup:Bool = inId > 0;
 
@@ -126,7 +140,7 @@ class DropManager {
                 if (!matches) {
                     for (itemName2 in itemNames) {
                         var inStr2:String = Std.string(itemName2);
-                        var inId2:Int = com.aqwapi.utils.AqwUtils.parseInt(inStr2, 0);
+                        var inId2:Int = ApiUtils.parseInt(inStr2, 0);
                         var inLower2:String = inStr2.toLowerCase();
                         var isIdLookup2:Bool = inId2 > 0;
                         if (!isIdLookup2 && pendingName.indexOf(inLower2) != -1) { matches = true; break; }
@@ -152,12 +166,12 @@ class DropManager {
     public function isTargetDrop(item:Dynamic):Bool {
         if (targetDrops == null || targetDrops.length == 0 || item == null || item.sName == null) return false;
         var searchName:String = Std.string(item.sName).toLowerCase();
-        var searchId:Int = com.aqwapi.utils.AqwUtils.parseInt(item.ItemID, 0);
+        var searchId:Int = ApiUtils.parseInt(item.ItemID, 0);
 
         for (td in targetDrops) {
             var tdStr:String = Std.string(td);
             var tdLower:String = tdStr.toLowerCase();
-            var tdId:Int = com.aqwapi.utils.AqwUtils.parseInt(tdStr, 0);
+            var tdId:Int = ApiUtils.parseInt(tdStr, 0);
             var isIdLookup:Bool = tdId > 0;
 
             if (tdLower == "any" || tdLower == "all") return true;
@@ -171,7 +185,7 @@ class DropManager {
         for (td2 in targetDrops) {
             var tdStr2:String = Std.string(td2);
             var tdLower2:String = tdStr2.toLowerCase();
-            var tdId2:Int = com.aqwapi.utils.AqwUtils.parseInt(tdStr2, 0);
+            var tdId2:Int = ApiUtils.parseInt(tdStr2, 0);
             var isIdLookup2:Bool = tdId2 > 0;
             if (!isIdLookup2 && searchName.indexOf(tdLower2) != -1) return true;
         }

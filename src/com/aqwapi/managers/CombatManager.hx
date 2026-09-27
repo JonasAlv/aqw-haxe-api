@@ -1,6 +1,7 @@
 package com.aqwapi.managers;
 
 import com.aqwapi.modules.CombatEngine;
+import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.Api;
 
 class CombatManager {
@@ -64,7 +65,7 @@ class CombatManager {
 
         // 2. MonMapID integer lookup (native world.getMonster(int))
         if (targetMonster == null) {
-            var idInt:Int = com.aqwapi.utils.AqwUtils.parseInt(sName, 0);
+            var idInt:Int = ApiUtils.parseInt(sName, 0);
             if (idInt > 0 && _game.world.getMonster != null) {
                 try {
                     var avt:Dynamic = _game.world.getMonster(idInt);
@@ -173,18 +174,31 @@ class CombatManager {
 
     public function startSmart():Void { CombatEngine.start(true, false); }
 
+    public inline function start(smart:Bool = true):Void {
+        if (smart) startSmart();
+        else CombatEngine.start(false, false);
+    }
+
+    public inline function stop():Void {
+        stopAuto();
+    }
+
+    public inline function isRunning():Bool {
+        return CombatEngine.IS_ON;
+    }
+
     public function startCustom(rotation:String, mode:String = "auto"):Void {
         if (rotation != null && rotation.length > 0) {
             var rotInts:Array<Int> = [];
             if (rotation.indexOf(",") != -1) {
                 var rotParts = rotation.split(",");
                 for (rp in rotParts) {
-                    var ri = com.aqwapi.utils.AqwUtils.parseInt(rp, -1);
+                    var ri = ApiUtils.parseInt(rp, -1);
                     if (ri >= 0) rotInts.push(ri);
                 }
             } else {
                 for (i in 0...rotation.length) {
-                    var charVal = com.aqwapi.utils.AqwUtils.parseInt(rotation.charAt(i), -1);
+                    var charVal = ApiUtils.parseInt(rotation.charAt(i), -1);
                     if (charVal >= 0) rotInts.push(charVal);
                 }
             }
@@ -313,8 +327,6 @@ class CombatManager {
     public static inline function reloadSkills(silent:Bool = false):Void { CombatEngine.reloadSkills(silent); }
     public static inline function toggleSmart():Void { CombatEngine.toggleSmart(); }
     public static inline function toggleCustom():Void { CombatEngine.toggleCustom(); }
-    public static inline function start(smart:Bool, silent:Bool = false):Void { CombatEngine.start(smart, silent); }
-    public static inline function stop():Void { CombatEngine.stop(); }
     public static inline function getAvailableModes(className:String):Array<String> { return CombatEngine.getAvailableModes(className); }
 
     public static var IS_ON(get, set):Bool;

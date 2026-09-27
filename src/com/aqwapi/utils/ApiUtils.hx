@@ -1,6 +1,6 @@
 package com.aqwapi.utils;
 
-class AqwUtils {
+class ApiUtils {
     /**
      * Cross-platform check for NaN without calling Math.isNaN (avoids Flash #1006).
      */
@@ -60,3 +60,5 @@ class AqwUtils {
         return (res != res) ? def : res;
     }
 }
+
+typedef AqwUtils = ApiUtils;

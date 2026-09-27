@@ -6,7 +6,8 @@ import com.aqwapi.events.ApiEvent;
 import com.aqwapi.Api;
 import com.aqwapi.data.QuestDTO;
 import com.aqwapi.utils.ApiLogger;
-import com.aqwapi.utils.AqwTime;
+import com.aqwapi.utils.ApiTime;
+import com.aqwapi.utils.ApiUtils;
 
 class QuestManager {
     private var _game:AqwGame;
@@ -128,7 +129,7 @@ class QuestManager {
     // ==========================================
 
     public function load(questId:Int):Void {
-        var now:Float = AqwTime.now();
+        var now:Float = ApiTime.now();
         if (_lastLoadRequests.exists(questId) && (now - _lastLoadRequests.get(questId)) < 1500) {
             return;
         }
@@ -146,7 +147,7 @@ class QuestManager {
     public function loadMultiple(questIds:Array<Int>):Void {
         if (questIds == null || questIds.length == 0) return;
         var toLoad:Array<Dynamic> = [];
-        var now:Float = AqwTime.now();
+        var now:Float = ApiTime.now();
         for (qid in questIds) {
             if (qid > 0 && !isLoaded(qid)) {
                 if (!_lastLoadRequests.exists(qid) || (now - _lastLoadRequests.get(qid)) >= 1500) {
@@ -233,6 +234,13 @@ class QuestManager {
         }
     }
 
+    public function ensureAccept(questId:Int):Void {
+        if (!isAccepted(questId)) {
+            if (!isLoaded(questId)) load(questId);
+            accept(questId);
+        }
+    }
+
     public function complete(questId:Int, itemId:Int = -1):Void {
         if (_game != null && _game.world != null && _game.world.tryQuestComplete != null) {
             try {
@@ -243,6 +251,10 @@ class QuestManager {
                 }
             } catch (e:Dynamic) {}
         }
+    }
+
+    public inline function turnIn(questId:Int, itemId:Int = -1):Void {
+        complete(questId, itemId);
     }
 
     public function completeMultiple(questIds:Array<Int>):Void {
@@ -412,11 +424,11 @@ class QuestManager {
         var qidsToLoad:Array<Int> = [];
         for (raw in parts) {
             var subParts:Array<String> = raw.split(":");
-            var val:Int = com.aqwapi.utils.AqwUtils.parseInt(subParts[0], 0);
+            var val:Int = ApiUtils.parseInt(subParts[0], 0);
             if (val > 0) {
                 var itemId:Int = -1;
                 if (subParts.length > 1) {
-                    itemId = com.aqwapi.utils.AqwUtils.parseInt(subParts[1], -1);
+                    itemId = ApiUtils.parseInt(subParts[1], -1);
                 }
                 _questIDs.push({ qid: val, itemId: itemId });
                 qidsToLoad.push(val);
@@ -450,7 +462,7 @@ class QuestManager {
         if (_game == null || _game.world == null) return;
 
         try {
-            var now:Float = AqwTime.now();
+            var now:Float = ApiTime.now();
 
             // First: ensure all quests in _questIDs are loaded into questTree
             var unloaded:Array<Int> = [];

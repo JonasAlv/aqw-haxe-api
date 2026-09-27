@@ -14,12 +14,16 @@ class ScriptInterp extends Interp {
             case "player": return Api.player;
             case "combat": return Api.combat;
             case "map": return Api.map;
-            case "quest": return Api.quest;
+            case "quest", "quests": return Api.quest;
             case "inventory": return Api.inventory;
-            case "drop": return Api.drop;
-            case "shop": return Api.shop;
-            case "monster": return Api.monster;
+            case "drop", "drops": return Api.drop;
+            case "shop", "shops": return Api.shop;
+            case "monster", "monsters": return Api.monster;
             case "events": return Api.dispatcher;
+            case "ApiTime", "ApiTimer", "AqwTime": return com.aqwapi.utils.ApiTime;
+            case "ApiUtils", "AqwUtils": return com.aqwapi.utils.ApiUtils;
+            case "ApiJson", "AqwJson": return com.aqwapi.utils.ApiJson;
+            case "ApiStorage", "AqwStorage": return com.aqwapi.utils.ApiStorage;
         }
         return super.resolve(id);
     }

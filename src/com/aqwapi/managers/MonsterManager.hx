@@ -1,6 +1,7 @@
 package com.aqwapi.managers;
 
 import com.aqwapi.data.EntityDTO;
+import com.aqwapi.utils.ApiUtils;
 
 class MonsterManager {
     private var _game:AqwGame;
@@ -24,7 +25,7 @@ class MonsterManager {
     public function findByMapId(mapId:String, aliveOnly:Bool = true):EntityDTO {
         if (mapId == null) return null;
         var search:String = Std.string(mapId);
-        var idInt:Int = com.aqwapi.utils.AqwUtils.parseInt(search, 0);
+        var idInt:Int = ApiUtils.parseInt(search, 0);
 
         // 1. Native AQW world.getMonster(int) lookup (returns live Avatar instance with pMC)
         if (idInt > 0 && _game != null && _game.world != null && _game.world.getMonster != null) {
