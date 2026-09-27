@@ -73,11 +73,22 @@ class AqwApi {
             com.aqwapi.modules.UserSkillsManager.ensureStorageInitialized();
             com.aqwapi.modules.UserSkillsManager.readUserSkillsObject();
         } catch (_:Dynamic) {}
+        #if flash
+        try {
+            // Defer heavy 2.7MB quest data parsing so app startup is instantaneous (<10ms)
+            haxe.Timer.delay(function():Void {
+                try {
+                    com.aqwapi.modules.QuestDataLoader.ensureLoaded(true);
+                } catch (qe:Dynamic) {
+                    ApiLogger.warn("Api", "QuestDataLoader deferred error: " + qe);
+                }
+            }, 1000);
+        } catch (_:Dynamic) {}
+        #else
         try {
             com.aqwapi.modules.QuestDataLoader.ensureLoaded(true);
-        } catch (qe:Dynamic) {
-            ApiLogger.warn("Api", "QuestDataLoader preload error: " + qe);
-        }
+        } catch (e:Dynamic) {}
+        #end
     }
 
     public static function init(gameReference:Dynamic):Void {

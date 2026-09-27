@@ -157,7 +157,7 @@ class AqwStorage {
             var FileClass:Dynamic = getFileClass();
             var appDir:Dynamic = (FileClass != null) ? getStaticProp(FileClass, "applicationDirectory") : null;
             if (appDir != null) {
-                var seedFiles = ["skills.json", "userSkills.json", "quests.json"];
+                var seedFiles = ["skills.json", "userSkills.json"];
                 for (fname in seedFiles) {
                     try {
                         var target = dir.resolvePath(fname);

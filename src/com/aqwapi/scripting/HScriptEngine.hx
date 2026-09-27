@@ -374,6 +374,18 @@ class HScriptEngine {
         _interp.variables.set("stop", function():Void {
             stop();
         });
+        _interp.variables.set("isCombatOn", function():Bool {
+            return AqwApi.combat != null && AqwApi.combat.isAutoRunning;
+        });
+        _interp.variables.set("startCombat", function(smart:Bool = true):Void {
+            if (AqwApi.combat != null) {
+                if (smart) AqwApi.combat.startSmart();
+                else AqwApi.combat.startCustom("");
+            }
+        });
+        _interp.variables.set("stopCombat", function():Void {
+            if (AqwApi.combat != null) AqwApi.combat.stopAuto();
+        });
 
         // Packets & Network
         _interp.variables.set("sendPacket", function(packet:String):Void {

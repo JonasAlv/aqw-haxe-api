@@ -5,7 +5,6 @@ import flash.events.TimerEvent;
 import com.aqwapi.events.ApiEvent;
 import com.aqwapi.AqwApi;
 import com.aqwapi.data.QuestDTO;
-import com.aqwapi.modules.QuestDataLoader;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwTime;
 
@@ -21,7 +20,7 @@ class QuestManager {
     }
 
     // ==========================================
-    // OFFLINE & ONLINE QUEST DATA LOOKUP
+    // LIVE QUEST DATA LOOKUP
     // ==========================================
 
     public function get(questId:Int):QuestDTO {
@@ -31,7 +30,7 @@ class QuestManager {
                 return new QuestDTO(liveData);
             }
         }
-        return QuestDataLoader.get(questId);
+        return null;
     }
 
     public inline function getQuest(questId:Int):QuestDTO {
@@ -59,7 +58,20 @@ class QuestManager {
     }
 
     public function search(query:String, maxResults:Int = 50):Array<QuestDTO> {
-        return QuestDataLoader.search(query, maxResults);
+        var results:Array<QuestDTO> = [];
+        if (_game == null || _game.world == null || _game.world.questTree == null || query == null || query == "") return results;
+        var qLower:String = query.toLowerCase();
+        for (key in Reflect.fields(_game.world.questTree)) {
+            var item:Dynamic = Reflect.field(_game.world.questTree, key);
+            if (item != null) {
+                var dto = new QuestDTO(item);
+                if (dto.name != null && dto.name.toLowerCase().indexOf(qLower) != -1) {
+                    results.push(dto);
+                    if (results.length >= maxResults) break;
+                }
+            }
+        }
+        return results;
     }
 
     public function hasRequirements(questId:Int):Bool {
@@ -67,13 +79,6 @@ class QuestManager {
         if (q == null) return false;
 
         var reqs:Array<Dynamic> = q.requirements;
-        if ((reqs == null || reqs.length == 0) && questId > 0) {
-            var offQ = QuestDataLoader.get(questId);
-            if (offQ != null && offQ.requirements != null && offQ.requirements.length > 0) {
-                reqs = offQ.requirements;
-            }
-        }
-
         // If quest genuinely has no requirements, it's considered met
         if (reqs == null || reqs.length == 0) return true;
 
@@ -105,8 +110,10 @@ class QuestManager {
 
             // 3. Fallback check by ID string
             if (curQty < reqQty && itemId > 0) {
+                var questIdQty = AqwApi.inventory.getQuestQuantity(Std.string(itemId));
                 var idQty = AqwApi.inventory.getQuantity(Std.string(itemId));
-                if (idQty > curQty) curQty = idQty;
+                var bestIdQty = questIdQty > idQty ? questIdQty : idQty;
+                if (bestIdQty > curQty) curQty = bestIdQty;
             }
 
             if (curQty < reqQty) {
@@ -263,7 +270,7 @@ class QuestManager {
     }
 
     // ==========================================
-    // STATUS & PROGRESS CHECKS (WITH OFFLINE FALLBACK)
+    // STATUS & PROGRESS CHECKS
     // ==========================================
 
     public function isCompleted(questId:Int):Bool {
@@ -275,15 +282,6 @@ class QuestManager {
             if (qData != null) {
                 qslot = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
                 qval = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
-            }
-        }
-
-        // Offline fallback to QuestData.json
-        if (qslot < 0) {
-            var offlineQ = QuestDataLoader.get(questId);
-            if (offlineQ != null) {
-                qslot = offlineQ.slot;
-                qval = offlineQ.value;
             }
         }
 
@@ -314,15 +312,6 @@ class QuestManager {
             }
         }
 
-        // Offline fallback to QuestData.json
-        if (qslot < 0) {
-            var offlineQ = QuestDataLoader.get(questId);
-            if (offlineQ != null) {
-                qslot = offlineQ.slot;
-                qval = offlineQ.value;
-            }
-        }
-
         if (qslot < 0) return true;
         return getQuestValue(qslot) >= (qval - 1);
     }
@@ -336,15 +325,6 @@ class QuestManager {
             if (qData != null) {
                 sField = qData.sField;
                 iIndex = (qData.iIndex != null) ? Std.int(qData.iIndex) : 0;
-            }
-        }
-
-        // Offline fallback to QuestData.json
-        if (sField == null) {
-            var offlineQ = QuestDataLoader.get(questId);
-            if (offlineQ != null && offlineQ.field != null) {
-                sField = offlineQ.field;
-                iIndex = offlineQ.index;
             }
         }
 
@@ -363,23 +343,7 @@ class QuestManager {
         // Must be currently in progress
         if (!isInProgress(questId)) return false;
 
-        // If Flash client marked it complete ("c")
-        if (_game.world.questTree != null) {
-            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-            if (qData != null && qData.status != null && Std.string(qData.status) == "c") {
-                return true;
-            }
-        }
-
-        // Native AQW check
-        if (_game.world.canTurnInQuest != null) {
-            try {
-                if (_game.world.canTurnInQuest(questId)) {
-                    return true;
-                }
-            } catch (e:Dynamic) {}
-        }
-
+        // Must strictly satisfy all required items in inventory/temp inventory
         return hasRequirements(questId);
     }
 

@@ -58,29 +58,50 @@ class InventoryManager {
         var targetNames:Array<String> = itemName.toLowerCase().split("|");
         var countedNames:Dynamic = {};
         var quantity:Int = 0;
+
+        // 1. Check world.invTree
         if (_game.world.invTree != null) {
             for (key in Reflect.fields(_game.world.invTree)) {
                 var item:Dynamic = Reflect.field(_game.world.invTree, key);
                 quantity += _addQuestQty(item, targetNames, countedNames);
             }
         }
-        if (_game.world.myAvatar != null && _game.world.myAvatar.tempitems != null) {
-            var tempItems:Array<Dynamic> = cast _game.world.myAvatar.tempitems;
+
+        // 2. Check myAvatar items (normal inventory)
+        if (_game.world.myAvatar != null && _game.world.myAvatar.items != null) {
+            var items:Array<Dynamic> = cast _game.world.myAvatar.items;
+            for (avatarItem in items) quantity += _addQuestQty(avatarItem, targetNames, countedNames);
+        }
+
+        // 3. Check myAvatar tempitems / tempItems
+        var tempArr:Dynamic = null;
+        if (_game.world.myAvatar != null) {
+            if (_game.world.myAvatar.tempitems != null) tempArr = _game.world.myAvatar.tempitems;
+            else if (Reflect.field(_game.world.myAvatar, "tempItems") != null) tempArr = Reflect.field(_game.world.myAvatar, "tempItems");
+        }
+        if (tempArr == null) {
+            if (Reflect.field(_game.world, "tempitems") != null) tempArr = Reflect.field(_game.world, "tempitems");
+            else if (Reflect.field(_game.world, "tempItems") != null) tempArr = Reflect.field(_game.world, "tempItems");
+        }
+        if (tempArr != null && Std.isOfType(tempArr, Array)) {
+            var tempItems:Array<Dynamic> = cast tempArr;
             for (avatarItem in tempItems) quantity += _addQuestQty(avatarItem, targetNames, countedNames);
         }
+
         return quantity;
     }
 
     private function _addQuestQty(item:Dynamic, targetNames:Array<String>, countedNames:Dynamic):Int {
-        if (item == null || item.sName == null) return 0;
-        var itemName:String = Std.string(item.sName).toLowerCase();
+        if (item == null) return 0;
+        var itemName:String = (item.sName != null) ? Std.string(item.sName).toLowerCase() : "";
         for (targetName in targetNames) {
             var targetId:Int = com.aqwapi.utils.AqwUtils.parseInt(targetName, 0);
             var isIdLookup:Bool = targetId > 0;
             var matches:Bool = isIdLookup ? (item.ItemID == targetId) : (itemName == targetName);
             if (matches) {
-                if (Reflect.hasField(countedNames, targetName)) return 0;
-                Reflect.setField(countedNames, targetName, true);
+                var uniqueKey:String = (item.ItemID != null) ? Std.string(item.ItemID) : targetName;
+                if (Reflect.hasField(countedNames, uniqueKey)) return 0;
+                Reflect.setField(countedNames, uniqueKey, true);
                 var qty:Int = com.aqwapi.utils.AqwUtils.parseInt(item.iQty, 1);
                 return (qty < 1) ? 1 : qty;
             }
