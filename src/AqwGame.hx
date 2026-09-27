@@ -1,3 +1,0 @@
-package;
-
-typedef AqwGame = Dynamic;

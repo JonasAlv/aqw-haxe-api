@@ -5,10 +5,10 @@ import com.aqwapi.Api;
 import com.aqwapi.utils.ApiLogger;
 
 class TransportAdapter {
-    private var _game:AqwGame;
+    private var _game:Dynamic;
     private var _isListening:Bool = false;
 
-    public function new(gameReference:AqwGame) {
+    public function new(gameReference:Dynamic) {
         _game = gameReference;
         start();
     }

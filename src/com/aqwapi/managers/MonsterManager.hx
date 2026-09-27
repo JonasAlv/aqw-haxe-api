@@ -4,9 +4,9 @@ import com.aqwapi.data.EntityDTO;
 import com.aqwapi.utils.ApiUtils;
 
 class MonsterManager {
-    private var _game:AqwGame;
+    private var _game:Dynamic;
 
-    public function new(gameReference:AqwGame) {
+    public function new(gameReference:Dynamic) {
         _game = gameReference;
     }
 

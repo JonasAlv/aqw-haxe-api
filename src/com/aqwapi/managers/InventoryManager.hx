@@ -8,9 +8,9 @@ import com.aqwapi.utils.Promise;
 import haxe.Timer;
 
 class InventoryManager {
-    private var _game:AqwGame;
+    private var _game:Dynamic;
 
-    public function new(gameReference:AqwGame) {
+    public function new(gameReference:Dynamic) {
         _game = gameReference;
     }
 

@@ -3,9 +3,9 @@ package com.aqwapi.managers;
 import com.aqwapi.utils.ApiUtils;
 
 class ShopManager {
-    private var _game:AqwGame;
+    private var _game:Dynamic;
 
-    public function new(gameReference:AqwGame) {
+    public function new(gameReference:Dynamic) {
         _game = gameReference;
     }
 

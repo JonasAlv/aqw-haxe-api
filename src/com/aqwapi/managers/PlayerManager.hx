@@ -5,13 +5,13 @@ import com.aqwapi.data.EntityDTO;
 
 class PlayerManager {
 
-    private var _game:AqwGame;
+    private var _game:Dynamic;
 
-    public function new(gameReference:AqwGame) {
+    public function new(gameReference:Dynamic) {
         _game = gameReference;
     }
 
-    private inline function _g():AqwGame {
+    private inline function _g():Dynamic {
         return (_game != null) ? _game : Api.game;
     }
 

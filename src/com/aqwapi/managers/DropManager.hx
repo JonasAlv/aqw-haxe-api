@@ -3,7 +3,7 @@ package com.aqwapi.managers;
 import com.aqwapi.utils.ApiUtils;
 
 class DropManager {
-    private var _game:AqwGame;
+    private var _game:Dynamic;
     public var pendingDrops:Array<Dynamic> = [];
     public var targetDrops:Array<Dynamic> = [];
     public var interceptedDropIds:Array<String> = [];
@@ -12,7 +12,7 @@ class DropManager {
     public var acceptACs:Bool = false;
     private var _isListening:Bool = false;
 
-    public function new(gameReference:AqwGame) {
+    public function new(gameReference:Dynamic) {
         _game = gameReference;
     }
 

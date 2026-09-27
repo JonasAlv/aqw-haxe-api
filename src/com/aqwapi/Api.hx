@@ -10,7 +10,7 @@ import com.aqwapi.utils.ApiLogger;
 class Api {
     public static var dispatcher(default, null):EventDispatcher = new EventDispatcher();
     public static var logger:Class<ApiLogger> = ApiLogger;
-    public static var game(default, null):AqwGame;
+    public static var game(default, null):Dynamic;
 
     // All 8 Core Managers (Strictly Singular)
     public static var map(default, null):MapManager = new MapManager(null);

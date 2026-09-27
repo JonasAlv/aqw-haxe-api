@@ -5,9 +5,9 @@ import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.Api;
 
 class CombatManager {
-    private var _game:AqwGame;
+    private var _game:Dynamic;
 
-    public function new(gameReference:AqwGame) {
+    public function new(gameReference:Dynamic) {
         _game = gameReference;
     }
 
