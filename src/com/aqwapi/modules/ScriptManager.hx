@@ -22,11 +22,11 @@ class ScriptManager {
         return true; // All scripts are now powered by HScriptEngine
     }
 
-    public function loadScript(scriptText:String, name:String = ""):Void {
+    public function loadScript(scriptText:String):Void {
         if ((Api.game == null || Api.game.world == null) && Api.game != null) {
             Api.init(Api.game);
         }
-        HScriptEngine.SINGLETON.loadScript(scriptText, name);
+        HScriptEngine.SINGLETON.loadScript(scriptText);
     }
 
     public function reset():Void {
@@ -43,14 +43,6 @@ class ScriptManager {
     public function stop():Void {
         HScriptEngine.SINGLETON.stop();
     }
-
-    public var scriptName(get, set):String;
-    @:getter(scriptName)
-    public function get_scriptName_prop():String { return HScriptEngine.SINGLETON.scriptName; }
-    @:setter(scriptName)
-    public function set_scriptName_prop(v:String):Void { HScriptEngine.SINGLETON.scriptName = v; }
-    public function get_scriptName():String { return HScriptEngine.SINGLETON.scriptName; }
-    public function set_scriptName(v:String):String { HScriptEngine.SINGLETON.scriptName = v; return v; }
 
     public var isRunning(get, set):Bool;
     @:getter(isRunning)

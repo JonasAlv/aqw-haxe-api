@@ -23,7 +23,6 @@ class HScriptEngine {
     public var isRunning:Bool = false;
     public var waitTimer:Float = 0;
     public var statusText:String = "Stopped";
-    public var scriptName:String = "";
     public var tickInterval:Int = 100;
 
     public function sleep(ms:Float):Void {
@@ -101,7 +100,6 @@ class HScriptEngine {
         _hasOnInventoryChanged = false;
         waitTimer = 0;
         statusText = "No script loaded.";
-        scriptName = "";
         _resetSandbox();
     }
 
@@ -742,13 +740,12 @@ class HScriptEngine {
         });
     }
 
-    public function loadScript(scriptCode:String, name:String = ""):Bool {
+    public function loadScript(scriptCode:String):Bool {
         if ((Api.game == null || Api.game.world == null) && Api.game != null) {
             Api.init(Api.game);
         }
 
         reset();
-        scriptName = name;
 
         // Strip //hscript or #hscript header line if present
         var cleanCode = scriptCode;
