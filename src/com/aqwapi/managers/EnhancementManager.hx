@@ -232,24 +232,36 @@ class EnhancementManager {
 
                 if (allReqsMet) {
                     var chosenCape:String = "None";
-                    if (fObj.capes != null && Std.isOfType(fObj.capes, Array)) {
-                        for (c in (cast fObj.capes : Array<Dynamic>)) {
+                    var capesRaw:Dynamic = (fObj.capes != null) ? fObj.capes : fObj.cape;
+                    if (Std.isOfType(capesRaw, String)) {
+                        var cs = Std.string(capesRaw);
+                        if (canEnhanceCape(cs)) chosenCape = cs;
+                    } else if (capesRaw != null && Std.isOfType(capesRaw, Array)) {
+                        for (c in (cast capesRaw : Array<Dynamic>)) {
                             var cs = Std.string(c);
                             if (canEnhanceCape(cs)) { chosenCape = cs; break; }
                         }
                     }
 
                     var chosenHelm:String = "None";
-                    if (fObj.helms != null && Std.isOfType(fObj.helms, Array)) {
-                        for (h in (cast fObj.helms : Array<Dynamic>)) {
+                    var helmsRaw:Dynamic = (fObj.helms != null) ? fObj.helms : fObj.helm;
+                    if (Std.isOfType(helmsRaw, String)) {
+                        var hs = Std.string(helmsRaw);
+                        if (canEnhanceHelm(hs)) chosenHelm = hs;
+                    } else if (helmsRaw != null && Std.isOfType(helmsRaw, Array)) {
+                        for (h in (cast helmsRaw : Array<Dynamic>)) {
                             var hs = Std.string(h);
                             if (canEnhanceHelm(hs)) { chosenHelm = hs; break; }
                         }
                     }
 
                     var chosenWeapon:String = "None";
-                    if (fObj.weapons != null && Std.isOfType(fObj.weapons, Array)) {
-                        for (w in (cast fObj.weapons : Array<Dynamic>)) {
+                    var wepsRaw:Dynamic = (fObj.weapons != null) ? fObj.weapons : fObj.weapon;
+                    if (Std.isOfType(wepsRaw, String)) {
+                        var ws = Std.string(wepsRaw);
+                        if (canEnhanceWeapon(ws)) chosenWeapon = ws;
+                    } else if (wepsRaw != null && Std.isOfType(wepsRaw, Array)) {
+                        for (w in (cast wepsRaw : Array<Dynamic>)) {
                             var ws = Std.string(w);
                             if (canEnhanceWeapon(ws)) { chosenWeapon = ws; break; }
                         }
@@ -260,8 +272,16 @@ class EnhancementManager {
             }
 
             // 2. Try Awe preset
-            if (isAweUnlocked() && entry.awe != null && entry.awe.weapon != null) {
-                return { type: bType, cape: "None", helm: "None", weapon: Std.string(entry.awe.weapon) };
+            if (isAweUnlocked() && entry.awe != null) {
+                var aweWep:String = null;
+                if (Std.isOfType(entry.awe, String)) {
+                    aweWep = Std.string(entry.awe);
+                } else if (Reflect.isObject(entry.awe) && entry.awe.weapon != null) {
+                    aweWep = Std.string(entry.awe.weapon);
+                }
+                if (aweWep != null && aweWep != "" && aweWep != "None") {
+                    return { type: bType, cape: "None", helm: "None", weapon: aweWep };
+                }
             }
 
             // 3. Base Type Fallback
