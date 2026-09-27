@@ -13,14 +13,14 @@ class Api {
     public static var game(default, null):AqwGame;
 
     // All 8 Core Managers (Strictly Singular)
-    public static var map(default, null):MapManager;
-    public static var player(default, null):PlayerManager;
-    public static var quest(default, null):QuestManager;
-    public static var combat(default, null):CombatManager;
-    public static var inventory(default, null):InventoryManager;
-    public static var drop(default, null):DropManager;
-    public static var shop(default, null):ShopManager;
-    public static var monster(default, null):MonsterManager;
+    public static var map(default, null):MapManager = new MapManager(null);
+    public static var player(default, null):PlayerManager = new PlayerManager(null);
+    public static var quest(default, null):QuestManager = new QuestManager(null);
+    public static var combat(default, null):CombatManager = new CombatManager(null);
+    public static var inventory(default, null):InventoryManager = new InventoryManager(null);
+    public static var drop(default, null):DropManager = new DropManager(null);
+    public static var shop(default, null):ShopManager = new ShopManager(null);
+    public static var monster(default, null):MonsterManager = new MonsterManager(null);
 
     public static var transport(default, null):TransportAdapter;
     public static var hscript(default, null):HScriptEngine;

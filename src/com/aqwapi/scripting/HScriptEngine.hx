@@ -49,7 +49,7 @@ class HScriptEngine {
         _parser.allowTypes = true;
         _parser.allowJSON = true;
         _parser.allowMetadata = true;
-        _interp = new Interp();
+        _interp = new ScriptInterp();
 
         _timer = new Timer(tickInterval);
         _timer.addEventListener(TimerEvent.TIMER, onTimerTick, false, 0, true);
@@ -100,7 +100,7 @@ class HScriptEngine {
 
 
     private function _resetSandbox():Void {
-        _interp = new Interp();
+        _interp = new ScriptInterp();
 
         // Core API
         _interp.variables.set("api", Api);
@@ -728,6 +728,8 @@ class HScriptEngine {
             Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, msg));
             return false;
         }
+
+        _resetSandbox();
 
         try {
             _interp.execute(_program);

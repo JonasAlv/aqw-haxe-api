@@ -9,12 +9,17 @@ class MapManager {
         _game = gameReference;
     }
 
+    private inline function _g():AqwGame {
+        return (_game != null) ? _game : Api.game;
+    }
+
     private var _usePrivateRoom:Bool = true;
     private var _privateRoomNumber:Int = 100000;
 
     public function join(mapName:String, cell:String = "Enter", pad:String = "Spawn"):Void {
-        if (_game == null || _game.world == null || _game.sfc == null) return;
-        var avatar:Dynamic = _game.world.myAvatar;
+        var g = _g();
+        if (g == null || g.world == null || g.sfc == null) return;
+        var avatar:Dynamic = g.world.myAvatar;
         var username:String = "";
         if (avatar != null) {
             if (avatar.objData != null && avatar.objData.strUsername != null)
@@ -28,15 +33,15 @@ class MapManager {
             targetMap = targetMap + "-" + _privateRoomNumber;
         }
 
-        if (_game.world.gotoTown != null) {
+        if (g.world.gotoTown != null) {
             try {
-                _game.world.gotoTown(targetMap, cell, pad);
+                g.world.gotoTown(targetMap, cell, pad);
                 return;
             } catch (e:Dynamic) {}
         }
 
-        if (_game.world.setReturnInfo != null) {
-            try { _game.world.setReturnInfo(targetMap, cell, pad); } catch (e:Dynamic) {}
+        if (g.world.setReturnInfo != null) {
+            try { g.world.setReturnInfo(targetMap, cell, pad); } catch (e:Dynamic) {}
         }
         if (Api.transport != null) {
             Api.transport.send("zm", "cmd", ["1", "tfer", username, targetMap, cell, pad]);
@@ -44,11 +49,12 @@ class MapManager {
     }
 
     public function joinHouse(username:String = ""):Void {
-        if (_game == null || _game.world == null) return;
+        var g = _g();
+        if (g == null || g.world == null) return;
         var un:String = username != null ? StringTools.trim(username) : "";
         if (un == "" && Api.player != null) un = Api.player.username;
-        if (_game.world.gotoHouse != null) {
-            try { _game.world.gotoHouse(un); return; } catch (e:Dynamic) {}
+        if (g.world.gotoHouse != null) {
+            try { g.world.gotoHouse(un); return; } catch (e:Dynamic) {}
         }
         if (Api.transport != null) {
             Api.transport.send("zm", "house", [un]);
@@ -75,17 +81,19 @@ class MapManager {
         }
 
         var packet:String = "%xt%zm%dungeonQueue%" + rId + "%" + targetMap + "%";
-        _game.sfc.sendString(packet);
+        var g = _g();
+        if (g != null && g.sfc != null) g.sfc.sendString(packet);
     }
 
     private var _autoDeathSpawn:Bool = false;
     private var _lastSpawnCell:String = "";
 
     public function checkAutoDeathSpawn():Void {
-        if (!_autoDeathSpawn || _game == null || _game.world == null) return;
+        var g = _g();
+        if (!_autoDeathSpawn || g == null || g.world == null) return;
         if (Api.player != null && !Api.player.isAlive) return;
-        var curCell:String = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
-        var curPad:String = (_game.world.strPad != null) ? Std.string(_game.world.strPad) : "Spawn";
+        var curCell:String = (g.world.strFrame != null) ? Std.string(g.world.strFrame) : "";
+        var curPad:String = (g.world.strPad != null) ? Std.string(g.world.strPad) : "Spawn";
         if (curCell != "" && curCell != _lastSpawnCell && curCell.toLowerCase().indexOf("cut") == -1) {
             _lastSpawnCell = curCell;
             Api.player.setSpawnPoint(curCell, curPad);
@@ -93,10 +101,11 @@ class MapManager {
     }
 
     public function jump(cell:String, pad:String = "Enter"):Void {
-        if (_game == null || _game.world == null) return;
-        if (_game.world.moveToCell != null) {
-            if (_game.world.strFrame != cell) {
-                _game.world.moveToCell(cell, pad);
+        var g = _g();
+        if (g == null || g.world == null) return;
+        if (g.world.moveToCell != null) {
+            if (g.world.strFrame != cell) {
+                g.world.moveToCell(cell, pad);
             }
         }
         if (_autoDeathSpawn && cell != null && cell != "" && cell.toLowerCase().indexOf("cut") == -1) {
@@ -106,25 +115,27 @@ class MapManager {
     }
 
     public function getMapItem(itemId:Int):Bool {
-        if (_game == null || _game.world == null || _game.sfc == null) return false;
+        var g = _g();
+        if (g == null || g.world == null || g.sfc == null) return false;
         try {
-            var roomId:Dynamic = _game.sfc.activeRoomId != null ? _game.sfc.activeRoomId : _game.world.curRoom;
-            _game.sfc.sendString("%xt%zm%getMapItem%" + roomId + "%" + itemId + "%");
+            var roomId:Dynamic = g.sfc.activeRoomId != null ? g.sfc.activeRoomId : g.world.curRoom;
+            g.sfc.sendString("%xt%zm%getMapItem%" + roomId + "%" + itemId + "%");
             return true;
         } catch (e:Dynamic) { return false; }
     }
 
     public function snapTo(target:Dynamic):Void {
-        if (_game == null || _game.world == null || _game.world.myAvatar == null || target == null) return;
+        var g = _g();
+        if (g == null || g.world == null || g.world.myAvatar == null || target == null) return;
         try {
-            var myMC:Dynamic = _game.world.myAvatar.pMC;
+            var myMC:Dynamic = g.world.myAvatar.pMC;
             var tMC:Dynamic = null;
             if (Reflect.hasField(target, "raw") && target.raw != null) tMC = Reflect.field(target.raw, "pMC");
-            else if (Reflect.hasField(target, "pMC")) tMC = Reflect.field(target, "pMC");
+            else if (Reflect.hasField(target, "pMC")) tMC = Reflect.field(target.raw, "pMC");
             if (myMC != null && tMC != null) {
                 myMC.x = tMC.x;
                 myMC.y = tMC.y;
-                if (_game.world.pushMove != null) _game.world.pushMove(myMC, tMC.x, tMC.y, 16);
+                if (g.world.pushMove != null) g.world.pushMove(myMC, tMC.x, tMC.y, 16);
             }
         } catch (e:Dynamic) {}
     }
@@ -132,41 +143,47 @@ class MapManager {
     public var isLoaded(get, never):Bool;
     @:getter(isLoaded)
     public function get_isLoaded_prop():Bool {
-        return _game != null && _game.world != null
-            && _game.world.mapLoadInProgress == false
-            && _game.world.myAvatar != null
-            && _game.world.myAvatar.pMC != null;
+        var g = _g();
+        return g != null && g.world != null
+            && g.world.mapLoadInProgress == false
+            && g.world.myAvatar != null
+            && g.world.myAvatar.pMC != null;
     }
     public function get_isLoaded():Bool {
-        return _game != null && _game.world != null
-            && _game.world.mapLoadInProgress == false
-            && _game.world.myAvatar != null
-            && _game.world.myAvatar.pMC != null;
+        var g = _g();
+        return g != null && g.world != null
+            && g.world.mapLoadInProgress == false
+            && g.world.myAvatar != null
+            && g.world.myAvatar.pMC != null;
     }
 
     public var name(get, never):String;
     @:getter(name)
     public function get_name_prop():String {
-        if (_game == null || _game.world == null) return "";
-        return _game.world.strMapName != null ? Std.string(_game.world.strMapName) : "";
+        var g = _g();
+        if (g == null || g.world == null) return "";
+        return g.world.strMapName != null ? Std.string(g.world.strMapName) : "";
     }
     public function get_name():String {
-        if (_game == null || _game.world == null) return "";
-        return _game.world.strMapName != null ? Std.string(_game.world.strMapName) : "";
+        var g = _g();
+        if (g == null || g.world == null) return "";
+        return g.world.strMapName != null ? Std.string(g.world.strMapName) : "";
     }
 
     public var roomId(get, never):Int;
     @:getter(roomId)
     public function get_roomId_prop():Int {
-        if (_game == null) return 1;
-        if (_game.sfc != null && _game.sfc.activeRoomId != null) return Std.int(_game.sfc.activeRoomId);
-        if (_game.world != null && _game.world.curRoom != null) return Std.int(_game.world.curRoom);
+        var g = _g();
+        if (g == null) return 1;
+        if (g.sfc != null && g.sfc.activeRoomId != null) return Std.int(g.sfc.activeRoomId);
+        if (g.world != null && g.world.curRoom != null) return Std.int(g.world.curRoom);
         return 1;
     }
     public function get_roomId():Int {
-        if (_game == null) return 1;
-        if (_game.sfc != null && _game.sfc.activeRoomId != null) return Std.int(_game.sfc.activeRoomId);
-        if (_game.world != null && _game.world.curRoom != null) return Std.int(_game.world.curRoom);
+        var g = _g();
+        if (g == null) return 1;
+        if (g.sfc != null && g.sfc.activeRoomId != null) return Std.int(g.sfc.activeRoomId);
+        if (g.world != null && g.world.curRoom != null) return Std.int(g.world.curRoom);
         return 1;
     }
 

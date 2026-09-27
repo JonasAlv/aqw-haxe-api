@@ -1,5 +1,6 @@
 package com.aqwapi.managers;
 
+import com.aqwapi.Api;
 import com.aqwapi.data.EntityDTO;
 
 class PlayerManager {
@@ -10,8 +11,13 @@ class PlayerManager {
         _game = gameReference;
     }
 
+    private inline function _g():AqwGame {
+        return (_game != null) ? _game : Api.game;
+    }
+
     private function _avatar():Dynamic {
-        return (_game != null && _game.world != null) ? _game.world.myAvatar : null;
+        var g = _g();
+        return (g != null && g.world != null) ? g.world.myAvatar : null;
     }
 
     private inline function _di(val:Dynamic, def:Int = 0):Int {
@@ -69,13 +75,13 @@ class PlayerManager {
 
     public var cell(get, never):String;
     @:getter(cell)
-    public function get_cell_prop():String { return (_game != null && _game.world != null) ? _ds(_game.world.strFrame) : ""; }
-    public function get_cell():String { return (_game != null && _game.world != null) ? _ds(_game.world.strFrame) : ""; }
+    public function get_cell_prop():String { var g = _g(); return (g != null && g.world != null) ? _ds(g.world.strFrame) : ""; }
+    public function get_cell():String { var g = _g(); return (g != null && g.world != null) ? _ds(g.world.strFrame) : ""; }
 
     public var pad(get, never):String;
     @:getter(pad)
-    public function get_pad_prop():String { return (_game != null && _game.world != null) ? _ds(_game.world.strPad) : ""; }
-    public function get_pad():String { return (_game != null && _game.world != null) ? _ds(_game.world.strPad) : ""; }
+    public function get_pad_prop():String { var g = _g(); return (g != null && g.world != null) ? _ds(g.world.strPad) : ""; }
+    public function get_pad():String { var g = _g(); return (g != null && g.world != null) ? _ds(g.world.strPad) : ""; }
 
     public var level(get, never):Int;
     @:getter(level)
@@ -107,10 +113,11 @@ class PlayerManager {
     }
 
     public function setSpawnPoint(cell:String = null, pad:String = null):Void {
-        if (_game != null && _game.world != null && Reflect.hasField(_game.world, "setSpawnPoint")) {
-            var c = (cell != null && cell != "") ? cell : (_game.world.strFrame != null ? Std.string(_game.world.strFrame) : "Enter");
-            var p = (pad != null && pad != "") ? pad : (_game.world.strPad != null ? Std.string(_game.world.strPad) : "Spawn");
-            try { _game.world.setSpawnPoint(c, p); } catch (e:Dynamic) {}
+        var g = _g();
+        if (g != null && g.world != null && Reflect.hasField(g.world, "setSpawnPoint")) {
+            var c = (cell != null && cell != "") ? cell : (g.world.strFrame != null ? Std.string(g.world.strFrame) : "Enter");
+            var p = (pad != null && pad != "") ? pad : (g.world.strPad != null ? Std.string(g.world.strPad) : "Spawn");
+            try { g.world.setSpawnPoint(c, p); } catch (e:Dynamic) {}
         }
     }
 
