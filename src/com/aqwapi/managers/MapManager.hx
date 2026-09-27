@@ -26,16 +26,30 @@ class MapManager {
             targetMap = targetMap + "-" + _privateRoomNumber;
         }
 
-        if (targetMap.indexOf("-") != -1) {
-            if (AqwApi.transport != null) {
-                AqwApi.transport.send("zm", "cmd", ["1", "tfer", username, targetMap]);
-            }
-        } else {
-            if (_game.world.gotoTown != null) {
+        if (_game.world.gotoTown != null) {
+            try {
                 _game.world.gotoTown(targetMap, cell, pad);
-            } else if (AqwApi.transport != null) {
-                AqwApi.transport.send("zm", "cmd", ["1", "tfer", username, targetMap]);
-            }
+                return;
+            } catch (e:Dynamic) {}
+        }
+
+        if (_game.world.setReturnInfo != null) {
+            try { _game.world.setReturnInfo(targetMap, cell, pad); } catch (e:Dynamic) {}
+        }
+        if (AqwApi.transport != null) {
+            AqwApi.transport.send("zm", "cmd", ["1", "tfer", username, targetMap, cell, pad]);
+        }
+    }
+
+    public function joinHouse(username:String = ""):Void {
+        if (_game == null || _game.world == null) return;
+        var un:String = username != null ? StringTools.trim(username) : "";
+        if (un == "" && AqwApi.player != null) un = AqwApi.player.username;
+        if (_game.world.gotoHouse != null) {
+            try { _game.world.gotoHouse(un); return; } catch (e:Dynamic) {}
+        }
+        if (AqwApi.transport != null) {
+            AqwApi.transport.send("zm", "house", [un]);
         }
     }
 

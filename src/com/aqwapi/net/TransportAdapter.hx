@@ -6,12 +6,34 @@ import com.aqwapi.utils.ApiLogger;
 
 class TransportAdapter {
     private var _game:AqwGame;
+    private var _isListening:Bool = false;
 
     public function new(gameReference:AqwGame) {
         _game = gameReference;
+        start();
+    }
+
+    public function start():Void {
+        if (_isListening || _game == null || _game.sfc == null) return;
+        try {
+            _game.sfc.addEventListener("onExtensionResponse", handleResponse, false, 0, true);
+            _isListening = true;
+            ApiLogger.info("Transport", "TransportAdapter listener attached to sfc");
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Transport", "Failed to attach sfc listener: " + e);
+        }
+    }
+
+    public function stop():Void {
+        if (!_isListening || _game == null || _game.sfc == null) return;
+        try {
+            _game.sfc.removeEventListener("onExtensionResponse", handleResponse);
+            _isListening = false;
+        } catch (e:Dynamic) {}
     }
 
     public function send(namespaceId:String, command:String, args:Array<Dynamic>):Void {
+        if (!_isListening && _game != null && _game.sfc != null) start();
         if (_game == null || _game.sfc == null) return;
         var packet:String = "%xt%" + namespaceId + "%" + command + "%";
         packet += args.join("%") + "%";
@@ -53,7 +75,7 @@ class TransportAdapter {
                 AqwApi.dispatcher.dispatchEvent(new GameEvent(GameEvent.ZONE_ENTERED, dataObj));
             case "getQuests", "getQuests2", "getQuest":
                 AqwApi.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));
-            case "equipItem", "unequipItem", "buyItem", "sellItem", "getDrop":
+            case "equipItem", "unequipItem", "buyItem", "sellItem", "getDrop", "bankFromInv", "bankToInv", "loadBank":
                 AqwApi.dispatcher.dispatchEvent(new GameEvent(GameEvent.INVENTORY_CHANGED, dataObj));
             default:
         }

@@ -2,7 +2,9 @@ package com.aqwapi.managers;
 
 import com.aqwapi.events.GameEvent;
 import com.aqwapi.AqwApi;
+import com.aqwapi.data.ItemDTO;
 import com.aqwapi.utils.Promise;
+import haxe.Timer;
 
 class InventoryManager {
     private var _game:AqwGame;
@@ -136,13 +138,24 @@ class InventoryManager {
             var bEquip:Dynamic = bestMatch.bEquip;
             if (bEquip == 1 || bEquip == "1" || bEquip == true) { resolve(null); return; }
 
-            // Register listener BEFORE sending packet
             var listener:Dynamic->Void = null;
-            listener = function(e:Dynamic) {
+            var timeoutTimer:Timer = null;
+
+            var cleanup = function() {
+                if (timeoutTimer != null) { timeoutTimer.stop(); timeoutTimer = null; }
                 AqwApi.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
+            };
+
+            listener = function(e:Dynamic) {
+                cleanup();
                 resolve(e);
             };
+
             AqwApi.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
+            timeoutTimer = Timer.delay(function() {
+                cleanup();
+                resolve(null);
+            }, 2500);
 
             if (_game.world != null && _game.world.sendEquipItemRequest != null) {
                 _game.world.sendEquipItemRequest(bestMatch);
@@ -150,7 +163,7 @@ class InventoryManager {
                 var reqId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.world.curRoom;
                 _game.sfc.sendString("%xt%zm%equipItem%" + reqId + "%" + bestMatch.ItemID + "%");
             } else {
-                AqwApi.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
+                cleanup();
                 resolve(null);
             }
         });
@@ -179,11 +192,23 @@ class InventoryManager {
             if (bItem == null) { resolve(null); return; }
 
             var listener:Dynamic->Void = null;
-            listener = function(e:Dynamic) {
+            var timeoutTimer:Timer = null;
+
+            var cleanup = function() {
+                if (timeoutTimer != null) { timeoutTimer.stop(); timeoutTimer = null; }
                 AqwApi.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
+            };
+
+            listener = function(e:Dynamic) {
+                cleanup();
                 resolve(e);
             };
+
             AqwApi.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
+            timeoutTimer = Timer.delay(function() {
+                cleanup();
+                resolve(null);
+            }, 2500);
 
             if (_game.world.sendBankFromInvRequest != null) {
                 _game.world.sendBankFromInvRequest(bItem);
@@ -191,7 +216,7 @@ class InventoryManager {
                 var reqId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.sfc.myUserId;
                 _game.sfc.sendString("%xt%zm%bankFromInv%" + reqId + "%" + bItem.ItemID + "%" + bItem.CharItemID + "%");
             } else {
-                AqwApi.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
+                cleanup();
                 resolve(null);
             }
         });
@@ -207,11 +232,23 @@ class InventoryManager {
             if (uItem == null) { resolve(null); return; }
 
             var listener:Dynamic->Void = null;
-            listener = function(e:Dynamic) {
+            var timeoutTimer:Timer = null;
+
+            var cleanup = function() {
+                if (timeoutTimer != null) { timeoutTimer.stop(); timeoutTimer = null; }
                 AqwApi.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
+            };
+
+            listener = function(e:Dynamic) {
+                cleanup();
                 resolve(e);
             };
+
             AqwApi.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
+            timeoutTimer = Timer.delay(function() {
+                cleanup();
+                resolve(null);
+            }, 2500);
 
             if (_game.world.sendBankToInvRequest != null) {
                 _game.world.sendBankToInvRequest(uItem);
@@ -219,7 +256,7 @@ class InventoryManager {
                 var reqId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.sfc.myUserId;
                 _game.sfc.sendString("%xt%zm%bankToInv%" + reqId + "%" + uItem.ItemID + "%" + uItem.CharItemID + "%");
             } else {
-                AqwApi.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
+                cleanup();
                 resolve(null);
             }
         });
@@ -234,5 +271,114 @@ class InventoryManager {
     public function toggleBank():Void {
         if (_game != null && _game.world != null && _game.world.toggleBank != null)
             _game.world.toggleBank();
+    }
+
+    public function isInBank(itemNameOrId:String):Bool {
+        if (_game == null || _game.world == null || _game.world.bankinfo == null || _game.world.bankinfo.items == null) return false;
+        var targetId:Int = com.aqwapi.utils.AqwUtils.parseInt(itemNameOrId, 0);
+        var isIdLookup:Bool = targetId > 0;
+        var targetName:String = itemNameOrId.toLowerCase();
+        var bItems:Array<Dynamic> = cast _game.world.bankinfo.items;
+        for (i in bItems) {
+            if (i == null || i.sName == null) continue;
+            if (isIdLookup) {
+                if (i.ItemID == targetId) return true;
+            } else {
+                if (Std.string(i.sName).toLowerCase() == targetName) return true;
+            }
+        }
+        return false;
+    }
+
+    public var isBankLoaded(get, never):Bool;
+    @:getter(isBankLoaded)
+    public function get_isBankLoaded_prop():Bool { return get_isBankLoaded(); }
+    public function get_isBankLoaded():Bool {
+        return _game != null && _game.world != null && _game.world.bankinfo != null && _game.world.bankinfo.isLoaded == true;
+    }
+
+    public var maxSlots(get, never):Int;
+    @:getter(maxSlots)
+    public function get_maxSlots_prop():Int { return get_maxSlots(); }
+    public function get_maxSlots():Int {
+        if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.objData != null) {
+            var s = _game.world.myAvatar.objData.iBagSlots;
+            if (s != null) return Std.int(s);
+        }
+        return 0;
+    }
+
+    public var usedSlots(get, never):Int;
+    @:getter(usedSlots)
+    public function get_usedSlots_prop():Int { return get_usedSlots(); }
+    public function get_usedSlots():Int {
+        if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.items != null) {
+            return (cast _game.world.myAvatar.items : Array<Dynamic>).length;
+        }
+        return 0;
+    }
+
+    public var freeSlots(get, never):Int;
+    @:getter(freeSlots)
+    public function get_freeSlots_prop():Int { return get_freeSlots(); }
+    public function get_freeSlots():Int {
+        var max = maxSlots;
+        if (max <= 0) return 0;
+        var free = max - usedSlots;
+        return free > 0 ? free : 0;
+    }
+
+    public var isFull(get, never):Bool;
+    @:getter(isFull)
+    public function get_isFull_prop():Bool { return get_isFull(); }
+    public function get_isFull():Bool {
+        var max = maxSlots;
+        if (max <= 0) return false;
+        return usedSlots >= max;
+    }
+
+    public var maxBankSlots(get, never):Int;
+    @:getter(maxBankSlots)
+    public function get_maxBankSlots_prop():Int { return get_maxBankSlots(); }
+    public function get_maxBankSlots():Int {
+        if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.objData != null) {
+            var s = _game.world.myAvatar.objData.iBankSlots;
+            if (s != null) return Std.int(s);
+        }
+        return 0;
+    }
+
+    public var usedBankSlots(get, never):Int;
+    @:getter(usedBankSlots)
+    public function get_usedBankSlots_prop():Int { return get_usedBankSlots(); }
+    public function get_usedBankSlots():Int {
+        if (_game != null && _game.world != null && _game.world.bankinfo != null && _game.world.bankinfo.items != null) {
+            return (cast _game.world.bankinfo.items : Array<Dynamic>).length;
+        }
+        return 0;
+    }
+
+    public function getItems():Array<ItemDTO> {
+        var result:Array<ItemDTO> = [];
+        if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.items != null) {
+            var rawList:Array<Dynamic> = cast _game.world.myAvatar.items;
+            for (it in rawList) if (it != null) result.push(new ItemDTO(it));
+        }
+        return result;
+    }
+
+    public function getBankItems():Array<ItemDTO> {
+        var result:Array<ItemDTO> = [];
+        if (_game != null && _game.world != null && _game.world.bankinfo != null && _game.world.bankinfo.items != null) {
+            var rawList:Array<Dynamic> = cast _game.world.bankinfo.items;
+            for (it in rawList) if (it != null) result.push(new ItemDTO(it));
+        }
+        return result;
+    }
+
+    public function sellItem(itemNameOrId:String, quantity:Int = 1):Void {
+        if (AqwApi.shop != null) {
+            AqwApi.shop.sellItem(itemNameOrId, quantity);
+        }
     }
 }

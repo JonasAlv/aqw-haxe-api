@@ -89,6 +89,9 @@ class AqwApi {
         shop = new ShopManager(game);
         monster = new MonsterManager(game);
         hscript = HScriptEngine.SINGLETON;
+
+        if (transport != null) transport.start();
+        if (drop != null) drop.start();
     }
 
     public static function notify(message:String):Void {

@@ -141,6 +141,9 @@ class HScriptEngine {
         _interp.variables.set("join", function(mapName:String, cell:String = "Enter", pad:String = "Spawn"):Void {
             AqwApi.map.join(mapName, cell, pad);
         });
+        _interp.variables.set("joinHouse", function(username:String = ""):Void {
+            AqwApi.map.joinHouse(username);
+        });
         _interp.variables.set("jump", function(cell:String, pad:String = "Enter"):Void {
             AqwApi.map.jump(cell, pad);
         });
@@ -152,6 +155,12 @@ class HScriptEngine {
         });
         _interp.variables.set("attack", function(monster:Dynamic):Void {
             AqwApi.combat.attack(Std.string(monster));
+        });
+        _interp.variables.set("selectTarget", function(monster:Dynamic):Void {
+            AqwApi.combat.selectTarget(Std.string(monster));
+        });
+        _interp.variables.set("target", function(monster:Dynamic):Void {
+            AqwApi.combat.selectTarget(Std.string(monster));
         });
         _interp.variables.set("hasItem", function(itemName:String, quantity:Int = 1):Bool {
             return AqwApi.inventory.hasItem(itemName, quantity);
@@ -387,6 +396,72 @@ class HScriptEngine {
             if (AqwApi.combat != null) AqwApi.combat.stopAuto();
         });
 
+        // Bank Operations
+        _interp.variables.set("loadBank", function():Void {
+            AqwApi.inventory.loadBank();
+        });
+        _interp.variables.set("openBank", function():Void {
+            AqwApi.inventory.toggleBank();
+        });
+        _interp.variables.set("toggleBank", function():Void {
+            AqwApi.inventory.toggleBank();
+        });
+        _interp.variables.set("bank", function(itemName:String):Void {
+            AqwApi.inventory.bank(itemName);
+        });
+        _interp.variables.set("bankItem", function(itemName:String):Void {
+            AqwApi.inventory.bank(itemName);
+        });
+        _interp.variables.set("unbank", function(itemName:String):Void {
+            AqwApi.inventory.unbank(itemName);
+        });
+        _interp.variables.set("unbankItem", function(itemName:String):Void {
+            AqwApi.inventory.unbank(itemName);
+        });
+        _interp.variables.set("isInBank", function(itemNameOrId:String):Bool {
+            return AqwApi.inventory.isInBank(itemNameOrId);
+        });
+        _interp.variables.set("isBankLoaded", function():Bool {
+            return AqwApi.inventory.isBankLoaded;
+        });
+
+        // Inventory Capacity
+        _interp.variables.set("isInventoryFull", function():Bool {
+            return AqwApi.inventory.isFull;
+        });
+        _interp.variables.set("isBagFull", function():Bool {
+            return AqwApi.inventory.isFull;
+        });
+        _interp.variables.set("freeSlots", function():Int {
+            return AqwApi.inventory.freeSlots;
+        });
+        _interp.variables.set("usedSlots", function():Int {
+            return AqwApi.inventory.usedSlots;
+        });
+        _interp.variables.set("maxSlots", function():Int {
+            return AqwApi.inventory.maxSlots;
+        });
+
+        // Shop Operations
+        _interp.variables.set("loadShop", function(shopId:Int):Void {
+            AqwApi.shop.loadShop(shopId);
+        });
+        _interp.variables.set("buyItem", function(shopId:Dynamic, itemNameOrId:String = null, quantity:Int = 1):Void {
+            if (itemNameOrId == null) {
+                AqwApi.shop.buyItem(Std.string(shopId), quantity);
+            } else {
+                var sId:Int = com.aqwapi.utils.AqwUtils.parseInt(shopId, 0);
+                if (sId > 0 && !AqwApi.shop.isShopLoaded) AqwApi.shop.loadShop(sId);
+                AqwApi.shop.buyItem(itemNameOrId, quantity);
+            }
+        });
+        _interp.variables.set("sellItem", function(itemNameOrId:String, quantity:Int = 1):Void {
+            AqwApi.shop.sellItem(itemNameOrId, quantity);
+        });
+        _interp.variables.set("isShopLoaded", function():Bool {
+            return AqwApi.shop.isShopLoaded;
+        });
+
         // Packets & Network
         _interp.variables.set("sendPacket", function(packet:String):Void {
             if (AqwApi.game != null && AqwApi.game.sfc != null) {
@@ -481,6 +556,24 @@ class HScriptEngine {
         });
         _interp.variables.set("inCombat", function():Bool {
             return AqwApi.player != null && AqwApi.player.isInCombat;
+        });
+        _interp.variables.set("gold", function():Int {
+            return (AqwApi.player != null) ? AqwApi.player.gold : 0;
+        });
+        _interp.variables.set("coins", function():Int {
+            return (AqwApi.player != null) ? AqwApi.player.coins : 0;
+        });
+        _interp.variables.set("ac", function():Int {
+            return (AqwApi.player != null) ? AqwApi.player.ac : 0;
+        });
+        _interp.variables.set("xp", function():Int {
+            return (AqwApi.player != null) ? AqwApi.player.xp : 0;
+        });
+        _interp.variables.set("maxXp", function():Int {
+            return (AqwApi.player != null) ? AqwApi.player.maxXp : 0;
+        });
+        _interp.variables.set("isMember", function():Bool {
+            return (AqwApi.player != null) && AqwApi.player.isMember;
         });
 
         // Monster & Cell Query
@@ -682,11 +775,6 @@ class HScriptEngine {
         AqwApi.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STARTED, "HScript Started!"));
         ApiLogger.info("HScript", "HScript Started!");
 
-        try {
-            com.aqwapi.modules.ScriptManager.SINGLETON.isRunning = true;
-            com.aqwapi.modules.ScriptManager.SINGLETON.statusText = statusText;
-        } catch (e:Dynamic) {}
-
         if (_hasOnStart) {
             try {
                 var fn = _interp.variables.get("onStart");
@@ -702,11 +790,6 @@ class HScriptEngine {
         isRunning = false;
         _timer.stop();
         statusText = "Stopped.";
-
-        try {
-            com.aqwapi.modules.ScriptManager.SINGLETON.isRunning = false;
-            com.aqwapi.modules.ScriptManager.SINGLETON.statusText = statusText;
-        } catch (e:Dynamic) {}
 
         if (_hasOnStop) {
             try {

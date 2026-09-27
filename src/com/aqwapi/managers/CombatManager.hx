@@ -102,6 +102,11 @@ class CombatManager {
         }
     }
 
+    public function selectTarget(monsterName:String):Void {
+        attack(monsterName);
+        cancelAutoAttack();
+    }
+
     public function approachTarget():Void {
         if (_game == null || _game.world == null) return;
         try {

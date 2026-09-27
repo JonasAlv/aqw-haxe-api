@@ -140,4 +140,68 @@ class PlayerManager {
         }
         return "";
     }
+
+    public var coins(get, never):Int;
+    @:getter(coins)
+    public function get_coins_prop():Int { return get_coins(); }
+    public function get_coins():Int {
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intCoins != null) return _di(a.objData.intCoins);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intCoins != null) return _di(a.dataLeaf.intCoins);
+        return 0;
+    }
+
+    public var ac(get, never):Int;
+    @:getter(ac)
+    public function get_ac_prop():Int { return get_coins(); }
+    public inline function get_ac():Int { return get_coins(); }
+
+    public var xp(get, never):Int;
+    @:getter(xp)
+    public function get_xp_prop():Int { return get_xp(); }
+    public function get_xp():Int {
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intExp != null) return _di(a.objData.intExp);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intExp != null) return _di(a.dataLeaf.intExp);
+        return 0;
+    }
+
+    public var maxXp(get, never):Int;
+    @:getter(maxXp)
+    public function get_maxXp_prop():Int { return get_maxXp(); }
+    public function get_maxXp():Int {
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intExpToLevel != null) return _di(a.objData.intExpToLevel);
+        return 0;
+    }
+
+    public var isMember(get, never):Bool;
+    @:getter(isMember)
+    public function get_isMember_prop():Bool { return get_isMember(); }
+    public function get_isMember():Bool {
+        var a = _avatar();
+        if (a != null) {
+            if (a.isUpgraded != null) {
+                try { return a.isUpgraded() == true; } catch (_:Dynamic) {}
+            }
+            if (a.objData != null && a.objData.iUpgDays != null) return _di(a.objData.iUpgDays) > 0;
+        }
+        return false;
+    }
+
+    public var x(get, never):Float;
+    @:getter(x)
+    public function get_x_prop():Float { return get_x(); }
+    public function get_x():Float {
+        var a = _avatar();
+        return (a != null && a.pMC != null) ? a.pMC.x : 0.0;
+    }
+
+    public var y(get, never):Float;
+    @:getter(y)
+    public function get_y_prop():Float { return get_y(); }
+    public function get_y():Float {
+        var a = _avatar();
+        return (a != null && a.pMC != null) ? a.pMC.y : 0.0;
+    }
 }
