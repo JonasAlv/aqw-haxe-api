@@ -5,12 +5,13 @@ import com.aqwapi.Api;
 import com.aqwapi.data.ItemDTO;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.Promise;
+import com.aqwapi.Game;
 import haxe.Timer;
 
 class InventoryManager {
-    private var _game:Dynamic;
+    private var _game:Game;
 
-    public function new(gameReference:Dynamic) {
+    public function new(gameReference:Game) {
         _game = gameReference;
     }
 

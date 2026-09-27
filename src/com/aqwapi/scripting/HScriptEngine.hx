@@ -717,8 +717,6 @@ class HScriptEngine {
         _interp.variables.set("StringTools", StringTools);
         _interp.variables.set("Date", Date);
         _interp.variables.set("ApiTime", com.aqwapi.utils.ApiTime);
-        _interp.variables.set("ApiTimer", com.aqwapi.utils.ApiTime);
-        _interp.variables.set("AqwTime", com.aqwapi.utils.ApiTime);
         _interp.variables.set("now", function():Float {
             return ApiTime.now();
         });
@@ -726,11 +724,8 @@ class HScriptEngine {
             return ApiTime.now();
         });
         _interp.variables.set("ApiUtils", com.aqwapi.utils.ApiUtils);
-        _interp.variables.set("AqwUtils", com.aqwapi.utils.ApiUtils);
         _interp.variables.set("ApiJson", com.aqwapi.utils.ApiJson);
-        _interp.variables.set("AqwJson", com.aqwapi.utils.ApiJson);
         _interp.variables.set("ApiStorage", com.aqwapi.utils.ApiStorage);
-        _interp.variables.set("AqwStorage", com.aqwapi.utils.ApiStorage);
         _interp.variables.set("isNaN", function(v:Dynamic):Bool {
             return ApiUtils.isNaN(v);
         });

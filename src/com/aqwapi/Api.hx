@@ -10,7 +10,7 @@ import com.aqwapi.utils.ApiLogger;
 class Api {
     public static var dispatcher(default, null):EventDispatcher = new EventDispatcher();
     public static var logger:Class<ApiLogger> = ApiLogger;
-    public static var game(default, null):Dynamic;
+    public static var game(default, null):Game;
 
     // All 8 Core Managers (Strictly Singular)
     public static var map(default, null):MapManager = new MapManager(null);
@@ -113,7 +113,7 @@ class Api {
         } catch (_:Dynamic) {}
     }
 
-    public static function init(gameReference:Dynamic):Void {
+    public static function init(gameReference:Game):Void {
         ensureMathShims();
         preloadAssets();
         game = cast gameReference;

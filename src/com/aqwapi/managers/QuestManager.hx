@@ -8,15 +8,16 @@ import com.aqwapi.data.QuestDTO;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.Game;
 
 class QuestManager {
-    private var _game:Dynamic;
+    private var _game:Game;
     private var _timer:Timer;
     private var _questIDs:Array<Dynamic> = [];
     private var _lastTurnIns:Dynamic = {};
     private var _lastLoadRequests:Map<Int, Float> = new Map<Int, Float>();
 
-    public function new(gameReference:Dynamic) {
+    public function new(gameReference:Game) {
         _game = gameReference;
     }
 

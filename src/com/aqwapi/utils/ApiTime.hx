@@ -62,5 +62,4 @@ class ApiTime {
     }
 }
 
-typedef ApiTimer = ApiTime;
-typedef AqwTime = ApiTime;
+

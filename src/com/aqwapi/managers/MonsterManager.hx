@@ -2,11 +2,12 @@ package com.aqwapi.managers;
 
 import com.aqwapi.data.EntityDTO;
 import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.Game;
 
 class MonsterManager {
-    private var _game:Dynamic;
+    private var _game:Game;
 
-    public function new(gameReference:Dynamic) {
+    public function new(gameReference:Game) {
         _game = gameReference;
     }
 

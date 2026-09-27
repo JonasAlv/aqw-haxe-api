@@ -3,12 +3,13 @@ package com.aqwapi.net;
 import com.aqwapi.events.GameEvent;
 import com.aqwapi.Api;
 import com.aqwapi.utils.ApiLogger;
+import com.aqwapi.Game;
 
 class TransportAdapter {
-    private var _game:Dynamic;
+    private var _game:Game;
     private var _isListening:Bool = false;
 
-    public function new(gameReference:Dynamic) {
+    public function new(gameReference:Game) {
         _game = gameReference;
         start();
     }

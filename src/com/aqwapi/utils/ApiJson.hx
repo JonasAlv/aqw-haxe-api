@@ -40,4 +40,4 @@ class ApiJson {
     }
 }
 
-typedef AqwJson = ApiJson;
+

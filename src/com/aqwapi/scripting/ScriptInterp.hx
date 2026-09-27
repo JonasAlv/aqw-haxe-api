@@ -20,10 +20,10 @@ class ScriptInterp extends Interp {
             case "shop", "shops": return Api.shop;
             case "monster", "monsters": return Api.monster;
             case "events": return Api.dispatcher;
-            case "ApiTime", "ApiTimer", "AqwTime": return com.aqwapi.utils.ApiTime;
-            case "ApiUtils", "AqwUtils": return com.aqwapi.utils.ApiUtils;
-            case "ApiJson", "AqwJson": return com.aqwapi.utils.ApiJson;
-            case "ApiStorage", "AqwStorage": return com.aqwapi.utils.ApiStorage;
+            case "ApiTime": return com.aqwapi.utils.ApiTime;
+            case "ApiUtils": return com.aqwapi.utils.ApiUtils;
+            case "ApiJson": return com.aqwapi.utils.ApiJson;
+            case "ApiStorage": return com.aqwapi.utils.ApiStorage;
         }
         return super.resolve(id);
     }

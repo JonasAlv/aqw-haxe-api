@@ -2,16 +2,17 @@ package com.aqwapi.managers;
 
 import com.aqwapi.Api;
 import com.aqwapi.data.EntityDTO;
+import com.aqwapi.Game;
 
 class PlayerManager {
 
-    private var _game:Dynamic;
+    private var _game:Game;
 
-    public function new(gameReference:Dynamic) {
+    public function new(gameReference:Game) {
         _game = gameReference;
     }
 
-    private inline function _g():Dynamic {
+    private inline function _g():Game {
         return (_game != null) ? _game : Api.game;
     }
 

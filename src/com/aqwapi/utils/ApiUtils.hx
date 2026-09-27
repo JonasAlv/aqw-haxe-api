@@ -61,4 +61,4 @@ class ApiUtils {
     }
 }
 
-typedef AqwUtils = ApiUtils;
+
