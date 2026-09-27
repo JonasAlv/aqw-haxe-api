@@ -71,8 +71,19 @@ class PlayerManager {
 
     public var isInCombat(get, never):Bool;
     @:getter(isInCombat)
-    public function get_isInCombat_prop():Bool { var a = _avatar(); return a != null && (untyped a.intCombatOn) == 1; }
-    public function get_isInCombat():Bool { var a = _avatar(); return a != null && (untyped a.intCombatOn) == 1; }
+    public function get_isInCombat_prop():Bool { return get_isInCombat(); }
+    public function get_isInCombat():Bool {
+        var a = _avatar();
+        if (a == null) return false;
+        if (a.dataLeaf != null && _di(a.dataLeaf.intState) >= 2) return true;
+        try {
+            if (a.dataLeaf != null && Reflect.field(a.dataLeaf, "intCombatOn") == 1) return true;
+        } catch (_:Dynamic) {}
+        try {
+            if (Reflect.field(a, "intCombatOn") == 1) return true;
+        } catch (_:Dynamic) {}
+        return false;
+    }
 
     public var cell(get, never):String;
     @:getter(cell)
