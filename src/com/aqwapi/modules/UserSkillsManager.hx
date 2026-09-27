@@ -37,10 +37,95 @@ class UserSkillsManager {
         }
         if (parsedData == null || !Reflect.isObject(parsedData) || Std.isOfType(parsedData, Array)) {
             parsedData = {};
+        } else {
+            parsedData = sanitizeUserSkillsObject(parsedData);
         }
 
         _userSkillsCache = parsedData;
         return _userSkillsCache;
+    }
+
+    /**
+     * Sanitizes and normalizes the userSkills data object so it strictly conforms to
+     * the skills.json standard:
+     * {
+     *   "ClassName": {
+     *     "ModeName": {
+     *       "mode": "WaitForCooldown",
+     *       "timeout": 100,
+     *       "combo": "..."
+     *     }
+     *   }
+     * }
+     * Strips all legacy AST arrays (skills), duplicate keys (skillUseMode, skillTimeout),
+     * and extraneous properties.
+     */
+    public static function sanitizeUserSkillsObject(data:Dynamic):Dynamic {
+        if (data == null || !Reflect.isObject(data) || Std.isOfType(data, Array)) {
+            return {};
+        }
+        var cleanData:Dynamic = {};
+        for (classKey in Reflect.fields(data)) {
+            if (classKey == null) continue;
+            var trimmedClass = StringTools.trim(classKey);
+            if (trimmedClass == "" || trimmedClass.toLowerCase() == "current") continue;
+
+            var classObj:Dynamic = Reflect.field(data, classKey);
+            if (classObj == null || !Reflect.isObject(classObj) || Std.isOfType(classObj, Array)) continue;
+
+            var cleanClassObj:Dynamic = {};
+            var modeCount:Int = 0;
+
+            for (modeKey in Reflect.fields(classObj)) {
+                if (modeKey == null) continue;
+                var trimmedMode = StringTools.trim(modeKey);
+                if (trimmedMode == "" || trimmedMode == "[+ New Mode]") continue;
+
+                var rawMode:Dynamic = Reflect.field(classObj, modeKey);
+                if (rawMode == null || !Reflect.isObject(rawMode) || Std.isOfType(rawMode, Array)) continue;
+
+                // 1. Resolve execution mode
+                var modeVal:String = "WaitForCooldown";
+                if (rawMode.mode != null && Std.string(rawMode.mode) != "") {
+                    modeVal = Std.string(rawMode.mode);
+                } else if (rawMode.skillUseMode != null && Std.string(rawMode.skillUseMode) != "") {
+                    modeVal = Std.string(rawMode.skillUseMode);
+                }
+
+                // 2. Resolve timeout
+                var timeoutVal:Int = 100;
+                if (rawMode.timeout != null) {
+                    timeoutVal = ApiUtils.parseInt(rawMode.timeout, 100);
+                } else if (rawMode.skillTimeout != null) {
+                    timeoutVal = ApiUtils.parseInt(rawMode.skillTimeout, 100);
+                }
+                if (timeoutVal < 0) timeoutVal = 100;
+
+                // 3. Resolve combo string (DSL string)
+                var comboVal:String = "";
+                if (rawMode.combo != null && Std.string(rawMode.combo) != "") {
+                    comboVal = StringTools.trim(Std.string(rawMode.combo));
+                } else if (rawMode.skills != null && Std.isOfType(rawMode.skills, Array)) {
+                    try {
+                        comboVal = SkillDslParser.formatCombo(cast rawMode.skills);
+                    } catch (_:Dynamic) {}
+                }
+
+                // Strictly keep only mode, timeout, combo
+                var cleanMode:Dynamic = {
+                    mode: modeVal,
+                    timeout: timeoutVal,
+                    combo: comboVal
+                };
+                Reflect.setField(cleanClassObj, trimmedMode, cleanMode);
+                modeCount++;
+            }
+
+            if (modeCount > 0) {
+                Reflect.setField(cleanData, trimmedClass, cleanClassObj);
+            }
+        }
+        return cleanData;
     }
 
     public static function deleteFieldSafe(o:Dynamic, field:String):Bool {
@@ -72,12 +157,12 @@ class UserSkillsManager {
      * Writes userSkills object to userSkills.json and SharedObject backup.
      */
     public static function writeUserSkillsObject(data:Dynamic):Bool {
-        if (data == null) data = {};
-        _userSkillsCache = data;
+        var cleanData = sanitizeUserSkillsObject(data);
+        _userSkillsCache = cleanData;
 
         var jsonStr:String = "";
         try {
-            jsonStr = haxe.Json.stringify(data, null, "  ");
+            jsonStr = haxe.Json.stringify(cleanData, null, "  ");
         } catch (je:Dynamic) {
             ApiLogger.error("UserSkills", "JSON stringify error: " + je);
             return false;
@@ -264,14 +349,27 @@ class UserSkillsManager {
             }
 
             var classObj:Dynamic = Reflect.field(data, targetClassKey);
-            if (classObj == null) {
+            if (classObj == null || !Reflect.isObject(classObj) || Std.isOfType(classObj, Array)) {
                 classObj = {};
                 Reflect.setField(data, targetClassKey, classObj);
             }
 
             var effectiveMode = (skillUseMode != null && skillUseMode != "") ? skillUseMode : "WaitForCooldown";
-            var effectiveTimeout = timeout > 0 ? timeout : 100;
-            var effectiveCombo = (combo != null) ? combo : "";
+            var effectiveTimeout = timeout >= 0 ? timeout : 100;
+            var effectiveCombo = (combo != null) ? StringTools.trim(combo) : "";
+
+            // Delete any existing mode key (including case variations) to prevent duplicates or leftover fields
+            if (Reflect.hasField(classObj, trimmedMode)) {
+                deleteFieldSafe(classObj, trimmedMode);
+            } else {
+                var lower = trimmedMode.toLowerCase();
+                for (f in Reflect.fields(classObj)) {
+                    if (f.toLowerCase() == lower) {
+                        deleteFieldSafe(classObj, f);
+                        break;
+                    }
+                }
+            }
 
             var modeEntry:Dynamic = {
                 mode: effectiveMode,
@@ -422,6 +520,7 @@ class UserSkillsManager {
                             var toVal:Int = (mObj.timeout != null) ? ApiUtils.parseInt(mObj.timeout, 100) : (mObj.skillTimeout != null ? ApiUtils.parseInt(mObj.skillTimeout, 100) : 100);
                             var cVal:String = (mObj.combo != null) ? Std.string(mObj.combo) : "";
                             return {
+                                mode: mVal,
                                 skillUseMode: mVal,
                                 timeout: toVal,
                                 combo: cVal,
@@ -456,6 +555,7 @@ class UserSkillsManager {
                     comboStr = SkillDslParser.formatCombo(cast modeObj.skills);
                 }
                 return {
+                    mode: modeType,
                     skillUseMode: modeType,
                     timeout: timeout,
                     combo: (comboStr != null) ? comboStr : "",
