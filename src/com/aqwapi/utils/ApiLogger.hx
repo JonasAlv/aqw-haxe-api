@@ -120,6 +120,23 @@ class ApiLogger {
         return null;
     }
 
+    public static function getTimestamp(full:Bool = true):String {
+        try {
+            var d = Date.now();
+            var h = StringTools.lpad(Std.string(d.getHours()), "0", 2);
+            var m = StringTools.lpad(Std.string(d.getMinutes()), "0", 2);
+            var s = StringTools.lpad(Std.string(d.getSeconds()), "0", 2);
+            if (!full) return h + ":" + m + ":" + s;
+
+            var y = Std.string(d.getFullYear());
+            var mo = StringTools.lpad(Std.string(d.getMonth() + 1), "0", 2);
+            var da = StringTools.lpad(Std.string(d.getDate()), "0", 2);
+            return y + "-" + mo + "-" + da + " " + h + ":" + m + ":" + s;
+        } catch (_:Dynamic) {
+            return full ? "0000-00-00 00:00:00" : "00:00:00";
+        }
+    }
+
     public static function log(tag:String, msgLevel:Int, message:String):Void {
         if (msgLevel < level) return;
 
@@ -131,7 +148,8 @@ class ApiLogger {
             default: "LOG";
         };
 
-        var formatted:String = "[Api:" + tag + ":" + levelStr + "] " + message;
+        var timeStamp:String = getTimestamp(true);
+        var formatted:String = "[" + timeStamp + "] [Api:" + tag + ":" + levelStr + "] " + message;
 
         if (printToConsole) {
             try {
@@ -165,7 +183,9 @@ class ApiLogger {
         }
 
         if (printToChat && msgLevel >= chatMinLevel) {
-            pushChat(msgLevel >= LEVEL_WARN ? "warning" : "server", formatted);
+            var chatTime:String = getTimestamp(false);
+            var chatFormatted:String = "[" + chatTime + "] [Api:" + tag + ":" + levelStr + "] " + message;
+            pushChat(msgLevel >= LEVEL_WARN ? "warning" : "server", chatFormatted);
         }
 
         if (onLog != null) {
@@ -173,6 +193,7 @@ class ApiLogger {
                 onLog(tag, msgLevel, message);
             } catch (e:Dynamic) {}
         }
+
 
     }
 
