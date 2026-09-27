@@ -5,7 +5,8 @@ import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.AqwJson;
 
 class QuestDataLoader {
-    private static var _quests:Map<Int, QuestDTO> = null;
+    private static var _rawQuests:haxe.ds.IntMap<Dynamic> = null;
+    private static var _dtoCache:haxe.ds.IntMap<QuestDTO> = null;
     private static var _loading:Bool = false;
     private static var _loaded:Bool = false;
 
@@ -15,9 +16,9 @@ class QuestDataLoader {
 
     public static function count():Int {
         if (!_loaded) ensureLoaded(true);
-        if (_quests == null) return 0;
+        if (_rawQuests == null) return 0;
         var total = 0;
-        for (_ in _quests) total++;
+        for (_ in _rawQuests) total++;
         return total;
     }
 
@@ -29,7 +30,8 @@ class QuestDataLoader {
             com.aqwapi.utils.AqwStorage.ensureFiles();
             var rawJson:String = com.aqwapi.utils.AqwStorage.readText("quests.json");
 
-            _quests = new Map<Int, QuestDTO>();
+            _rawQuests = new haxe.ds.IntMap<Dynamic>();
+            _dtoCache = new haxe.ds.IntMap<QuestDTO>();
 
             if (rawJson != null && rawJson.length > 0) {
                 var rawList:Dynamic = AqwJson.parse(rawJson);
@@ -38,9 +40,9 @@ class QuestDataLoader {
                     var arr:Array<Dynamic> = cast rawList;
                     for (item in arr) {
                         if (item != null) {
-                            var dto = new QuestDTO(item);
-                            if (dto.id > 0) {
-                                _quests.set(dto.id, dto);
+                            var qid:Int = (item.ID != null) ? Std.int(item.ID) : ((item.id != null) ? Std.int(item.id) : 0);
+                            if (qid > 0) {
+                                _rawQuests.set(qid, item);
                                 loadedCount++;
                             }
                         }
@@ -56,7 +58,8 @@ class QuestDataLoader {
                 if (!silent) ApiLogger.warn("Quest", "assets/quests.json not found!");
             }
         } catch (e:Dynamic) {
-            _quests = new Map<Int, QuestDTO>();
+            _rawQuests = new haxe.ds.IntMap<Dynamic>();
+            _dtoCache = new haxe.ds.IntMap<QuestDTO>();
             _loaded = true;
             _loading = false;
             var msg:String = Std.string(e);
@@ -75,20 +78,35 @@ class QuestDataLoader {
 
     public static function get(questId:Int):QuestDTO {
         if (!_loaded) ensureLoaded(true);
-        if (_quests == null) return null;
-        return _quests.get(questId);
+        if (_rawQuests == null || questId <= 0) return null;
+        if (_dtoCache != null && _dtoCache.exists(questId)) {
+            return _dtoCache.get(questId);
+        }
+        var raw:Dynamic = _rawQuests.get(questId);
+        if (raw != null) {
+            var dto = new QuestDTO(raw);
+            if (_dtoCache != null) _dtoCache.set(questId, dto);
+            return dto;
+        }
+        return null;
     }
 
     public static function search(query:String, maxResults:Int = 50):Array<QuestDTO> {
         if (!_loaded) ensureLoaded(true);
         var results:Array<QuestDTO> = [];
-        if (_quests == null || query == null || query == "") return results;
+        if (_rawQuests == null || query == null || query == "") return results;
         var qLower:String = query.toLowerCase();
 
-        for (quest in _quests) {
-            if (quest.name != null && quest.name.toLowerCase().indexOf(qLower) != -1) {
-                results.push(quest);
-                if (results.length >= maxResults) break;
+        for (raw in _rawQuests) {
+            if (raw == null) continue;
+            var name:String = (raw.Name != null) ? Std.string(raw.Name) : ((raw.name != null) ? Std.string(raw.name) : "");
+            if (name != "" && name.toLowerCase().indexOf(qLower) != -1) {
+                var qid:Int = (raw.ID != null) ? Std.int(raw.ID) : ((raw.id != null) ? Std.int(raw.id) : 0);
+                var dto = get(qid);
+                if (dto != null) {
+                    results.push(dto);
+                    if (results.length >= maxResults) break;
+                }
             }
         }
         return results;

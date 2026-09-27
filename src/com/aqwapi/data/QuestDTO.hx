@@ -106,21 +106,6 @@ class QuestDTO {
                     }
                 }
 
-                // If still missing, check offline QuestDataLoader
-                if ((tName == null || tName == "") && tId > 0 && this.id > 0 && com.aqwapi.modules.QuestDataLoader.isLoaded()) {
-                    var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
-                    if (offQ != null && offQ.requirements != null) {
-                        for (offReq in offQ.requirements) {
-                            var offId:Int = (offReq.ItemID != null) ? Std.int(offReq.ItemID) : ((offReq.id != null) ? Std.int(offReq.id) : 0);
-                            if (offId == tId) {
-                                if (offReq.sName != null) tName = Std.string(offReq.sName);
-                                if (offReq.bTemp != null) tTemp = offReq.bTemp;
-                                break;
-                            }
-                        }
-                    }
-                }
-
                 reqList.push({
                     ItemID: tId,
                     id: tId,
@@ -138,31 +123,6 @@ class QuestDTO {
             this.requirements = [];
         }
 
-        // Fallback to QuestDataLoader if requirements is empty
-        if ((this.requirements == null || this.requirements.length == 0) && this.id > 0 && com.aqwapi.modules.QuestDataLoader.isLoaded()) {
-            var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
-            if (offQ != null && offQ.requirements != null && offQ.requirements.length > 0) {
-                this.requirements = offQ.requirements;
-            }
-        }
-
-        // Fallback name if missing
-        if ((this.name == null || this.name == "") && this.id > 0 && com.aqwapi.modules.QuestDataLoader.isLoaded()) {
-            var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
-            if (offQ != null && offQ.name != null && offQ.name != "") {
-                this.name = offQ.name;
-            }
-        }
-
-        // Fallback slot & value if missing
-        if (this.slot < 0 && this.id > 0 && com.aqwapi.modules.QuestDataLoader.isLoaded()) {
-            var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
-            if (offQ != null && offQ.slot >= 0) {
-                this.slot = offQ.slot;
-                this.value = offQ.value;
-            }
-        }
-
         // Rewards
         if (rawData.Rewards != null && Std.isOfType(rawData.Rewards, Array)) {
             this.rewards = cast rawData.Rewards;
@@ -170,14 +130,6 @@ class QuestDTO {
             this.rewards = cast rawData.reward;
         } else {
             this.rewards = [];
-        }
-
-        // Fallback rewards if missing
-        if ((this.rewards == null || this.rewards.length == 0) && this.id > 0) {
-            var offQ = com.aqwapi.modules.QuestDataLoader.get(this.id);
-            if (offQ != null && offQ.rewards != null && offQ.rewards.length > 0) {
-                this.rewards = offQ.rewards;
-            }
         }
 
         // Simple Rewards
