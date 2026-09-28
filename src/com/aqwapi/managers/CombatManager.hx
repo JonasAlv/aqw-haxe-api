@@ -169,17 +169,21 @@ class CombatManager {
 
     public function startSmart():Void { CombatEngine.start(true, false); }
 
-    public inline function start(smart:Bool = true):Void {
+    public function start(smart:Bool = true):Void {
         if (smart) startSmart();
         else CombatEngine.start(false, false);
     }
 
-    public inline function stop():Void {
+    public function stop():Void {
         stopAuto();
     }
 
-    public inline function isRunning():Bool {
+    public function isRunning():Bool {
         return CombatEngine.IS_ON;
+    }
+
+    public function ensure(smart:Bool = true):Void {
+        if (!isRunning()) start(smart);
     }
 
     public function startCustom(rotation:String, mode:String = "auto"):Void {
