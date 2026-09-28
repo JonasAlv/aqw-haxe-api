@@ -111,12 +111,22 @@ class UserSkillsManager {
                     } catch (_:Dynamic) {}
                 }
 
-                // Strictly keep only mode, timeout, combo
+                // Strictly keep only mode, timeout, combo, stopOnTargetAuras, resetComboOnTargetChange
                 var cleanMode:Dynamic = {
                     mode: modeVal,
                     timeout: timeoutVal,
                     combo: comboVal
                 };
+                if (rawMode.stopOnTargetAuras != null && Std.string(rawMode.stopOnTargetAuras) != "") {
+                    cleanMode.stopOnTargetAuras = Std.string(rawMode.stopOnTargetAuras);
+                } else if (rawMode.stopTargetAuras != null && Std.string(rawMode.stopTargetAuras) != "") {
+                    cleanMode.stopOnTargetAuras = Std.string(rawMode.stopTargetAuras);
+                }
+                if (rawMode.resetComboOnTargetChange != null) {
+                    cleanMode.resetComboOnTargetChange = (rawMode.resetComboOnTargetChange == true || Std.string(rawMode.resetComboOnTargetChange) == "true");
+                } else if (rawMode.resetOnTarget != null) {
+                    cleanMode.resetComboOnTargetChange = (rawMode.resetOnTarget == true || Std.string(rawMode.resetOnTarget) == "true");
+                }
                 Reflect.setField(cleanClassObj, trimmedMode, cleanMode);
                 modeCount++;
             }
@@ -331,7 +341,7 @@ class UserSkillsManager {
     /**
      * Saves or updates a mode in userSkills.json and registers it in memory.
      */
-    public static function saveMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String):Bool {
+    public static function saveMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String, stopOnTargetAuras:String = null, resetComboOnTargetChange:Null<Bool> = null):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
         var resolvedClass = resolveClassName(className);
         var trimmedClass = StringTools.trim(resolvedClass);
@@ -376,15 +386,21 @@ class UserSkillsManager {
                 timeout: effectiveTimeout,
                 combo: effectiveCombo
             };
+            if (stopOnTargetAuras != null && stopOnTargetAuras != "") {
+                modeEntry.stopOnTargetAuras = stopOnTargetAuras;
+            }
+            if (resetComboOnTargetChange != null) {
+                modeEntry.resetComboOnTargetChange = resetComboOnTargetChange;
+            }
             Reflect.setField(classObj, trimmedMode, modeEntry);
 
             var ok = writeUserSkillsObject(data);
 
             // Instant in-memory registration into CombatEngine
             try {
-                CombatEngine.registerCustomMode(targetClassKey, trimmedMode, effectiveMode, effectiveTimeout, effectiveCombo);
+                CombatEngine.registerCustomMode(targetClassKey, trimmedMode, effectiveMode, effectiveTimeout, effectiveCombo, stopOnTargetAuras, resetComboOnTargetChange);
                 if (targetClassKey != trimmedClass) {
-                    CombatEngine.registerCustomMode(trimmedClass, trimmedMode, effectiveMode, effectiveTimeout, effectiveCombo);
+                    CombatEngine.registerCustomMode(trimmedClass, trimmedMode, effectiveMode, effectiveTimeout, effectiveCombo, stopOnTargetAuras, resetComboOnTargetChange);
                 }
             } catch (ce:Dynamic) {
                 ApiLogger.error("UserSkills", "Error registering custom mode: " + ce);
@@ -519,11 +535,15 @@ class UserSkillsManager {
                             var mVal:String = (mObj.mode != null && mObj.mode != "") ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown");
                             var toVal:Int = (mObj.timeout != null) ? ApiUtils.parseInt(mObj.timeout, 100) : (mObj.skillTimeout != null ? ApiUtils.parseInt(mObj.skillTimeout, 100) : 100);
                             var cVal:String = (mObj.combo != null) ? Std.string(mObj.combo) : "";
+                            var stAuras:String = (mObj.stopOnTargetAuras != null) ? Std.string(mObj.stopOnTargetAuras) : ((mObj.stopTargetAuras != null) ? Std.string(mObj.stopTargetAuras) : "");
+                            var rstTgt:Bool = (mObj.resetComboOnTargetChange != null) ? (mObj.resetComboOnTargetChange == true || Std.string(mObj.resetComboOnTargetChange) == "true") : ((mObj.resetOnTarget != null) ? (mObj.resetOnTarget == true || Std.string(mObj.resetOnTarget) == "true") : true);
                             return {
                                 mode: mVal,
                                 skillUseMode: mVal,
                                 timeout: toVal,
                                 combo: cVal,
+                                stopOnTargetAuras: stAuras,
+                                resetComboOnTargetChange: rstTgt,
                                 isUser: true
                             };
                         }
@@ -554,11 +574,15 @@ class UserSkillsManager {
                 } else if (modeObj.skills != null && Std.isOfType(modeObj.skills, Array)) {
                     comboStr = SkillDslParser.formatCombo(cast modeObj.skills);
                 }
+                var stAuras:String = (modeObj.stopOnTargetAuras != null) ? Std.string(modeObj.stopOnTargetAuras) : ((modeObj.stopTargetAuras != null) ? Std.string(modeObj.stopTargetAuras) : "");
+                var rstTgt:Bool = (modeObj.resetComboOnTargetChange != null) ? (modeObj.resetComboOnTargetChange == true || Std.string(modeObj.resetComboOnTargetChange) == "true") : ((modeObj.resetOnTarget != null) ? (modeObj.resetOnTarget == true || Std.string(modeObj.resetOnTarget) == "true") : true);
                 return {
                     mode: modeType,
                     skillUseMode: modeType,
                     timeout: timeout,
                     combo: (comboStr != null) ? comboStr : "",
+                    stopOnTargetAuras: stAuras,
+                    resetComboOnTargetChange: rstTgt,
                     isUser: isUserMode(trimmedClass, trimmedMode)
                 };
             }

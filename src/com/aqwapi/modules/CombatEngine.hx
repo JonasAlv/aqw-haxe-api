@@ -52,6 +52,8 @@ class CombatEngine {
     private static var _stepFirstFailTime:Float = -1;  // when current step first failed to fire (GCD/CD block)
     private static var _lastLoggedMode:String = null;
     private static var _skillsLoaded:Bool = false;
+    public static var globalStopOnTargetAuras:Array<String> = [];
+    private static var _pausedByTargetAura:Bool = false;
 
     private static var NULL_CONFIG:Dynamic = { __null: true };
     private static var _classConfigCache:Map<String, Dynamic> = new Map<String, Dynamic>();
@@ -241,6 +243,9 @@ class CombatEngine {
                             }
                             if (mObj.resetComboOnTargetChange != null && mObj.resetOnTarget == null) {
                                 mObj.resetOnTarget = mObj.resetComboOnTargetChange;
+                            }
+                            if (mObj.stopOnTargetAuras != null && mObj.stopTargetAuras == null) {
+                                mObj.stopTargetAuras = mObj.stopOnTargetAuras;
                             }
                         } catch (me:Dynamic) {}
                     }
@@ -458,6 +463,24 @@ class CombatEngine {
         }
 
         if (isSmart) {
+            var activeModeConfig = resolveActiveModeConfig(world, avatar, target);
+            if (shouldStopForTargetAuras(world, avatar, target, activeModeConfig)) {
+                if (!_pausedByTargetAura) {
+                    _pausedByTargetAura = true;
+                    ApiLogger.warn("Combat", "Target has forbidden reflect/shield aura, pausing combat until it expires!");
+                }
+                if (world.cancelAutoAttack != null) {
+                    try { untyped world.cancelAutoAttack(); } catch (e:Dynamic) {}
+                }
+                if (world.autoActionTimer != null && world.autoActionTimer.running) {
+                    try { untyped world.autoActionTimer.stop(); } catch (e:Dynamic) {}
+                }
+                return;
+            } else if (_pausedByTargetAura) {
+                _pausedByTargetAura = false;
+                ApiLogger.info("Combat", "Target reflect/shield aura expired, resuming combat!");
+            }
+
             // Always auto-attack / approach — respects infinite range toggle
             try {
                 var infRange:Bool = false;
@@ -661,6 +684,34 @@ class CombatEngine {
             return;
         }
 
+        // 2. Emergency Heal Priority Interrupt:
+        // If player HP is critical and a skill has a satisfied hp < X% rule, prioritize it immediately out of turn
+        for (i in 0...len) {
+            if (i == _rotationIndex) continue;
+            var candSkill:Dynamic = skills[i];
+            if (candSkill == null || candSkill.rules == null || !Std.isOfType(candSkill.rules, Array)) continue;
+            var hasEmergencyHpRule:Bool = false;
+            for (r in (cast candSkill.rules : Array<Dynamic>)) {
+                if (r != null && Std.string(r.type) == "Health") {
+                    var comp = (r.comparison != null) ? Std.string(r.comparison) : "less";
+                    if (comp == "less" || comp == "<" || comp == "<=") {
+                        hasEmergencyHpRule = true;
+                        break;
+                    }
+                }
+            }
+            if (hasEmergencyHpRule) {
+                var candSid:Int = ApiUtils.parseInt(candSkill.skillId, 1);
+                if (evaluateSkillRules(candSkill, world, avatar, target, candSid)) {
+                    var hRes = fireSkill(world, avatar, candSid);
+                    if (hRes == SR_FIRED) {
+                        ApiLogger.info("Combat", "Emergency heal fired: skill " + candSid);
+                        return;
+                    }
+                }
+            }
+        }
+
         var skill:Dynamic = skills[_rotationIndex];
         var skillId:Int = ApiUtils.parseInt(skill.skillId, 1);
 
@@ -809,6 +860,27 @@ class CombatEngine {
                 var currentVal:Float = isPct ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
                 return compare(currentVal, targetVal, Std.string(rule.comparison));
 
+            case "TargetHealth":
+                if (target == null) return false;
+                var dl:Dynamic = target.dataLeaf;
+                var od:Dynamic = target.objData;
+                var hp:Float = 0;
+                var maxHp:Float = 100;
+                if (dl != null && dl.intHP != null) {
+                    hp = ApiUtils.parseFloat(dl.intHP, 0);
+                    maxHp = (dl.intHPMax != null && dl.intHPMax > 0) ? ApiUtils.parseFloat(dl.intHPMax, 100) : 100;
+                } else if (od != null && od.intHP != null) {
+                    hp = ApiUtils.parseFloat(od.intHP, 0);
+                    maxHp = (od.intHPMax != null && od.intHPMax > 0) ? ApiUtils.parseFloat(od.intHPMax, 100) : 100;
+                } else {
+                    return false;
+                }
+                var targetVal:Float = ApiUtils.parseFloat(rule.value, 0);
+                var isPct:Bool = (rule.isPercentage == true);
+                if (rule.isPercentage == null) isPct = (targetVal <= 100);
+                var currentVal:Float = isPct ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
+                return compare(currentVal, targetVal, Std.string(rule.comparison));
+
             case "Mana":
                 var mp:Float = getStat(pStats, avatar, "MP");
                 var maxMp:Float = getStat(pStats, avatar, "MaxMP");
@@ -819,6 +891,15 @@ class CombatEngine {
 
             case "PartyHealth":
                 return evaluatePartyHealth(rule, world, avatar);
+
+            case "AuraTime", "AuraRemaining", "AuraTimer":
+                var auraName:String = (rule.auraName != null) ? Std.string(rule.auraName) : "";
+                var auraTarget:String = (rule.auraTarget != null) ? Std.string(rule.auraTarget) : "self";
+                var stacks:Float = getAuraStacks(auraName, auraTarget, world, avatar, target);
+                if (stacks <= 0) return false;
+                var remainingSec:Float = getAuraRemaining(auraName, auraTarget, world, avatar, target);
+                var threshold:Float = ApiUtils.parseFloat(rule.value, 0);
+                return compare(remainingSec, threshold, Std.string(rule.comparison));
 
             case "Aura", "MultiAura":
                 var auraName:String = (rule.auraName != null) ? Std.string(rule.auraName) : "";
@@ -903,7 +984,7 @@ class CombatEngine {
             }
             if (auras == null && avatar.auras != null) auras = avatar.auras;
         } else {
-            // Target monster
+            // Target monster or player
             if (target != null) {
                 try {
                     var mmid:Dynamic = null;
@@ -914,6 +995,17 @@ class CombatEngine {
                         if (monObj != null && monObj.auras != null) auras = monObj.auras;
                     }
                 } catch (e:Dynamic) {}
+                if (auras == null && world.uoTree != null) {
+                    try {
+                        var tpnm:String = null;
+                        if (target.pnm != null) tpnm = Std.string(target.pnm);
+                        else if (target.dataLeaf != null && target.dataLeaf.strUsername != null) tpnm = Std.string(target.dataLeaf.strUsername);
+                        if (tpnm != null && tpnm != "") {
+                            var uo = Reflect.field(world.uoTree, tpnm.toLowerCase());
+                            if (uo != null && uo.auras != null) auras = uo.auras;
+                        }
+                    } catch (e:Dynamic) {}
+                }
                 if (auras == null && target.dataLeaf != null && target.dataLeaf.auras != null) {
                     auras = target.dataLeaf.auras;
                 }
@@ -931,7 +1023,7 @@ class CombatEngine {
             if (a == null) return;
             // Filter expired auras (a.e == 1 in AQW Flash)
             if (a.e == 1 || a.e == "1" || a.e == true) return;
-            var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : "");
+            var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : ((a.sName != null) ? Std.string(a.sName) : ""));
             if (name != "" && name.toLowerCase() == search) {
                 var val:Dynamic = a.val;
                 totalStacks += (val == null) ? 1 : ApiUtils.parseFloat(val, 1);
@@ -944,6 +1036,189 @@ class CombatEngine {
             for (k in Reflect.fields(auras)) processAura(Reflect.field(auras, k));
         }
         return totalStacks;
+    }
+
+    public static function getAuraRemaining(auraName:String, auraTarget:String, world:Dynamic, avatar:Dynamic, target:Dynamic):Float {
+        if (world == null || avatar == null || auraName == "") return 0.0;
+        var auras:Dynamic = null;
+        var targetIsSelf:Bool = (auraTarget != null && auraTarget.toLowerCase() == "self");
+
+        if (targetIsSelf) {
+            try {
+                if (world.uoTree != null && avatar.pnm != null) {
+                    var uo = Reflect.field(world.uoTree, Std.string(avatar.pnm).toLowerCase());
+                    if (uo != null && uo.auras != null) auras = uo.auras;
+                }
+            } catch (e:Dynamic) {}
+            if (auras == null) {
+                try {
+                    if (world.uoTreeLeaf != null && avatar.pnm != null) {
+                        var n:Dynamic = world.uoTreeLeaf(avatar.pnm);
+                        if (n != null && n.auras != null) auras = n.auras;
+                    }
+                } catch (e:Dynamic) {}
+            }
+            if (auras == null && avatar.auras != null) auras = avatar.auras;
+            if (auras == null && avatar.dataLeaf != null && avatar.dataLeaf.auras != null) auras = avatar.dataLeaf.auras;
+        } else {
+            if (target != null) {
+                try {
+                    var mmid:Dynamic = null;
+                    if (target.dataLeaf != null && target.dataLeaf.MonMapID != null) mmid = target.dataLeaf.MonMapID;
+                    else if (target.objData != null && target.objData.MonMapID != null) mmid = target.objData.MonMapID;
+                    if (mmid != null && world.monTree != null) {
+                        var monObj = Reflect.field(world.monTree, Std.string(mmid));
+                        if (monObj != null && monObj.auras != null) auras = monObj.auras;
+                    }
+                } catch (e:Dynamic) {}
+                if (auras == null && world.uoTree != null) {
+                    try {
+                        var tpnm:String = null;
+                        if (target.pnm != null) tpnm = Std.string(target.pnm);
+                        else if (target.dataLeaf != null && target.dataLeaf.strUsername != null) tpnm = Std.string(target.dataLeaf.strUsername);
+                        if (tpnm != null && tpnm != "") {
+                            var uo = Reflect.field(world.uoTree, tpnm.toLowerCase());
+                            if (uo != null && uo.auras != null) auras = uo.auras;
+                        }
+                    } catch (e:Dynamic) {}
+                }
+                if (auras == null && target.dataLeaf != null && target.dataLeaf.auras != null) {
+                    auras = target.dataLeaf.auras;
+                }
+                if (auras == null && target.auras != null) {
+                    auras = target.auras;
+                }
+            }
+        }
+
+        if (auras == null) return 0.0;
+        var search:String = auraName.toLowerCase();
+        var maxRemaining:Float = 0.0;
+
+        var processAura = function(a:Dynamic):Void {
+            if (a == null) return;
+            if (a.e == 1 || a.e == "1" || a.e == true) return;
+            var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : ((a.sName != null) ? Std.string(a.sName) : ""));
+            if (name != "" && name.toLowerCase() == search) {
+                var dur:Float = (a.dur != null) ? ApiUtils.parseFloat(a.dur, 0.0) : 0.0;
+                if (dur <= 0) return;
+                var ts:Float = (a.ts != null) ? ApiUtils.parseFloat(a.ts, 0.0) : 0.0;
+                if (ts <= 0) {
+                    if (dur > maxRemaining) maxRemaining = dur;
+                    return;
+                }
+                var tsMs:Float = (ts < 10000000000.0) ? (ts * 1000.0) : ts;
+                var nowMs:Float = Date.now().getTime();
+                var rem:Float = (tsMs + (dur * 1000.0) - nowMs) / 1000.0;
+                if (rem > maxRemaining) {
+                    maxRemaining = rem;
+                }
+            }
+        };
+
+        if (Std.isOfType(auras, Array)) {
+            for (a in (cast auras : Array<Dynamic>)) processAura(a);
+        } else {
+            for (k in Reflect.fields(auras)) processAura(Reflect.field(auras, k));
+        }
+        return maxRemaining > 0 ? maxRemaining : 0.0;
+    }
+
+    public static function shouldStopForTargetAuras(world:Dynamic, avatar:Dynamic, target:Dynamic, modeConfig:Dynamic):Bool {
+        if (target == null) return false;
+        var aurasToCheck:Array<String> = [];
+        if (globalStopOnTargetAuras != null) {
+            for (a in globalStopOnTargetAuras) if (a != null && a != "") aurasToCheck.push(a.toLowerCase());
+        }
+        if (modeConfig != null && modeConfig.stopOnTargetAuras != null) {
+            var val:Dynamic = modeConfig.stopOnTargetAuras;
+            if (Std.isOfType(val, Array)) {
+                for (item in (cast val : Array<Dynamic>)) {
+                    if (item != null && Std.string(item) != "") aurasToCheck.push(Std.string(item).toLowerCase());
+                }
+            } else if (Std.isOfType(val, String)) {
+                var parts:Array<String> = Std.string(val).split(",");
+                for (p in parts) {
+                    var tr = StringTools.trim(p).toLowerCase();
+                    if (tr != "") aurasToCheck.push(tr);
+                }
+            }
+        }
+        if (aurasToCheck.length == 0) return false;
+
+        for (aName in aurasToCheck) {
+            if (getAuraStacks(aName, "target", world, avatar, target) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static function resolveActiveModeConfig(world:Dynamic, avatar:Dynamic, target:Dynamic):Dynamic {
+        var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : getSettingString("api_smart_class", "Current");
+        var className:String = "";
+        if (confClass != null && confClass != "" && confClass != "Current") {
+            className = confClass;
+        } else {
+            className = getCurrentClassName();
+            if (className == "" && avatar != null && avatar.objData != null && avatar.objData.strClassName != null) {
+                className = Std.string(avatar.objData.strClassName);
+            }
+        }
+        var config:Dynamic = (className != "") ? findClassConfig(className) : null;
+        if (config == null) return null;
+
+        var modeConfig:Dynamic = null;
+        if (skillMode != null && skillMode != "" && Reflect.hasField(config, skillMode)) {
+            modeConfig = Reflect.field(config, skillMode);
+        }
+        if (modeConfig == null && skillMode != null && skillMode != "") {
+            for (key in Reflect.fields(config)) {
+                if (key.toLowerCase() == skillMode.toLowerCase()) {
+                    modeConfig = Reflect.field(config, key);
+                    break;
+                }
+            }
+        }
+        if (modeConfig == null && skillMode != null && skillMode != "") {
+            var details = UserSkillsManager.getModeDetails(className, skillMode);
+            if (details != null && details.combo != null && details.combo != "") {
+                var parsedSkills = com.aqwapi.utils.SkillDslParser.parseCombo(details.combo);
+                if (parsedSkills != null && parsedSkills.length > 0) {
+                    modeConfig = {
+                        skillUseMode: details.skillUseMode,
+                        skillTimeout: details.timeout,
+                        skills: parsedSkills,
+                        combo: details.combo,
+                        stopOnTargetAuras: details.stopOnTargetAuras,
+                        resetComboOnTargetChange: details.resetComboOnTargetChange
+                    };
+                    Reflect.setField(config, skillMode, modeConfig);
+                }
+            }
+        }
+        if (modeConfig == null) {
+            if (Reflect.field(config, "Base") != null) {
+                modeConfig = Reflect.field(config, "Base");
+            } else {
+                for (key in Reflect.fields(config)) {
+                    if (key.toLowerCase() == "base") {
+                        modeConfig = Reflect.field(config, key);
+                        break;
+                    }
+                }
+            }
+        }
+        if (modeConfig == null) {
+            for (key in Reflect.fields(config)) {
+                var candidate:Dynamic = Reflect.field(config, key);
+                if (candidate != null && !Std.isOfType(candidate, Array)) {
+                    modeConfig = candidate;
+                    break;
+                }
+            }
+        }
+        return modeConfig;
     }
 
     private static function checkAura(auraName:String, auraTarget:String, world:Dynamic, avatar:Dynamic, target:Dynamic):Bool {
@@ -1126,7 +1401,7 @@ class CombatEngine {
         return list.copy();
     }
 
-    public static function registerCustomMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String):Void {
+    public static function registerCustomMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String, stopOnTargetAuras:String = null, resetComboOnTargetChange:Null<Bool> = null):Void {
         if (className == null || className == "" || modeName == null || modeName == "") return;
         if (!_skillsLoaded) init();
         if (_skillsData == null) _skillsData = {};
@@ -1160,6 +1435,13 @@ class CombatEngine {
             skills: parsedCombo,
             combo: combo
         };
+        if (stopOnTargetAuras != null && stopOnTargetAuras != "") {
+            modeObj.stopOnTargetAuras = stopOnTargetAuras;
+        }
+        if (resetComboOnTargetChange != null) {
+            modeObj.resetComboOnTargetChange = resetComboOnTargetChange;
+            modeObj.resetOnTarget = resetComboOnTargetChange;
+        }
         Reflect.setField(targetClass, trimmedMode, modeObj);
         rebuildClassIndex();
         ApiLogger.info("Skills", "Registered custom mode [" + targetKey + " : " + trimmedMode + "] in memory!");

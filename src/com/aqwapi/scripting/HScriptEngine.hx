@@ -576,6 +576,52 @@ class HScriptEngine {
             }
             return false;
         });
+        _interp.variables.set("getAuraRemaining", function(auraName:String, target:String = "self"):Float {
+            if (Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null) {
+                var avt = Api.game.world.myAvatar;
+                var tgt = avt.target;
+                return CombatEngine.getAuraRemaining(auraName, target, Api.game.world, avt, tgt);
+            }
+            return 0.0;
+        });
+        _interp.variables.set("getPlayerAuraRemaining", function(auraName:String):Float {
+            return Api.player != null ? Api.player.getAuraRemaining(auraName) : 0.0;
+        });
+        _interp.variables.set("getTargetAuraRemaining", function(auraName:String):Float {
+            var t = Api.player != null ? Api.player.target : null;
+            return t != null ? t.getAuraRemaining(auraName) : 0.0;
+        });
+        _interp.variables.set("getAuraDuration", function(auraName:String, target:String = "self"):Float {
+            if (target == "self" || target == "player") {
+                return Api.player != null ? Api.player.getAuraDuration(auraName) : 0.0;
+            } else {
+                var t = Api.player != null ? Api.player.target : null;
+                return t != null ? t.getAuraDuration(auraName) : 0.0;
+            }
+        });
+        _interp.variables.set("getAuraStacks", function(auraName:String, target:String = "self"):Float {
+            if (target == "self" || target == "player") {
+                return Api.player != null ? Api.player.getAuraStacks(auraName) : 0.0;
+            } else {
+                var t = Api.player != null ? Api.player.target : null;
+                return t != null ? t.getAuraStacks(auraName) : 0.0;
+            }
+        });
+
+        // Target Status Helpers
+        _interp.variables.set("targetHp", function():Int {
+            var t = Api.player != null ? Api.player.target : null;
+            return t != null ? t.hp : 0;
+        });
+        _interp.variables.set("targetMaxHp", function():Int {
+            var t = Api.player != null ? Api.player.target : null;
+            return t != null ? t.maxHp : 0;
+        });
+        _interp.variables.set("targetHpPercent", function():Float {
+            var t = Api.player != null ? Api.player.target : null;
+            if (t == null || t.maxHp <= 0) return 0.0;
+            return t.hp / t.maxHp;
+        });
 
         // Player Status Helpers
         _interp.variables.set("hpPercent", function():Float {
