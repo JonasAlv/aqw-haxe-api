@@ -499,28 +499,18 @@ class CombatEngine {
                 ApiLogger.info("Combat", "Target reflect/shield aura expired, resuming combat!");
             }
 
-            // Always auto-attack / approach — respects infinite range toggle
+            // Auto-attack / approach: only approach if skill range or AA range is close (and infinite range is off)
             try {
-                var infRange:Bool = false;
-                try {
-                    // Read directly from HelperSetting to avoid any cross-package getter issues
-                    var helperCls:Dynamic = Type.resolveClass("util.HelperSetting");
-                    if (helperCls != null) infRange = (helperCls.getBool("api_infinite_range", false) == true);
-                } catch (re:Dynamic) {
-                    // Fallback: read from CombatManager field via untyped
-                    if (Api.combat != null) infRange = (untyped Api.combat._infiniteRange == true);
-                }
-
-                if (infRange) {
-                    // Infinite range ON: trigger AA only if not already actively auto-attacking and GCD is free
+                if (shouldApproachTarget(world)) {
+                    // Normal close range: let world.approachTarget handle range check, walking, and AA firing
+                    if (world.approachTarget != null) {
+                        try { untyped world.approachTarget(); } catch (ae:Dynamic) {}
+                    }
+                } else {
+                    // Infinite / ranged: trigger AA directly from range without walking if not already actively auto-attacking and GCD is free
                     var isAAActive:Bool = (world.autoActionTimer != null && world.autoActionTimer.running);
                     if (!isAAActive && !isGcdActive(world)) {
                         tryFireSkill(world, avatar, 0);
-                    }
-                } else {
-                    // Normal: let world.approachTarget handle range check, walking, and AA firing
-                    if (world.approachTarget != null) {
-                        try { untyped world.approachTarget(); } catch (ae:Dynamic) {}
                     }
                 }
             } catch (e:Dynamic) {}
@@ -1680,11 +1670,7 @@ class CombatEngine {
 
         // 6. Infinite range (scripting toggle)
         try {
-            var infRange:Bool = false;
-            var helperCls:Dynamic = Type.resolveClass("util.HelperSetting");
-            if (helperCls != null) infRange = (helperCls.getBool("api_infinite_range", false) == true);
-            else if (Api.combat != null) infRange = (untyped Api.combat._infiniteRange == true);
-            if (infRange) actObj.range = 20000;
+            if (isInfiniteRangeActive()) actObj.range = 20000;
         } catch (e:Dynamic) {}
 
         // 7. Fire
@@ -1714,6 +1700,91 @@ class CombatEngine {
         if (Api.game == null || Api.game.world == null || Api.game.world.myAvatar == null) return false;
         var res = fireSkill(Api.game.world, Api.game.world.myAvatar, idx);
         return res == SR_FIRED || res == SR_TIMING;
+    }
+
+    public static function isInfiniteRangeActive():Bool {
+        try {
+            var helperCls:Dynamic = Type.resolveClass("util.HelperSetting");
+            if (helperCls != null && helperCls.getBool("api_infinite_range", false) == true) return true;
+        } catch (e:Dynamic) {}
+        try {
+            if (Api.combat != null && untyped Api.combat._infiniteRange == true) return true;
+        } catch (e:Dynamic) {}
+        return false;
+    }
+
+    public static function shouldApproachTarget(world:Dynamic):Bool {
+        if (world == null) return false;
+
+        // 1. If infinite range toggle is on, ignore range completely
+        if (isInfiniteRangeActive()) return false;
+
+        var isAaClose:Bool = false;
+        var isAaInfinite:Bool = false;
+
+        // 2. Check Auto Attack (slot 0)
+        try {
+            var aaAct:Dynamic = getSkillAction(0);
+            if (aaAct == null && world.getAutoAttack != null) {
+                try { aaAct = world.getAutoAttack(); } catch (e:Dynamic) {}
+            }
+            if (aaAct == null && world.actions != null && world.actions.active != null) {
+                try {
+                    var actList:Array<Dynamic> = cast world.actions.active;
+                    if (actList != null && actList.length > 0) aaAct = actList[0];
+                } catch (e:Dynamic) {}
+            }
+            if (aaAct != null && aaAct.range != null) {
+                var aaR:Float = ApiUtils.parseFloat(aaAct.range, 301);
+                if (aaR >= 20000) {
+                    isAaInfinite = true;
+                } else if (aaR > 0 && aaR <= 301) {
+                    isAaClose = true;
+                }
+            }
+        } catch (e:Dynamic) {}
+
+        // 3. Check active offensive skills (slots 1 to 4)
+        var hasCloseSkill:Bool = false;
+        var hasInfiniteSkill:Bool = false;
+
+        try {
+            for (i in 1...5) {
+                var act:Dynamic = getSkillAction(i);
+                if (act == null && world.actions != null && world.actions.active != null) {
+                    try {
+                        var actList:Array<Dynamic> = cast world.actions.active;
+                        if (actList != null && i < actList.length) act = actList[i];
+                    } catch (e:Dynamic) {}
+                }
+                if (act == null || act.range == null) continue;
+
+                // Skip self-targeted and friendly-targeted skills (heals, self buffs)
+                var tgt:String = (act.tgt != null) ? Std.string(act.tgt).toLowerCase() : "";
+                if (tgt == "self" || tgt == "friendly") continue;
+                if (Reflect.hasField(act, "tgtMin") && Reflect.field(act, "tgtMin") == 0) continue;
+
+                var r:Float = ApiUtils.parseFloat(act.range, 0);
+                if (r >= 20000) {
+                    hasInfiniteSkill = true;
+                } else if (r > 0 && r <= 301) {
+                    hasCloseSkill = true;
+                }
+            }
+        } catch (e:Dynamic) {}
+
+        // If the equipped class has infinite range, do not approach
+        if (isAaInfinite || hasInfiniteSkill) {
+            return false;
+        }
+
+        // Only approach if skill range or AA range is close (<= 301)
+        if (isAaClose || hasCloseSkill) {
+            return true;
+        }
+
+        // Pure ranged class (all ranges > 301) or unknown: do not approach
+        return false;
     }
 
     private static function getSkillAction(idx:Int):Dynamic {
