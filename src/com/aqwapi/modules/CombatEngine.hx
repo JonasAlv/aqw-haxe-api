@@ -51,7 +51,9 @@ class CombatEngine {
     private static var _lastFallbackWarnTime:Float = 0;
 
     public static function init():Void {
-        SkillManager.reload(true);
+        // Only load from disk if not already loaded — data is preloaded at startup via Api.preloadAssets().
+        // Calling reload() unconditionally caused a synchronous disk read lag spike on every combat start.
+        if (!SkillManager.isLoaded()) SkillManager.reload(true);
         if (_timer == null) {
             _timer = new Timer(100);
             _timer.addEventListener(TimerEvent.TIMER, onTick);
@@ -104,6 +106,11 @@ class CombatEngine {
             try {
                 if (world.cancelAutoAttack != null) {
                     world.cancelAutoAttack();
+                }
+            } catch (_:Dynamic) {}
+            try {
+                if (world.autoActionTimer != null && world.autoActionTimer.running) {
+                    world.autoActionTimer.stop();
                 }
             } catch (_:Dynamic) {}
         }
@@ -282,6 +289,11 @@ class CombatEngine {
                 if (world.cancelAutoAttack != null) {
                     try { world.cancelAutoAttack(); } catch (_:Dynamic) {}
                 }
+                try {
+                    if (world.autoActionTimer != null && world.autoActionTimer.running) {
+                        world.autoActionTimer.stop();
+                    }
+                } catch (_:Dynamic) {}
                 return;
             } else if (_pausedByTargetAura) {
                 _pausedByTargetAura = false;
@@ -294,7 +306,11 @@ class CombatEngine {
                         try { untyped world.approachTarget(); } catch (_:Dynamic) {}
                     }
                 } else {
-                    if (!SkillCaster.isGcdActive(world)) {
+                    var isAAActive:Bool = false;
+                    try {
+                        isAAActive = (world.autoActionTimer != null && world.autoActionTimer.running);
+                    } catch (_:Dynamic) {}
+                    if (!isAAActive && !SkillCaster.isGcdActive(world)) {
                         SkillCaster.fireSkill(world, avatar, 0);
                     }
                 }
