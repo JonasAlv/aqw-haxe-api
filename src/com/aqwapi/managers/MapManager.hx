@@ -47,7 +47,7 @@ class MapManager {
         return true;
     }
 
-    public function ensure(mapName:String, cell:String = null, pad:String = null):Bool {
+    public function ensure(mapName:String, cell:String = "Enter", pad:String = "Spawn"):Bool {
         if (Api.player != null && !Api.player.isAlive) return false;
         if (!isLoaded) return false;
 
@@ -68,15 +68,15 @@ class MapManager {
         return true;
     }
 
-    public inline function stay(mapName:String, cell:String = null, pad:String = null):Bool {
+    public inline function stay(mapName:String, cell:String = "Enter", pad:String = "Spawn"):Bool {
         return ensure(mapName, cell, pad);
     }
 
-    public function join(mapName:String, cell:String = null, pad:String = null, force:Bool = false):Void {
+    public function join(mapName:String, cell:String = "Enter", pad:String = "Spawn", force:Bool = false):Void {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return;
 
-        // If already on this map, simply jump to cell if specified and not already there
+        // If already on this map, simply jump to cell if not already there
         if (!force && isMap(mapName)) {
             if (cell != null && cell != "" && !isCell(cell)) {
                 jump(cell, pad);
@@ -102,21 +102,18 @@ class MapManager {
             targetMap = targetMap + "-" + _privateRoomNumber;
         }
 
-        var c:String = (cell != null && cell != "") ? cell : "Enter";
-        var p:String = (pad != null && pad != "") ? pad : "Spawn";
-
         if (g.world.gotoTown != null) {
             try {
-                g.world.gotoTown(targetMap, c, p);
+                g.world.gotoTown(targetMap, cell, pad);
                 return;
             } catch (e:Dynamic) {}
         }
 
         if (g.world.setReturnInfo != null) {
-            try { g.world.setReturnInfo(targetMap, c, p); } catch (e:Dynamic) {}
+            try { g.world.setReturnInfo(targetMap, cell, pad); } catch (e:Dynamic) {}
         }
         if (Api.transport != null) {
-            Api.transport.send("zm", "cmd", ["1", "tfer", username, targetMap, c, p]);
+            Api.transport.send("zm", "cmd", ["1", "tfer", username, targetMap, cell, pad]);
         }
     }
 
@@ -172,22 +169,21 @@ class MapManager {
         }
     }
 
-    public function jump(cell:String, pad:String = null):Void {
+    public function jump(cell:String, pad:String = "Enter"):Void {
         var g = _g();
         if (g == null || g.world == null) return;
-        var p:String = (pad != null && pad != "") ? pad : "Spawn";
         if (g.world.moveToCell != null) {
-            if (cell != null && !isCell(cell)) {
+            if (g.world.strFrame != cell) {
                 var now = ApiTime.now();
                 if (now - _lastJumpTime < 500) return;
                 _lastJumpTime = now;
                 _pauseScriptIfRunning(500);
-                g.world.moveToCell(cell, p);
+                g.world.moveToCell(cell, pad);
             }
         }
         if (_autoDeathSpawn && cell != null && cell != "" && cell.toLowerCase().indexOf("cut") == -1) {
             _lastSpawnCell = cell;
-            Api.player.setSpawnPoint(cell, p);
+            Api.player.setSpawnPoint(cell, pad);
         }
     }
 

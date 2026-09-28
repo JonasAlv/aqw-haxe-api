@@ -173,13 +173,13 @@ class HScriptEngine {
         });
 
         // Common API Shortcuts
-        _interp.variables.set("join", function(mapName:String, cell:String = null, pad:String = null):Void {
+        _interp.variables.set("join", function(mapName:String, cell:String = "Enter", pad:String = "Spawn"):Void {
             Api.map.join(mapName, cell, pad);
         });
         _interp.variables.set("joinHouse", function(username:String = ""):Void {
             Api.map.joinHouse(username);
         });
-        _interp.variables.set("jump", function(cell:String, pad:String = null):Void {
+        _interp.variables.set("jump", function(cell:String, pad:String = "Enter"):Void {
             Api.map.jump(cell, pad);
         });
         _interp.variables.set("snapTo", function(target:Dynamic):Void {
@@ -479,9 +479,6 @@ class HScriptEngine {
         _interp.variables.set("stopCombat", function():Void {
             if (Api.combat != null) Api.combat.stopAuto();
         });
-        _interp.variables.set("ensureCombat", function(smart:Bool = true):Void {
-            if (Api.combat != null) Api.combat.ensure(smart);
-        });
 
         // Bank Operations
         _interp.variables.set("loadBank", function():Void {
@@ -674,22 +671,10 @@ class HScriptEngine {
             return Api.map != null ? Api.map.name : "";
         });
         _interp.variables.set("isCell", function(cellName:String):Bool {
-            return Api.map != null ? Api.map.isCell(cellName) : false;
+            return Api.player != null && Api.player.cell.toLowerCase() == cellName.toLowerCase();
         });
         _interp.variables.set("isMap", function(mapName:String):Bool {
-            return Api.map != null ? Api.map.isMap(mapName) : false;
-        });
-        _interp.variables.set("isAt", function(mapName:String, cellName:String = null):Bool {
-            return Api.map != null ? Api.map.isAt(mapName, cellName) : false;
-        });
-        _interp.variables.set("ensureMap", function(mapName:String, cell:String = null, pad:String = null):Bool {
-            return Api.map != null ? Api.map.ensure(mapName, cell, pad) : false;
-        });
-        _interp.variables.set("ensure", function(mapName:String, cell:String = null, pad:String = null):Bool {
-            return Api.map != null ? Api.map.ensure(mapName, cell, pad) : false;
-        });
-        _interp.variables.set("stay", function(mapName:String, cell:String = null, pad:String = null):Bool {
-            return Api.map != null ? Api.map.stay(mapName, cell, pad) : false;
+            return Api.map != null && Api.map.name.toLowerCase() == mapName.toLowerCase();
         });
 
         // Monster & Cell Query
