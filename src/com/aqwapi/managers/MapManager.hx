@@ -29,9 +29,61 @@ class MapManager {
         } catch (_:Dynamic) {}
     }
 
-    public function join(mapName:String, cell:String = "Enter", pad:String = "Spawn"):Void {
+    public function isMap(mapName:String):Bool {
+        if (mapName == null || mapName == "") return false;
+        var cur = (name != null) ? name.toLowerCase() : "";
+        return cur == StringTools.trim(mapName).toLowerCase();
+    }
+
+    public function isCell(cellName:String):Bool {
+        if (cellName == null || cellName == "") return false;
+        var cur = (Api.player != null && Api.player.cell != null) ? Api.player.cell.toLowerCase() : "";
+        return cur == StringTools.trim(cellName).toLowerCase();
+    }
+
+    public function isAt(mapName:String, cellName:String = null):Bool {
+        if (!isMap(mapName)) return false;
+        if (cellName != null && cellName != "" && !isCell(cellName)) return false;
+        return true;
+    }
+
+    public function ensure(mapName:String, cell:String = null, pad:String = null):Bool {
+        if (Api.player != null && !Api.player.isAlive) return false;
+        if (!isLoaded) return false;
+
+        if (mapName != null && mapName != "") {
+            if (!isMap(mapName)) {
+                join(mapName, cell, pad);
+                return false;
+            }
+        }
+
+        if (cell != null && cell != "") {
+            if (!isCell(cell)) {
+                jump(cell, pad);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public inline function stay(mapName:String, cell:String = null, pad:String = null):Bool {
+        return ensure(mapName, cell, pad);
+    }
+
+    public function join(mapName:String, cell:String = null, pad:String = null, force:Bool = false):Void {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return;
+
+        // If already on this map, simply jump to cell if specified and not already there
+        if (!force && isMap(mapName)) {
+            if (cell != null && cell != "" && !isCell(cell)) {
+                jump(cell, pad);
+            }
+            return;
+        }
+
         var now = ApiTime.now();
         if (now - _lastJoinTime < 2000) return;
         _lastJoinTime = now;
@@ -50,18 +102,21 @@ class MapManager {
             targetMap = targetMap + "-" + _privateRoomNumber;
         }
 
+        var c:String = (cell != null && cell != "") ? cell : "Enter";
+        var p:String = (pad != null && pad != "") ? pad : "Spawn";
+
         if (g.world.gotoTown != null) {
             try {
-                g.world.gotoTown(targetMap, cell, pad);
+                g.world.gotoTown(targetMap, c, p);
                 return;
             } catch (e:Dynamic) {}
         }
 
         if (g.world.setReturnInfo != null) {
-            try { g.world.setReturnInfo(targetMap, cell, pad); } catch (e:Dynamic) {}
+            try { g.world.setReturnInfo(targetMap, c, p); } catch (e:Dynamic) {}
         }
         if (Api.transport != null) {
-            Api.transport.send("zm", "cmd", ["1", "tfer", username, targetMap, cell, pad]);
+            Api.transport.send("zm", "cmd", ["1", "tfer", username, targetMap, c, p]);
         }
     }
 
@@ -117,21 +172,22 @@ class MapManager {
         }
     }
 
-    public function jump(cell:String, pad:String = "Enter"):Void {
+    public function jump(cell:String, pad:String = null):Void {
         var g = _g();
         if (g == null || g.world == null) return;
+        var p:String = (pad != null && pad != "") ? pad : "Spawn";
         if (g.world.moveToCell != null) {
-            if (g.world.strFrame != cell) {
+            if (cell != null && !isCell(cell)) {
                 var now = ApiTime.now();
                 if (now - _lastJumpTime < 500) return;
                 _lastJumpTime = now;
                 _pauseScriptIfRunning(500);
-                g.world.moveToCell(cell, pad);
+                g.world.moveToCell(cell, p);
             }
         }
         if (_autoDeathSpawn && cell != null && cell != "" && cell.toLowerCase().indexOf("cut") == -1) {
             _lastSpawnCell = cell;
-            Api.player.setSpawnPoint(cell, pad);
+            Api.player.setSpawnPoint(cell, p);
         }
     }
 

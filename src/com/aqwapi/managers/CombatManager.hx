@@ -182,6 +182,10 @@ class CombatManager {
         return CombatEngine.IS_ON;
     }
 
+    public inline function ensure(smart:Bool = true):Void {
+        if (!isRunning()) start(smart);
+    }
+
     public function startCustom(rotation:String, mode:String = "auto"):Void {
         if (rotation != null && rotation.length > 0) {
             var rotInts:Array<Int> = [];
