@@ -50,10 +50,9 @@ class SkillManager {
         try {
             if (Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null) {
                 var av:Dynamic = Api.game.world.myAvatar;
-                if (av.objData != null && av.objData.strClassName != null) {
-                    var c:String = Std.string(av.objData.strClassName);
-                    if (c != "" && c != "null") return c;
-                }
+                var equippedClassItemName:String = "";
+
+                // 1. Check equipped items in myAvatar.items
                 if (av.items != null) {
                     try {
                         var items:Array<Dynamic> = cast av.items;
@@ -62,25 +61,43 @@ class SkillManager {
                             var equipped:Bool = (it.bEquip == 1 || it.bEquip == "1" || it.bEquip == true);
                             if (!equipped) continue;
                             var sTypeStr:String = (it.sType != null) ? Std.string(it.sType).toLowerCase() : "";
-                            var isClass:Bool = false;
-                            if (sTypeStr == "class" || it.bClass == 1 || it.bClass == true || it.bClass == "1") {
-                                isClass = true;
-                            } else if (it.sES != null && Std.string(it.sES).toLowerCase() == "ar") {
-                                var sNameStr:String = (it.sName != null) ? Std.string(it.sName) : "";
-                                if (sNameStr != "") {
-                                    if (findClassConfig(sNameStr) != null) {
-                                        isClass = true;
-                                    } else if (it.bClass != null && it.bClass != 0 && it.bClass != "0") {
-                                        isClass = true;
+                            var isClassItem:Bool = (sTypeStr == "class" || it.bClass == 1 || it.bClass == true || it.bClass == "1");
+                            if (!isClassItem && it.sES != null && Std.string(it.sES).toLowerCase() == "ar") {
+                                isClassItem = true;
+                            }
+                            if (isClassItem && it.sName != null) {
+                                var s:String = StringTools.trim(Std.string(it.sName));
+                                if (s != "" && s != "null") {
+                                    equippedClassItemName = s;
+                                    // If this exact item name matches a known class config, return it immediately!
+                                    if (findClassConfig(s) != null) {
+                                        return s;
                                     }
                                 }
                             }
-                            if (isClass && it.sName != null) {
-                                var s:String = Std.string(it.sName);
-                                if (s != "" && s != "null") return s;
-                            }
                         }
                     } catch (_:Dynamic) {}
+                }
+
+                // 2. Check av.objData.strClassName against known class configs
+                if (av.objData != null && av.objData.strClassName != null) {
+                    var c:String = StringTools.trim(Std.string(av.objData.strClassName));
+                    if (c != "" && c != "null") {
+                        if (findClassConfig(c) != null) {
+                            return c;
+                        }
+                    }
+                }
+
+                // 3. Fallback to equipped class item name (even if not yet in skills.json)
+                if (equippedClassItemName != "") {
+                    return equippedClassItemName;
+                }
+
+                // 4. Fallback to objData.strClassName
+                if (av.objData != null && av.objData.strClassName != null) {
+                    var c:String = StringTools.trim(Std.string(av.objData.strClassName));
+                    if (c != "" && c != "null") return c;
                 }
             }
         } catch (_:Dynamic) {}

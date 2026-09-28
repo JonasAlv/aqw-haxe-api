@@ -48,6 +48,7 @@ class CombatEngine {
     private static var _lastDetectedClass:String = "";
     private static var _pausedByTargetAura:Bool = false;
     private static var _waitUntil:Dynamic = {};
+    private static var _lastFallbackWarnTime:Float = 0;
 
     public static function init():Void {
         SkillManager.reload(true);
@@ -84,7 +85,12 @@ class CombatEngine {
         }
 
         if (!silent) {
-            ApiLogger.info("Combat", smart ? "Smart combat started." : "Custom combat started.");
+            if (smart) {
+                var c = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : SkillManager.getCurrentClassName();
+                ApiLogger.info("Combat", "Smart combat started. Class: '" + c + "', Mode: '" + skillMode + "'");
+            } else {
+                ApiLogger.info("Combat", "Custom combat started.");
+            }
         }
     }
 
@@ -95,12 +101,16 @@ class CombatEngine {
         }
         if (Api.game != null && Api.game.world != null) {
             var world:Dynamic = Api.game.world;
-            if (world.cancelAutoAttack != null) {
-                try { world.cancelAutoAttack(); } catch (_:Dynamic) {}
-            }
-            if (world.autoActionTimer != null && world.autoActionTimer.running) {
-                try { world.autoActionTimer.stop(); } catch (_:Dynamic) {}
-            }
+            try {
+                if (world.cancelAutoAttack != null) {
+                    world.cancelAutoAttack();
+                }
+            } catch (_:Dynamic) {}
+            try {
+                if (world.autoActionTimer != null && world.autoActionTimer.running) {
+                    world.autoActionTimer.stop();
+                }
+            } catch (_:Dynamic) {}
         }
     }
 
@@ -277,9 +287,11 @@ class CombatEngine {
                 if (world.cancelAutoAttack != null) {
                     try { world.cancelAutoAttack(); } catch (_:Dynamic) {}
                 }
-                if (world.autoActionTimer != null && world.autoActionTimer.running) {
-                    try { world.autoActionTimer.stop(); } catch (_:Dynamic) {}
-                }
+                try {
+                    if (world.autoActionTimer != null && world.autoActionTimer.running) {
+                        world.autoActionTimer.stop();
+                    }
+                } catch (_:Dynamic) {}
                 return;
             } else if (_pausedByTargetAura) {
                 _pausedByTargetAura = false;
@@ -292,7 +304,10 @@ class CombatEngine {
                         try { untyped world.approachTarget(); } catch (_:Dynamic) {}
                     }
                 } else {
-                    var isAAActive:Bool = (world.autoActionTimer != null && world.autoActionTimer.running);
+                    var isAAActive:Bool = false;
+                    try {
+                        isAAActive = (world.autoActionTimer != null && world.autoActionTimer.running);
+                    } catch (_:Dynamic) {}
                     if (!isAAActive && !SkillCaster.isGcdActive(world)) {
                         SkillCaster.fireSkill(world, avatar, 0);
                     }
@@ -314,7 +329,15 @@ class CombatEngine {
         var isCurrentClass = (confClass == "Current");
         var className:String = isCurrentClass ? SkillManager.getCurrentClassName() : confClass;
         var config:Dynamic = (className != "") ? SkillManager.findClassConfig(className) : null;
-        if (config == null) { runSimpleRotation(world, avatar); return; }
+        if (config == null) {
+            var now = ApiTime.now();
+            if (now - _lastFallbackWarnTime > 3000) {
+                _lastFallbackWarnTime = now;
+                ApiLogger.warn("Combat", "Smart Combat: class config not found for '" + className + "'. Falling back to custom rotation.");
+            }
+            runSimpleRotation(world, avatar);
+            return;
+        }
 
         if (isCurrentClass && className != "") {
             if (_lastDetectedClass == "") {
@@ -332,7 +355,15 @@ class CombatEngine {
         }
 
         var modeConfig:Dynamic = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
-        if (modeConfig == null) { runSimpleRotation(world, avatar); return; }
+        if (modeConfig == null) {
+            var now = ApiTime.now();
+            if (now - _lastFallbackWarnTime > 3000) {
+                _lastFallbackWarnTime = now;
+                ApiLogger.warn("Combat", "Smart Combat: mode config not found for class '" + className + "' mode '" + skillMode + "'. Falling back to custom rotation.");
+            }
+            runSimpleRotation(world, avatar);
+            return;
+        }
 
         var skillUseMode:String = (modeConfig.mode != null) ? modeConfig.mode : ((modeConfig.skillUseMode != null) ? modeConfig.skillUseMode : "WaitForCooldown");
         var skillTimeout:Float = (modeConfig.timeout != null) ? ApiUtils.parseFloat(modeConfig.timeout, 100) : ((modeConfig.skillTimeout != null) ? ApiUtils.parseFloat(modeConfig.skillTimeout, 100) : 100);
@@ -341,7 +372,15 @@ class CombatEngine {
             skills = SkillDslParser.parseCombo(Std.string(modeConfig.combo));
             modeConfig.skills = skills;
         }
-        if (skills.length == 0) { runSimpleRotation(world, avatar); return; }
+        if (skills.length == 0) {
+            var now = ApiTime.now();
+            if (now - _lastFallbackWarnTime > 3000) {
+                _lastFallbackWarnTime = now;
+                ApiLogger.warn("Combat", "Smart Combat: combo skills empty for class '" + className + "'. Falling back to custom rotation.");
+            }
+            runSimpleRotation(world, avatar);
+            return;
+        }
 
         var resetOnTarget:Bool = (modeConfig.resetComboOnTargetChange == true || modeConfig.resetOnTarget == true);
         if (_targetChanged && resetOnTarget) {
@@ -391,8 +430,8 @@ class CombatEngine {
             _stepFirstFailTime = -1;
         } else {
             var elapsedWait:Float = now - _skillWaitStart;
-            var maxWaitMs:Float = (skillTimeout <= 0) ? 10000 : (skillTimeout <= 100 ? skillTimeout * 1000 : skillTimeout);
-            if (elapsedWait > maxWaitMs) {
+            // skillTimeout is in ms: if <= 0 or elapsedWait >= skillTimeout, move to next skill
+            if (skillTimeout <= 0 || elapsedWait >= skillTimeout) {
                 _skillIndex = (_skillIndex + 1) % skills.length;
                 _skillWaitStart = now;
                 _stepFirstFailTime = -1;

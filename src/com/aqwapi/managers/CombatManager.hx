@@ -125,13 +125,17 @@ class CombatManager {
             if (_game.world.cancelAutoAttack != null) {
                 _game.world.cancelAutoAttack();
             }
+        } catch (_:Dynamic) {}
+        try {
             if (_game.world.autoActionTimer != null) {
                 _game.world.autoActionTimer.reset();
             }
+        } catch (_:Dynamic) {}
+        try {
             if (_game.world.AATestTimer != null) {
                 _game.world.AATestTimer.reset();
             }
-        } catch (e:Dynamic) {}
+        } catch (_:Dynamic) {}
     }
 
     public function cancelTarget():Void {
