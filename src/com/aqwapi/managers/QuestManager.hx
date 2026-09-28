@@ -572,6 +572,22 @@ class QuestManager {
         return _timer != null && _timer.running;
     }
 
+    public var autoQuestString(get, never):String;
+
+    @:getter(autoQuestString)
+    public function get_autoQuestString_prop():String {
+        return get_autoQuestString();
+    }
+    public function get_autoQuestString():String {
+        if (_questIDs == null || _questIDs.length == 0) return "";
+        var arr:Array<String> = [];
+        for (q in _questIDs) {
+            if (q.itemId > 0) arr.push(q.qid + ":" + q.itemId);
+            else arr.push(Std.string(q.qid));
+        }
+        return arr.join(", ");
+    }
+
     public function startAuto(questString:String):Void {
         stopAuto();
 
@@ -598,11 +614,11 @@ class QuestManager {
             loadMultiple(qidsToLoad);
 
             _lastTurnIns = {};
-            _timer = new Timer(1500);
+            _timer = new Timer(800);
             _timer.addEventListener(TimerEvent.TIMER, onAutoTick, false, 0, true);
             _timer.start();
-            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Auto Quest started: " + parts.join(", ")));
-            ApiLogger.info("Quest", "Auto Quest started: " + parts.join(", "));
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Auto Quest started: " + autoQuestString));
+            ApiLogger.info("Quest", "Auto Quest started: " + autoQuestString);
         }
     }
 
@@ -611,18 +627,20 @@ class QuestManager {
             _timer.stop();
             _timer.removeEventListener(TimerEvent.TIMER, onAutoTick);
             _timer = null;
+            clearQueue();
             Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Quests Stopped!"));
-            ApiLogger.info("Quest", "Quests Stopped!");
+            ApiLogger.info("Quest", "AutoQuest Stopped!");
         }
     }
 
     private function onAutoTick(e:TimerEvent):Void {
         if (_game == null || _game.world == null) return;
 
-        try {
-            var now:Float = ApiTime.now();
+        // If the built-in action queue is currently busy executing an accept or complete, wait for it
+        if (_actionQueue.length > 0 || (_queueTimer != null && _queueTimer.running)) return;
 
-            // First: ensure all quests in _questIDs are loaded into questTree
+        try {
+            // First: ensure all configured quests are loaded into questTree
             var unloaded:Array<Int> = [];
             for (qObj in _questIDs) {
                 var qid:Int = qObj.qid;
@@ -630,38 +648,32 @@ class QuestManager {
             }
             if (unloaded.length > 0) {
                 loadMultiple(unloaded);
+                return;
             }
 
-            // Second: check each quest
+            // Second: check each quest in order
             for (qObj in _questIDs) {
                 var qid:Int = qObj.qid;
                 var itemId:Int = qObj.itemId;
-                var qKey:String = Std.string(qid);
 
-                var lastAttempt:Float = 0;
-                var la:Null<Float> = Reflect.field(_lastTurnIns, qKey);
-                if (la != null) lastAttempt = la;
-
-                if (now - lastAttempt < 2000) continue;
+                if (isAcceptQueued(qid) || isCompleteQueued(qid)) continue;
 
                 var inProgress:Bool = isInProgress(qid);
 
                 if (inProgress) {
                     // Check if ready to turn in
                     if (canComplete(qid)) {
-                        Reflect.setField(_lastTurnIns, qKey, now);
-                        ApiLogger.info("Quest", "Completing quest " + qid);
+                        ApiLogger.info("Quest", "[AutoQuest] Turning in completed quest " + qid);
                         complete(qid, itemId);
-                        break; // Only complete one per tick to prevent server packet flood
+                        return; // Paced by action queue (1100ms cooldown)
                     }
                     // Quest is in progress but requirements not yet met -> continue loop to process/accept other quests!
                 } else {
                     // Quest not in progress -> accept it!
                     if (isLoaded(qid)) {
-                        Reflect.setField(_lastTurnIns, qKey, now);
-                        ApiLogger.info("Quest", "Accepting quest " + qid);
+                        ApiLogger.info("Quest", "[AutoQuest] Accepting quest " + qid);
                         accept(qid);
-                        break; // Accept one per tick for clean server handshake
+                        return; // Paced by action queue (1100ms cooldown)
                     }
                 }
             }
