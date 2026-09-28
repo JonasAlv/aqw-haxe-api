@@ -29,11 +29,6 @@ class SkillManager {
         ApiStorage.ensureFiles();
     }
 
-    /** Returns true if skills.json has already been loaded into memory. */
-    public static inline function isLoaded():Bool {
-        return _skillsLoaded && _skillsData != null;
-    }
-
     public static function cleanClassName(name:String):String {
         if (name == null) return "";
         var s:String = name.toLowerCase();
