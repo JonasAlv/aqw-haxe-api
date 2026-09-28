@@ -12,7 +12,7 @@ class CombatManager {
         _game = gameReference;
     }
 
-    private var _infiniteRange:Bool = true;
+    private var _infiniteRange:Bool = false;
 
     public function applyInfiniteRange():Void {
         if (!_infiniteRange || _game == null || _game.world == null || _game.world.actions == null) return;
