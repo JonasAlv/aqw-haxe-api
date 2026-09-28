@@ -51,7 +51,7 @@ class CombatEngine {
     private static var _lastFallbackWarnTime:Float = 0;
 
     public static function init():Void {
-        SkillManager.reload(true);
+        SkillManager.ensureLoaded(true);
         if (_timer == null) {
             _timer = new Timer(100);
             _timer.addEventListener(TimerEvent.TIMER, onTick);
@@ -59,6 +59,8 @@ class CombatEngine {
     }
 
     public static function start(smart:Bool, silent:Bool = false):Void {
+        var t0:Float = ApiTime.now();
+        SkillManager.invalidateCurrentClass();
         init();
         isSmart = smart;
         IS_ON = true;
@@ -87,9 +89,11 @@ class CombatEngine {
         if (!silent) {
             if (smart) {
                 var c = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : SkillManager.getCurrentClassName();
-                ApiLogger.info("Combat", "Smart combat started. Class: '" + c + "', Mode: '" + skillMode + "'");
+                var took = Math.round(ApiTime.now() - t0);
+                ApiLogger.info("Combat", "Smart combat started in " + took + "ms. Class: '" + c + "', Mode: '" + skillMode + "'");
             } else {
-                ApiLogger.info("Combat", "Custom combat started.");
+                var took = Math.round(ApiTime.now() - t0);
+                ApiLogger.info("Combat", "Custom combat started in " + took + "ms.");
             }
         }
     }
@@ -301,7 +305,7 @@ class CombatEngine {
             } catch (_:Dynamic) {}
 
             try {
-                runAdvancedRotation(world, avatar, target);
+                runAdvancedRotation(world, avatar, target, activeModeConfig);
             } catch (rotErr:Dynamic) {
                 ApiLogger.error("Combat", "Advanced rotation error: " + rotErr);
             }
@@ -310,20 +314,10 @@ class CombatEngine {
         }
     }
 
-    private static function runAdvancedRotation(world:Dynamic, avatar:Dynamic, target:Dynamic):Void {
+    private static function runAdvancedRotation(world:Dynamic, avatar:Dynamic, target:Dynamic, activeModeConfig:Dynamic = null):Void {
         var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : "Current";
         var isCurrentClass = (confClass == "Current");
         var className:String = isCurrentClass ? SkillManager.getCurrentClassName() : confClass;
-        var config:Dynamic = (className != "") ? SkillManager.findClassConfig(className) : null;
-        if (config == null) {
-            var now = ApiTime.now();
-            if (now - _lastFallbackWarnTime > 3000) {
-                _lastFallbackWarnTime = now;
-                ApiLogger.warn("Combat", "Smart Combat: class config not found for '" + className + "'. Falling back to custom rotation.");
-            }
-            runSimpleRotation(world, avatar);
-            return;
-        }
 
         if (isCurrentClass && className != "") {
             if (_lastDetectedClass == "") {
@@ -337,10 +331,11 @@ class CombatEngine {
                 if (skillMode != "Auto" && avail.indexOf(skillMode) == -1) {
                     skillMode = "Auto";
                 }
+                activeModeConfig = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
             }
         }
 
-        var modeConfig:Dynamic = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
+        var modeConfig:Dynamic = (activeModeConfig != null) ? activeModeConfig : SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
         if (modeConfig == null) {
             var now = ApiTime.now();
             if (now - _lastFallbackWarnTime > 3000) {

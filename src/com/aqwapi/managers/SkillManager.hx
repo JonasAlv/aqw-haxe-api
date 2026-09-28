@@ -5,6 +5,7 @@ import com.aqwapi.Game;
 import com.aqwapi.modules.DefaultSkillsData;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiStorage;
+import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.SkillDslParser;
 
@@ -46,7 +47,21 @@ class SkillManager {
         return result.toString();
     }
 
+    private static var _cachedCurrentClassName:String = "";
+    private static var _lastCurrentClassCheck:Float = 0;
+
+    public static function invalidateCurrentClass():Void {
+        _lastCurrentClassCheck = 0;
+        _cachedCurrentClassName = "";
+    }
+
     public static function getCurrentClassName():String {
+        var now = ApiTime.now();
+        if (_cachedCurrentClassName != "" && (now - _lastCurrentClassCheck < 1000)) {
+            return _cachedCurrentClassName;
+        }
+        _lastCurrentClassCheck = now;
+
         try {
             if (Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null) {
                 var av:Dynamic = Api.game.world.myAvatar;
@@ -71,6 +86,7 @@ class SkillManager {
                                     equippedClassItemName = s;
                                     // If this exact item name matches a known class config, return it immediately!
                                     if (findClassConfig(s) != null) {
+                                        _cachedCurrentClassName = s;
                                         return s;
                                     }
                                 }
@@ -84,6 +100,7 @@ class SkillManager {
                     var c:String = StringTools.trim(Std.string(av.objData.strClassName));
                     if (c != "" && c != "null") {
                         if (findClassConfig(c) != null) {
+                            _cachedCurrentClassName = c;
                             return c;
                         }
                     }
@@ -91,17 +108,21 @@ class SkillManager {
 
                 // 3. Fallback to equipped class item name (even if not yet in skills.json)
                 if (equippedClassItemName != "") {
+                    _cachedCurrentClassName = equippedClassItemName;
                     return equippedClassItemName;
                 }
 
                 // 4. Fallback to objData.strClassName
                 if (av.objData != null && av.objData.strClassName != null) {
                     var c:String = StringTools.trim(Std.string(av.objData.strClassName));
-                    if (c != "" && c != "null") return c;
+                    if (c != "" && c != "null") {
+                        _cachedCurrentClassName = c;
+                        return c;
+                    }
                 }
             }
         } catch (_:Dynamic) {}
-        return "";
+        return _cachedCurrentClassName;
     }
 
     public static function resolveClassName(className:String):String {
@@ -141,7 +162,7 @@ class SkillManager {
     }
 
     public static function findClassConfig(className:String):Dynamic {
-        if (!_skillsLoaded) reload(true);
+        if (!_skillsLoaded) ensureLoaded(true);
         if (_skillsData == null || className == null || className == "") return null;
 
         var trimmed = StringTools.trim(className);
@@ -230,7 +251,7 @@ class SkillManager {
     }
 
     public static function getKnownClasses():Array<String> {
-        if (!_skillsLoaded) reload(true);
+        if (!_skillsLoaded) ensureLoaded(true);
         if (_cachedKnownClasses != null) return _cachedKnownClasses.copy();
         if (_skillsData == null) return [];
         var list:Array<String> = [];
@@ -276,7 +297,7 @@ class SkillManager {
 
     public static function registerCustomMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String, stopOnTargetAuras:String = null, resetComboOnTargetChange:Null<Bool> = null):Void {
         if (className == null || className == "" || modeName == null || modeName == "") return;
-        if (!_skillsLoaded) reload(true);
+        if (!_skillsLoaded) ensureLoaded(true);
         if (_skillsData == null) _skillsData = {};
 
         var trimmedClass = StringTools.trim(className);
@@ -709,7 +730,17 @@ class SkillManager {
         return removed;
     }
 
-    public static function reload(silent:Bool = false):Void {
+    public static function isLoaded():Bool {
+        return _skillsLoaded && _skillsData != null;
+    }
+
+    public static function ensureLoaded(silent:Bool = true):Void {
+        if (isLoaded()) return;
+        reload(silent, false);
+    }
+
+    public static function reload(silent:Bool = false, force:Bool = true):Void {
+        if (!force && isLoaded()) return;
         _skillsLoaded = true;
         try {
             var rawTxt:String = null;
@@ -789,11 +820,9 @@ class SkillManager {
                     if (mObj.resetComboOnTargetChange != null && mObj.resetOnTarget == null) mObj.resetOnTarget = mObj.resetComboOnTargetChange;
                     if (mObj.stopOnTargetAuras != null && mObj.stopTargetAuras == null) mObj.stopTargetAuras = mObj.stopOnTargetAuras;
 
-                    if (mObj.skills == null || !Std.isOfType(mObj.skills, Array) || (cast(mObj.skills, Array<Dynamic>)).length == 0) {
-                        if (mObj.combo != null && Std.string(mObj.combo) != "") {
-                            mObj.skills = SkillDslParser.parseCombo(Std.string(mObj.combo));
-                        }
-                    }
+                    // Note: combo parsing (mObj.skills) is deferred and resolved lazily on-demand
+                    // in resolveActiveModeConfig(). This prevents parsing ~500 DSL combos upfront
+                    // and eliminates lag spikes when loading or reloading skills.
                 }
             }
         } catch (_:Dynamic) {}
