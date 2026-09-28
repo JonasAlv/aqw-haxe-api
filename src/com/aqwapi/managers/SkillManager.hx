@@ -578,7 +578,8 @@ class SkillManager {
                             },
                             combo: (mObj.combo != null) ? Std.string(mObj.combo) : "",
                             stopOnTargetAuras: (mObj.stopOnTargetAuras != null) ? Std.string(mObj.stopOnTargetAuras) : null,
-                            resetComboOnTargetChange: (mObj.resetComboOnTargetChange != null) ? (mObj.resetComboOnTargetChange == true) : null
+                            resetComboOnTargetChange: (mObj.resetComboOnTargetChange != null) ? (mObj.resetComboOnTargetChange == true) : null,
+                            isUser: true
                         };
                     }
                 }
@@ -610,6 +611,7 @@ class SkillManager {
                     }
                     comboStr = parts.join(" > ");
                 }
+                var userFlag:Bool = isUserMode(resolvedClass, trimmedMode);
                 return {
                     className: resolvedClass,
                     modeName: trimmedMode,
@@ -620,7 +622,8 @@ class SkillManager {
                     },
                     combo: comboStr,
                     stopOnTargetAuras: (mObj.stopOnTargetAuras != null) ? Std.string(mObj.stopOnTargetAuras) : null,
-                    resetComboOnTargetChange: (mObj.resetComboOnTargetChange != null) ? (mObj.resetComboOnTargetChange == true) : null
+                    resetComboOnTargetChange: (mObj.resetComboOnTargetChange != null) ? (mObj.resetComboOnTargetChange == true) : null,
+                    isUser: userFlag
                 };
             }
         }
