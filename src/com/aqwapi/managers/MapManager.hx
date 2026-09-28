@@ -119,7 +119,7 @@ class MapManager {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return false;
         try {
-            var roomId:Dynamic = g.sfc.activeRoomId != null ? g.sfc.activeRoomId : g.world.curRoom;
+            var roomId:Dynamic = (g.world.curRoom != null) ? g.world.curRoom : (g.sfc.activeRoomId != null ? g.sfc.activeRoomId : 1);
             g.sfc.sendString("%xt%zm%getMapItem%" + roomId + "%" + itemId + "%");
             return true;
         } catch (e:Dynamic) { return false; }
@@ -132,7 +132,7 @@ class MapManager {
             var myMC:Dynamic = g.world.myAvatar.pMC;
             var tMC:Dynamic = null;
             if (Reflect.hasField(target, "raw") && target.raw != null) tMC = Reflect.field(target.raw, "pMC");
-            else if (Reflect.hasField(target, "pMC")) tMC = Reflect.field(target.raw, "pMC");
+            else if (Reflect.hasField(target, "pMC")) tMC = Reflect.field(target, "pMC");
             if (myMC != null && tMC != null) {
                 myMC.x = tMC.x;
                 myMC.y = tMC.y;

@@ -12,7 +12,7 @@ class CombatManager {
         _game = gameReference;
     }
 
-    private var _infiniteRange:Bool = false;
+    private var _infiniteRange:Bool = true;
 
     public function applyInfiniteRange():Void {
         if (!_infiniteRange || _game == null || _game.world == null || _game.world.actions == null) return;
@@ -249,6 +249,22 @@ class CombatManager {
     public function get_mode():String { return CombatEngine.skillMode; }
     public function set_mode(v:String):String { CombatEngine.skillMode = v; return v; }
 
+    public var skillMode(get, set):String;
+    @:getter(skillMode)
+    public function get_skillMode_prop():String { return CombatEngine.skillMode; }
+    @:setter(skillMode)
+    public function set_skillMode_prop(v:String):Void { CombatEngine.skillMode = v; }
+    public function get_skillMode():String { return CombatEngine.skillMode; }
+    public function set_skillMode(v:String):String { CombatEngine.skillMode = v; return v; }
+
+    public var smartClass(get, set):String;
+    @:getter(smartClass)
+    public function get_smartClass_prop():String { return CombatEngine.smartClass; }
+    @:setter(smartClass)
+    public function set_smartClass_prop(v:String):Void { CombatEngine.smartClass = v; }
+    public function get_smartClass():String { return CombatEngine.smartClass; }
+    public function set_smartClass(v:String):String { CombatEngine.smartClass = v; return v; }
+
     public var farmClass(get, set):String;
     @:getter(farmClass)
     public function get_farmClass_prop():String { return CombatEngine.farmClass; }
@@ -321,32 +337,5 @@ class CombatManager {
     public function get_infiniteRange():Bool { return _infiniteRange; }
     public function set_infiniteRange(v:Bool):Bool { setInfiniteRange(v); return v; }
 
-    // ==========================================
-    // STATIC ENGINE PROXIES (Convenience & Backward Compatibility)
-    // ==========================================
-    public static inline function init():Void { CombatEngine.init(); }
-    public static inline function reloadSkills(silent:Bool = false):Void { CombatEngine.reloadSkills(silent); }
-    public static inline function toggleSmart():Void { CombatEngine.toggleSmart(); }
-    public static inline function toggleCustom():Void { CombatEngine.toggleCustom(); }
-    public static inline function getAvailableModes(className:String):Array<String> { return CombatEngine.getAvailableModes(className); }
 
-    public static var IS_ON(get, set):Bool;
-    private static inline function get_IS_ON():Bool { return CombatEngine.IS_ON; }
-    private static inline function set_IS_ON(v:Bool):Bool { return CombatEngine.IS_ON = v; }
-
-    public static var isSmart(get, set):Bool;
-    private static inline function get_isSmart():Bool { return CombatEngine.isSmart; }
-    private static inline function set_isSmart(v:Bool):Bool { return CombatEngine.isSmart = v; }
-
-    public static var skillMode(get, set):String;
-    private static inline function get_skillMode():String { return CombatEngine.skillMode; }
-    private static inline function set_skillMode(v:String):String { return CombatEngine.skillMode = v; }
-
-    public static var customMode(get, set):String;
-    private static inline function get_customMode():String { return CombatEngine.customMode; }
-    private static inline function set_customMode(v:String):String { return CombatEngine.customMode = v; }
-
-    public static var staticFarmClass(get, set):String;
-    private static inline function get_staticFarmClass():String { return CombatEngine.farmClass; }
-    private static inline function set_staticFarmClass(v:String):String { return CombatEngine.farmClass = v; }
 }

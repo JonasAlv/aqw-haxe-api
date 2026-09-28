@@ -114,6 +114,8 @@ class HScriptEngine {
         _interp.variables.set("Bot", Api);
         _interp.variables.set("player", Api.player);
         _interp.variables.set("combat", Api.combat);
+        _interp.variables.set("aura", Api.aura);
+        _interp.variables.set("skills", Api.skills);
         _interp.variables.set("map", Api.map);
         _interp.variables.set("quest", Api.quest);
         _interp.variables.set("inventory", Api.inventory);
@@ -122,6 +124,7 @@ class HScriptEngine {
         _interp.variables.set("monster", Api.monster);
         _interp.variables.set("enhancement", Api.enhancement);
         _interp.variables.set("enhancements", Api.enhancement);
+        _interp.variables.set("script", Api.script);
         _interp.variables.set("events", Api.dispatcher);
 
         // Enhancement shortcuts

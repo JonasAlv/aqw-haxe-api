@@ -12,16 +12,18 @@ class Api {
     public static var logger:Class<ApiLogger> = ApiLogger;
     public static var game(default, null):Game;
 
-    // All 8 Core Managers (Strictly Singular)
     public static var map(default, null):MapManager = new MapManager(null);
     public static var player(default, null):PlayerManager = new PlayerManager(null);
     public static var quest(default, null):QuestManager = new QuestManager(null);
     public static var combat(default, null):CombatManager = new CombatManager(null);
+    public static var aura(default, null):AuraManager = new AuraManager(null);
+    public static var skills(default, null):SkillManager = new SkillManager(null);
     public static var inventory(default, null):InventoryManager = new InventoryManager(null);
     public static var drop(default, null):DropManager = new DropManager(null);
     public static var shop(default, null):ShopManager = new ShopManager(null);
     public static var monster(default, null):MonsterManager = new MonsterManager(null);
     public static var enhancement(default, null):EnhancementManager = new EnhancementManager(null);
+    public static var script(default, null):com.aqwapi.modules.ScriptManager = com.aqwapi.modules.ScriptManager.SINGLETON;
 
     // Plural aliases (Skua / RBot convention)
     public static var quests(get, never):QuestManager;
@@ -169,6 +171,8 @@ class Api {
         ensureMathShims();
         ensureStorage();
         try {
+            com.aqwapi.managers.SkillManager.ensureStorageInitialized();
+            com.aqwapi.managers.SkillManager.reload(true);
             com.aqwapi.modules.CombatEngine.init();
         } catch (e:Dynamic) {
             var msg:String = Std.string(e);
@@ -181,12 +185,8 @@ class Api {
                 }
             } catch (_:Dynamic) {}
             #end
-            ApiLogger.warn("Api", "CombatEngine preload error: " + msg);
+            ApiLogger.warn("Api", "SkillManager / CombatEngine preload error: " + msg);
         }
-        try {
-            com.aqwapi.modules.UserSkillsManager.ensureStorageInitialized();
-            com.aqwapi.modules.UserSkillsManager.readUserSkillsObject();
-        } catch (_:Dynamic) {}
     }
 
     public static function init(gameReference:Game):Void {
@@ -197,6 +197,8 @@ class Api {
         map = new MapManager(game);
         quest = new QuestManager(game);
         combat = new CombatManager(game);
+        aura = new AuraManager(game);
+        skills = new SkillManager(game);
         inventory = new InventoryManager(game);
         player = new PlayerManager(game);
         drop = new DropManager(game);

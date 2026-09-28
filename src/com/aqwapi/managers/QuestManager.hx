@@ -143,8 +143,10 @@ class QuestManager {
                 _game.world.getQuests([questId]);
             } catch (e:Dynamic) {}
         } else if (_game != null && _game.sfc != null) {
-            var rId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : 1;
-            _game.sfc.sendString("%xt%zm%getQuests%" + rId + "%" + questId + "%");
+            var rId:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
+            try {
+                _game.sfc.sendXtMessage("zm", "getQuests", [questId], "str", rId);
+            } catch (e:Dynamic) {}
         }
     }
 
@@ -166,8 +168,10 @@ class QuestManager {
                 _game.world.getQuests(toLoad);
             } catch (e:Dynamic) {}
         } else if (_game != null && _game.sfc != null) {
-            var rId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : 1;
-            _game.sfc.sendString("%xt%zm%getQuests%" + rId + "%" + toLoad.join("%") + "%");
+            var rId:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
+            try {
+                _game.sfc.sendXtMessage("zm", "getQuests", toLoad, "str", rId);
+            } catch (e:Dynamic) {}
         }
     }
 
@@ -186,18 +190,19 @@ class QuestManager {
     }
 
     public function isInProgress(questId:Int):Bool {
-        if (_game != null && _game.world != null) {
-            if (_game.world.isQuestInProgress != null) {
-                try {
-                    return _game.world.isQuestInProgress(questId);
-                } catch (e:Dynamic) {}
+        if (_game == null || _game.world == null || questId <= 0) return false;
+        if (_game.world.questTree != null) {
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            if (qData != null) {
+                var s:Dynamic = qData.status;
+                if (s == "p" || s == "c") return true;
+                if (s == null || s == "" || s == "null") return false;
             }
-            if (_game.world.questTree != null) {
-                var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-                if (qData != null && qData.status != null && qData.status != "") {
-                    return true;
-                }
-            }
+        }
+        if (_game.world.isQuestInProgress != null) {
+            try {
+                return _game.world.isQuestInProgress(questId);
+            } catch (e:Dynamic) {}
         }
         return false;
     }
@@ -207,41 +212,34 @@ class QuestManager {
         if (isInProgress(questId)) return;
 
         var now = ApiTime.now();
-        if (_lastAcceptRequests.exists(questId) && (now - _lastAcceptRequests.get(questId)) < 1500) return;
+        if (_lastAcceptRequests.exists(questId) && (now - _lastAcceptRequests.get(questId)) < 1000) return;
+        _lastAcceptRequests.set(questId, now);
+        _lastAcceptTime = now;
 
-        if (isLoaded(questId)) {
-            _lastAcceptRequests.set(questId, now);
-            _lastAcceptTime = now;
-            if (_game.world.lock != null) {
-                try {
-                    var lObj:Dynamic = Reflect.field(_game.world.lock, "acceptQuest");
-                    if (lObj != null) lObj.ts = Date.now().getTime();
-                } catch (e:Dynamic) {}
-            }
+        if (_game.world.lock != null) {
+            try {
+                var lObj:Dynamic = Reflect.field(_game.world.lock, "acceptQuest");
+                if (lObj != null) lObj.ts = Date.now().getTime();
+            } catch (e:Dynamic) {}
+        }
 
-            var accepted:Bool = false;
-            if (_game.sfc != null) {
-                try {
-                    var rId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.world.curRoom;
-                    _game.sfc.sendString("%xt%zm%acceptQuest%" + rId + "%" + questId + "%");
-                    accepted = true;
-                    if (_game.world != null && _game.world.questTree != null) {
-                        var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-                        if (qData != null) {
-                            qData.status = "p";
-                        }
-                    }
-                } catch (e:Dynamic) {}
-            }
-            if (!accepted && _game.world.acceptQuest != null) {
-                try {
-                    _game.world.acceptQuest(questId);
-                    accepted = true;
-                } catch (e:Dynamic) {}
-            }
-        } else {
-            // Automatically request quest data from server if not yet loaded
-            load(questId);
+        var accepted:Bool = false;
+        if (_game.world.acceptQuest != null) {
+            try {
+                _game.world.acceptQuest(questId);
+                accepted = true;
+            } catch (e:Dynamic) {}
+        }
+
+        if (!accepted && _game.sfc != null) {
+            try {
+                var curRoom:Dynamic = _game.world.curRoom;
+                _game.sfc.sendXtMessage("zm", "acceptQuest", [questId], "str", curRoom);
+                if (_game.world.questTree != null) {
+                    var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+                    if (qData != null) qData.status = "p";
+                }
+            } catch (e:Dynamic) {}
         }
     }
 
@@ -282,7 +280,7 @@ class QuestManager {
         if (_game.world != null && _game.world.questTree != null) {
             try {
                 var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-                if (qData != null) qData.status = "";
+                if (qData != null) qData.status = null;
             } catch (e:Dynamic) {}
         }
 

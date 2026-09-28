@@ -97,7 +97,7 @@ class ShopManager {
                         if (i.bEquip == true) continue;
                         if (i.CharItemID == null || i.CharItemID == 0) continue;
                         if (_game.sfc != null) {
-                            var reqId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.world.curRoom;
+                            var reqId:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : ((_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : 1);
                             _game.sfc.sendString("%xt%zm%sellItem%" + reqId + "%" + i.ItemID + "%" + quantity + "%" + i.CharItemID + "%");
                         } else if (_game.world.sendSellItemRequest != null) {
                             _game.world.sendSellItemRequest(i);

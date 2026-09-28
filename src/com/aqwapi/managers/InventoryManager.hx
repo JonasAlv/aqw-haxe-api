@@ -177,7 +177,7 @@ class InventoryManager {
             if (_game.world != null && _game.world.sendEquipItemRequest != null) {
                 _game.world.sendEquipItemRequest(bestMatch);
             } else if (_game.sfc != null) {
-                var reqId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.world.curRoom;
+                var reqId:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : ((_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : 1);
                 _game.sfc.sendString("%xt%zm%equipItem%" + reqId + "%" + bestMatch.ItemID + "%");
             } else {
                 cleanup();
