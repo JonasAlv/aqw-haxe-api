@@ -80,39 +80,22 @@ class ApiStorage {
 
     /**
      * Single data directory with read & write access:
-     * - Desktop: <game_folder>/assets/
-     * - Android: File.applicationStorageDirectory
+     * - All platforms (Desktop/ADL/Wine/Windows/Android): File.applicationStorageDirectory
+     *   On Windows/Wine: %APPDATA%/<appID>/Local Store/
+     *   On Android: /data/user/0/<appID>/app_storage/
      */
     public static function getDataDirectory():Dynamic {
         if (_dataDir != null) return _dataDir;
         var FileClass:Dynamic = getFileClass();
         if (FileClass == null) return null;
 
-        if (isDesktop()) {
-            try {
-                var appDir:Dynamic = getStaticProp(FileClass, "applicationDirectory");
-                if (appDir != null && appDir.nativePath != null) {
-                    var nativeAssetsPath:String = Std.string(appDir.nativePath) + "/assets";
-                    _dataDir = Type.createInstance(FileClass, [nativeAssetsPath]);
-                    if (_dataDir != null && !_dataDir.exists) {
-                        try { _dataDir.createDirectory(); } catch (_:Dynamic) {}
-                    }
-                    ApiLogger.info("Storage", "Desktop single storage path: " + _dataDir.nativePath);
-                    return _dataDir;
-                }
-            } catch (e:Dynamic) {
-                ApiLogger.error("Storage", "Failed to resolve desktop assets directory: " + e);
-            }
-        }
-
-        // Android / Mobile: File.applicationStorageDirectory
         try {
             #if flash
             try {
                 var direct:Dynamic = untyped FileClass.applicationStorageDirectory;
                 if (direct != null) {
                     _dataDir = direct;
-                    ApiLogger.info("Storage", "Android single storage path: " + _dataDir.nativePath);
+                    ApiLogger.info("Storage", "Storage path: " + _dataDir.nativePath);
                     return _dataDir;
                 }
             } catch (_:Dynamic) {}
@@ -120,7 +103,7 @@ class ApiStorage {
             var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
             if (appStorage != null) {
                 _dataDir = appStorage;
-                ApiLogger.info("Storage", "Android single storage path: " + _dataDir.nativePath);
+                ApiLogger.info("Storage", "Storage path: " + _dataDir.nativePath);
                 return _dataDir;
             }
         } catch (e:Dynamic) {
@@ -152,26 +135,24 @@ class ApiStorage {
             }
         } catch (_:Dynamic) {}
 
-        // On Android, copy seed files from APK assets to applicationStorageDirectory once on first run
-        if (!isDesktop()) {
-            var FileClass:Dynamic = getFileClass();
-            var appDir:Dynamic = (FileClass != null) ? getStaticProp(FileClass, "applicationDirectory") : null;
-            if (appDir != null) {
-                var seedFiles = ["skills.json", "userSkills.json", "enhancements.json"];
-                for (fname in seedFiles) {
-                    try {
-                        var target = dir.resolvePath(fname);
-                        if (!target.exists) {
-                            var src = appDir.resolvePath("assets/" + fname);
-                            var content = readFileStream(src);
-                            if (content != null && StringTools.trim(content).length > 0) {
-                                writeFileStream(target, content);
-                                ApiLogger.info("Storage", "Seeded " + fname + " to applicationStorageDirectory");
-                            }
+        // Copy seed user files from applicationDirectory/assets to applicationStorageDirectory if not present
+        var FileClass:Dynamic = getFileClass();
+        var appDir:Dynamic = (FileClass != null) ? getStaticProp(FileClass, "applicationDirectory") : null;
+        if (appDir != null) {
+            var seedFiles = ["userSkills.json", "userEnhancements.json"];
+            for (fname in seedFiles) {
+                try {
+                    var target = dir.resolvePath(fname);
+                    if (!target.exists) {
+                        var src = appDir.resolvePath("assets/" + fname);
+                        var content = readFileStream(src);
+                        if (content != null && StringTools.trim(content).length > 0) {
+                            writeFileStream(target, content);
+                            ApiLogger.info("Storage", "Seeded " + fname + " to applicationStorageDirectory");
                         }
-                    } catch (e:Dynamic) {
-                        ApiLogger.warn("Storage", "Failed to seed " + fname + ": " + e);
                     }
+                } catch (e:Dynamic) {
+                    ApiLogger.warn("Storage", "Failed to seed " + fname + ": " + e);
                 }
             }
         }
@@ -239,15 +220,45 @@ class ApiStorage {
         var clean = cleanFileName(fileName);
         if (clean == "") return null;
 
+        // 1. Try reading from user storage (applicationStorageDirectory)
         var dir = getDataDirectory();
         if (dir != null) {
             try {
                 var f = dir.resolvePath(clean);
-                return readFileStream(f);
+                var txt = readFileStream(f);
+                if (txt != null && StringTools.trim(txt).length > 0) {
+                    return txt;
+                }
             } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "Error reading " + clean + ": " + e);
+                ApiLogger.warn("Storage", "Error reading " + clean + " from storage: " + e);
             }
         }
+
+        // 2. Fallback to bundled app directory (File.applicationDirectory/assets/<clean> or File.applicationDirectory/<clean>)
+        try {
+            var FileClass:Dynamic = getFileClass();
+            if (FileClass != null) {
+                var appDir:Dynamic = null;
+                #if flash
+                try { appDir = untyped FileClass.applicationDirectory; } catch (_:Dynamic) {}
+                #end
+                if (appDir == null) {
+                    appDir = getStaticProp(FileClass, "applicationDirectory");
+                }
+                if (appDir != null) {
+                    var f1 = appDir.resolvePath("assets/" + clean);
+                    var txt1 = readFileStream(f1);
+                    if (txt1 != null && StringTools.trim(txt1).length > 0) return txt1;
+
+                    var f2 = appDir.resolvePath(clean);
+                    var txt2 = readFileStream(f2);
+                    if (txt2 != null && StringTools.trim(txt2).length > 0) return txt2;
+                }
+            }
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Storage", "Error reading bundled asset " + clean + ": " + e);
+        }
+
         return null;
     }
 
