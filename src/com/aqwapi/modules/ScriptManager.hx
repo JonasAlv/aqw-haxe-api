@@ -39,20 +39,23 @@ class ScriptManager {
 
     public function getScriptContent(name:String):String {
         if (name == null || name == "") return "";
-        var content = ApiStorage.readText("scripts/" + name + ".hxs");
-        if ((content == null || StringTools.trim(content) == "") && name == "ShadowBattleon_Leveling") {
-            return getDefaultShadowBattleonScript();
-        }
+        var content = ApiStorage.readScript(name);
         return (content != null) ? content : "";
     }
 
     public function saveScript(name:String, content:String):Bool {
         if (name == null || name == "") return false;
+        if (isBundledScript(name)) {
+            name = name + "_Edited";
+        }
         return ApiStorage.writeText("scripts/" + name + ".hxs", content);
     }
 
     public function deleteScript(name:String):Bool {
         if (name == null || name == "") return false;
+        if (isBundledScript(name)) {
+            return false;
+        }
         if (activeScriptName == name) {
             stop();
         }
@@ -109,69 +112,5 @@ class ScriptManager {
 
     public function getItemCount(searchName:String):Int {
         return (Api.inventory != null) ? Api.inventory.getQuestQuantity(searchName) : 0;
-    }
-
-    public static function getDefaultShadowBattleonScript():String {
-        return "// Auto Leveling Script - ShadowBattleon Doomed Trolls\n"
-            + "// Automatically farms XP and quest items in shadowbattleon.\n\n"
-            + "function onStart() {\n"
-            + "    bot.log(\"[ShadowBattleon] Starting Auto Leveling farm...\");\n"
-            + "    bot.drop.acceptAll = true;\n"
-            + "    bot.combat.equipLoadout(\"farm\");\n"
-            + "    bot.quest.loadMultiple([9421, 9422, 9423]);\n"
-            + "    bot.map.join(\"shadowbattleon\", \"Enter\", \"Spawn\");\n"
-            + "    bot.sleep(2500);\n"
-            + "}\n\n"
-            + "function onTick() {\n"
-            + "    if (!bot.player.isAlive) {\n"
-            + "        bot.sleep(1500);\n"
-            + "        return;\n"
-            + "    }\n\n"
-            + "    if (bot.map.name.toLowerCase() != \"shadowbattleon\") {\n"
-            + "        bot.map.join(\"shadowbattleon\", \"Enter\", \"Spawn\");\n"
-            + "        bot.sleep(2500);\n"
-            + "        return;\n"
-            + "    }\n\n"
-            + "    // Stay in Enter cell where Doomed Trolls spawn right in front of player\n"
-            + "    if (bot.player.cell != \"Enter\") {\n"
-            + "        bot.map.jump(\"Enter\", \"Spawn\");\n"
-            + "        bot.sleep(800);\n"
-            + "        return;\n"
-            + "    }\n\n"
-            + "    // Ensure combat is active\n"
-            + "    if (!bot.combat.isRunning()) {\n"
-            + "        bot.combat.start(true);\n"
-            + "    }\n\n"
-            + "    // Ensure quests are loaded\n"
-            + "    if (!bot.quest.isLoaded(9421) || !bot.quest.isLoaded(9422) || !bot.quest.isLoaded(9423)) {\n"
-            + "        bot.quest.loadMultiple([9421, 9422, 9423]);\n"
-            + "    }\n\n"
-            + "    // Check completion and turn-ins\n"
-            + "    if (bot.quest.canComplete(9421) || bot.inventory.getItemCount(\"Shadow Hunt Medal\") >= 5) {\n"
-            + "        bot.quest.turnIn(9421);\n"
-            + "        bot.sleep(600);\n"
-            + "    } else if (bot.quest.canComplete(9422) || bot.inventory.getItemCount(\"Mega Shadow Hunt Medal\") >= 3) {\n"
-            + "        bot.quest.turnIn(9422);\n"
-            + "        bot.sleep(600);\n"
-            + "    } else if (bot.quest.canComplete(9423) || bot.inventory.getItemCount(\"Infested Flesh\") >= 6) {\n"
-            + "        bot.quest.turnIn(9423);\n"
-            + "        bot.sleep(600);\n"
-            + "    }\n\n"
-            + "    // Re-accept turned in quests\n"
-            + "    if (!bot.quest.isAccepted(9421)) {\n"
-            + "        bot.quest.accept(9421);\n"
-            + "    }\n"
-            + "    if (!bot.quest.isAccepted(9422)) {\n"
-            + "        bot.quest.accept(9422);\n"
-            + "    }\n"
-            + "    if (!bot.quest.isAccepted(9423)) {\n"
-            + "        bot.quest.accept(9423);\n"
-            + "    }\n\n"
-            + "    bot.sleep(500);\n"
-            + "}\n\n"
-            + "function onStop() {\n"
-            + "    bot.log(\"[ShadowBattleon] Auto Leveling Stopped.\");\n"
-            + "    bot.combat.stop();\n"
-            + "}\n";
     }
 }

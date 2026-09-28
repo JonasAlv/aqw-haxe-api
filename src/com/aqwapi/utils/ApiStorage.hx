@@ -156,33 +156,13 @@ class ApiStorage {
                 }
             }
 
-            // Ensure scripts folder exists and seed bundled scripts
+            // Ensure scripts folder exists in user storage for custom scripts
             try {
                 var scriptsDir = dir.resolvePath("scripts");
                 if (!scriptsDir.exists) {
                     scriptsDir.createDirectory();
                 }
-                var bundledScriptsDir = appDir.resolvePath("assets/scripts");
-                if (bundledScriptsDir != null && bundledScriptsDir.exists) {
-                    var listing:Array<Dynamic> = untyped bundledScriptsDir.getDirectoryListing();
-                    if (listing != null) {
-                        for (sf in listing) {
-                            if (sf != null && !sf.isDirectory) {
-                                var targetScript = scriptsDir.resolvePath(sf.name);
-                                if (!targetScript.exists) {
-                                    var scriptContent = readFileStream(sf);
-                                    if (scriptContent != null && StringTools.trim(scriptContent).length > 0) {
-                                        writeFileStream(targetScript, scriptContent);
-                                        ApiLogger.info("Storage", "Seeded script " + sf.name + " to storage");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "Failed to seed scripts: " + e);
-            }
+            } catch (e:Dynamic) {}
         }
     }
 
@@ -392,16 +372,11 @@ class ApiStorage {
             }
         } catch (_:Dynamic) {}
 
-        if (scripts.indexOf("ShadowBattleon_Leveling") == -1) {
-            scripts.unshift("ShadowBattleon_Leveling");
-        }
-
         return scripts;
     }
 
     public static function isBundledScript(scriptName:String):Bool {
         if (scriptName == null || scriptName == "") return false;
-        if (scriptName == "ShadowBattleon_Leveling") return true;
         try {
             var FileClass:Dynamic = getFileClass();
             if (FileClass != null) {
@@ -431,6 +406,45 @@ class ApiStorage {
             return (f != null && f.exists == true);
         } catch (_:Dynamic) {}
         return false;
+    }
+
+    public static function readScript(scriptName:String):String {
+        if (scriptName == null || scriptName == "") return null;
+        var clean = cleanFileName(scriptName);
+        if (StringTools.endsWith(clean.toLowerCase(), ".hxs")) {
+            clean = clean.substring(0, clean.length - 4);
+        }
+
+        // 1. If it's a user script, read from user storage
+        var dir = getDataDirectory();
+        if (dir != null) {
+            try {
+                var uf = dir.resolvePath("scripts/" + clean + ".hxs");
+                var txt = readFileStream(uf);
+                if (txt != null && StringTools.trim(txt).length > 0) return txt;
+            } catch (_:Dynamic) {}
+        }
+
+        // 2. If it's a bundled script, read from applicationDirectory assets
+        try {
+            var FileClass:Dynamic = getFileClass();
+            if (FileClass != null) {
+                var appDir:Dynamic = null;
+                #if flash
+                try { appDir = untyped FileClass.applicationDirectory; } catch (_:Dynamic) {}
+                #end
+                if (appDir == null) {
+                    appDir = getStaticProp(FileClass, "applicationDirectory");
+                }
+                if (appDir != null) {
+                    var bf = appDir.resolvePath("assets/scripts/" + clean + ".hxs");
+                    var btxt = readFileStream(bf);
+                    if (btxt != null && StringTools.trim(btxt).length > 0) return btxt;
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        return null;
     }
 
     public static function deleteUserScript(scriptName:String):Bool {
