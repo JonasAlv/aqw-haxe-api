@@ -12,7 +12,21 @@ class ApiStorage {
         return n;
     }
 
+    public static function isAndroid():Bool {
+        #if flash
+        try {
+            var capCls = flash.system.Capabilities;
+            if (capCls != null) {
+                if (capCls.version != null && capCls.version.indexOf("AND") == 0) return true;
+                if (capCls.os != null && capCls.os.toLowerCase().indexOf("android") != -1) return true;
+            }
+        } catch (_:Dynamic) {}
+        #end
+        return false;
+    }
+
     public static function isDesktop():Bool {
+        if (isAndroid()) return false;
         #if flash
         try {
             var capCls = flash.system.Capabilities;
@@ -80,14 +94,39 @@ class ApiStorage {
 
     /**
      * Single data directory with read & write access:
-     * - All platforms (Desktop/ADL/Wine/Windows/Android): File.applicationStorageDirectory
-     *   On Windows/Wine: %APPDATA%/<appID>/Local Store/
-     *   On Android: /data/user/0/<appID>/app_storage/
+     * - Desktop/Wine/Windows: File.applicationStorageDirectory (%APPDATA%/<appID>/Local Store/)
+     * - Android: File.documentsDirectory/AQWPocket/ (User-accessible without root) with fallback to applicationStorageDirectory
      */
     public static function getDataDirectory():Dynamic {
         if (_dataDir != null) return _dataDir;
         var FileClass:Dynamic = getFileClass();
         if (FileClass == null) return null;
+
+        // On Android, use user-accessible shared storage (Documents/AQWPocket) so users can manage files & scripts
+        if (isAndroid()) {
+            try {
+                var docDir:Dynamic = null;
+                #if flash
+                try { docDir = untyped FileClass.documentsDirectory; } catch (_:Dynamic) {}
+                #end
+                if (docDir == null) docDir = getStaticProp(FileClass, "documentsDirectory");
+                if (docDir == null) {
+                    #if flash
+                    try { docDir = untyped FileClass.userDirectory; } catch (_:Dynamic) {}
+                    #end
+                    if (docDir == null) docDir = getStaticProp(FileClass, "userDirectory");
+                }
+                if (docDir != null) {
+                    var sharedDir:Dynamic = docDir.resolvePath("AQWPocket");
+                    if (!sharedDir.exists) sharedDir.createDirectory();
+                    _dataDir = sharedDir;
+                    ApiLogger.info("Storage", "Android accessible storage path: " + _dataDir.nativePath);
+                    return _dataDir;
+                }
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Storage", "Could not initialize Android shared storage, falling back: " + e);
+            }
+        }
 
         try {
             #if flash
