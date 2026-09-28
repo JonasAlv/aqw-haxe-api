@@ -5,7 +5,6 @@ import com.aqwapi.Game;
 import com.aqwapi.modules.DefaultSkillsData;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiStorage;
-import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.SkillDslParser;
 
@@ -21,14 +20,6 @@ class SkillManager {
     private static var _cachedKnownClasses:Array<String> = null;
     private static var _cachedCleanKeys:Array<{ clean:String, len:Int, key:String }> = null;
     private static final NULL_CONFIG:Dynamic = { __null: true };
-
-    private static var _cachedCurrentClassName:String = "";
-    private static var _lastCurrentClassCheckTime:Float = 0;
-
-    public static function invalidateCurrentClass():Void {
-        _cachedCurrentClassName = "";
-        _lastCurrentClassCheckTime = 0;
-    }
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -56,12 +47,6 @@ class SkillManager {
     }
 
     public static function getCurrentClassName():String {
-        var now:Float = ApiTime.now();
-        if (_cachedCurrentClassName != "" && (now - _lastCurrentClassCheckTime < 1000)) {
-            return _cachedCurrentClassName;
-        }
-        _lastCurrentClassCheckTime = now;
-
         try {
             if (Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null) {
                 var av:Dynamic = Api.game.world.myAvatar;
@@ -86,7 +71,6 @@ class SkillManager {
                                     equippedClassItemName = s;
                                     // If this exact item name matches a known class config, return it immediately!
                                     if (findClassConfig(s) != null) {
-                                        _cachedCurrentClassName = s;
                                         return s;
                                     }
                                 }
@@ -100,7 +84,6 @@ class SkillManager {
                     var c:String = StringTools.trim(Std.string(av.objData.strClassName));
                     if (c != "" && c != "null") {
                         if (findClassConfig(c) != null) {
-                            _cachedCurrentClassName = c;
                             return c;
                         }
                     }
@@ -108,21 +91,17 @@ class SkillManager {
 
                 // 3. Fallback to equipped class item name (even if not yet in skills.json)
                 if (equippedClassItemName != "") {
-                    _cachedCurrentClassName = equippedClassItemName;
                     return equippedClassItemName;
                 }
 
                 // 4. Fallback to objData.strClassName
                 if (av.objData != null && av.objData.strClassName != null) {
                     var c:String = StringTools.trim(Std.string(av.objData.strClassName));
-                    if (c != "" && c != "null") {
-                        _cachedCurrentClassName = c;
-                        return c;
-                    }
+                    if (c != "" && c != "null") return c;
                 }
             }
         } catch (_:Dynamic) {}
-        return _cachedCurrentClassName;
+        return "";
     }
 
     public static function resolveClassName(className:String):String {
@@ -162,7 +141,7 @@ class SkillManager {
     }
 
     public static function findClassConfig(className:String):Dynamic {
-        if (!_skillsLoaded) ensureLoaded(true);
+        if (!_skillsLoaded) reload(true);
         if (_skillsData == null || className == null || className == "") return null;
 
         var trimmed = StringTools.trim(className);
@@ -251,7 +230,7 @@ class SkillManager {
     }
 
     public static function getKnownClasses():Array<String> {
-        if (!_skillsLoaded) ensureLoaded(true);
+        if (!_skillsLoaded) reload(true);
         if (_cachedKnownClasses != null) return _cachedKnownClasses.copy();
         if (_skillsData == null) return [];
         var list:Array<String> = [];
@@ -297,7 +276,7 @@ class SkillManager {
 
     public static function registerCustomMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String, stopOnTargetAuras:String = null, resetComboOnTargetChange:Null<Bool> = null):Void {
         if (className == null || className == "" || modeName == null || modeName == "") return;
-        if (!_skillsLoaded) ensureLoaded(true);
+        if (!_skillsLoaded) reload(true);
         if (_skillsData == null) _skillsData = {};
 
         var trimmedClass = StringTools.trim(className);
@@ -410,7 +389,8 @@ class SkillManager {
                 if (modeObj == null || !Reflect.isObject(modeObj) || Std.isOfType(modeObj, Array)) continue;
 
                 var modeStr = (modeObj.mode != null) ? Std.string(modeObj.mode) : ((modeObj.skillUseMode != null) ? Std.string(modeObj.skillUseMode) : "WaitForCooldown");
-                var timeoutInt = (modeObj.timeout != null) ? ApiUtils.parseInt(modeObj.timeout, 100) : ((modeObj.skillTimeout != null) ? ApiUtils.parseInt(modeObj.skillTimeout, 100) : 100);
+                var rawTo = (modeObj.timeout != null) ? ApiUtils.parseInt(modeObj.timeout, 0) : ((modeObj.skillTimeout != null) ? ApiUtils.parseInt(modeObj.skillTimeout, 0) : 0);
+                var timeoutInt = (rawTo > 1500) ? rawTo : 0;
                 var comboStr = (modeObj.combo != null) ? StringTools.trim(Std.string(modeObj.combo)) : "";
 
                 if (comboStr == "" && modeObj.skills != null && Std.isOfType(modeObj.skills, Array)) {
@@ -571,7 +551,10 @@ class SkillManager {
                             className: targetKey,
                             modeName: trimmedMode,
                             skillUseMode: (mObj.mode != null) ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown"),
-                            timeout: (mObj.timeout != null) ? ApiUtils.parseInt(mObj.timeout, 100) : ((mObj.skillTimeout != null) ? ApiUtils.parseInt(mObj.skillTimeout, 100) : 100),
+                            timeout: {
+                                var rawTo = (mObj.timeout != null) ? ApiUtils.parseInt(mObj.timeout, 0) : ((mObj.skillTimeout != null) ? ApiUtils.parseInt(mObj.skillTimeout, 0) : 0);
+                                (rawTo > 1500) ? rawTo : 0;
+                            },
                             combo: (mObj.combo != null) ? Std.string(mObj.combo) : "",
                             stopOnTargetAuras: (mObj.stopOnTargetAuras != null) ? Std.string(mObj.stopOnTargetAuras) : null,
                             resetComboOnTargetChange: (mObj.resetComboOnTargetChange != null) ? (mObj.resetComboOnTargetChange == true) : null
@@ -610,7 +593,10 @@ class SkillManager {
                     className: resolvedClass,
                     modeName: trimmedMode,
                     skillUseMode: (mObj.mode != null) ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown"),
-                    timeout: (mObj.timeout != null) ? ApiUtils.parseInt(mObj.timeout, 100) : ((mObj.skillTimeout != null) ? ApiUtils.parseInt(mObj.skillTimeout, 100) : 100),
+                    timeout: {
+                        var rawTo = (mObj.timeout != null) ? ApiUtils.parseInt(mObj.timeout, 0) : ((mObj.skillTimeout != null) ? ApiUtils.parseInt(mObj.skillTimeout, 0) : 0);
+                        (rawTo > 1500) ? rawTo : 0;
+                    },
                     combo: comboStr,
                     stopOnTargetAuras: (mObj.stopOnTargetAuras != null) ? Std.string(mObj.stopOnTargetAuras) : null,
                     resetComboOnTargetChange: (mObj.resetComboOnTargetChange != null) ? (mObj.resetComboOnTargetChange == true) : null
@@ -641,7 +627,7 @@ class SkillManager {
             }
 
             var effectiveMode = (skillUseMode != null && skillUseMode != "") ? skillUseMode : "WaitForCooldown";
-            var effectiveTimeout = timeout >= 0 ? timeout : 100;
+            var effectiveTimeout = (timeout > 1500) ? timeout : 0;
             var effectiveCombo = (combo != null) ? StringTools.trim(combo) : "";
 
             if (Reflect.hasField(classObj, trimmedMode)) {
@@ -723,17 +709,7 @@ class SkillManager {
         return removed;
     }
 
-    public static function isLoaded():Bool {
-        return _skillsLoaded && _skillsData != null;
-    }
-
-    public static function ensureLoaded(silent:Bool = true):Void {
-        if (isLoaded()) return;
-        reload(silent, false);
-    }
-
-    public static function reload(silent:Bool = false, force:Bool = true):Void {
-        if (!force && isLoaded()) return;
+    public static function reload(silent:Bool = false):Void {
         _skillsLoaded = true;
         try {
             var rawTxt:String = null;
@@ -813,9 +789,11 @@ class SkillManager {
                     if (mObj.resetComboOnTargetChange != null && mObj.resetOnTarget == null) mObj.resetOnTarget = mObj.resetComboOnTargetChange;
                     if (mObj.stopOnTargetAuras != null && mObj.stopTargetAuras == null) mObj.stopTargetAuras = mObj.stopOnTargetAuras;
 
-                    // Note: combo parsing (mObj.skills) is deferred and resolved lazily on-demand
-                    // in resolveActiveModeConfig(). This prevents parsing ~500 DSL combos upfront
-                    // and eliminates lag spikes when loading or reloading skills.
+                    if (mObj.skills == null || !Std.isOfType(mObj.skills, Array) || (cast(mObj.skills, Array<Dynamic>)).length == 0) {
+                        if (mObj.combo != null && Std.string(mObj.combo) != "") {
+                            mObj.skills = SkillDslParser.parseCombo(Std.string(mObj.combo));
+                        }
+                    }
                 }
             }
         } catch (_:Dynamic) {}

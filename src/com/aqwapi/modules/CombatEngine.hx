@@ -51,7 +51,7 @@ class CombatEngine {
     private static var _lastFallbackWarnTime:Float = 0;
 
     public static function init():Void {
-        SkillManager.ensureLoaded(true);
+        SkillManager.reload(true);
         if (_timer == null) {
             _timer = new Timer(100);
             _timer.addEventListener(TimerEvent.TIMER, onTick);
@@ -59,8 +59,6 @@ class CombatEngine {
     }
 
     public static function start(smart:Bool, silent:Bool = false):Void {
-        var t0:Float = ApiTime.now();
-        SkillManager.invalidateCurrentClass();
         init();
         isSmart = smart;
         IS_ON = true;
@@ -89,11 +87,9 @@ class CombatEngine {
         if (!silent) {
             if (smart) {
                 var c = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : SkillManager.getCurrentClassName();
-                var took = Math.round(ApiTime.now() - t0);
-                ApiLogger.info("Combat", "Smart combat started in " + took + "ms. Class: '" + c + "', Mode: '" + skillMode + "'");
+                ApiLogger.info("Combat", "Smart combat started. Class: '" + c + "', Mode: '" + skillMode + "'");
             } else {
-                var took = Math.round(ApiTime.now() - t0);
-                ApiLogger.info("Combat", "Custom combat started in " + took + "ms.");
+                ApiLogger.info("Combat", "Custom combat started.");
             }
         }
     }
@@ -305,7 +301,7 @@ class CombatEngine {
             } catch (_:Dynamic) {}
 
             try {
-                runAdvancedRotation(world, avatar, target, activeModeConfig);
+                runAdvancedRotation(world, avatar, target);
             } catch (rotErr:Dynamic) {
                 ApiLogger.error("Combat", "Advanced rotation error: " + rotErr);
             }
@@ -314,10 +310,20 @@ class CombatEngine {
         }
     }
 
-    private static function runAdvancedRotation(world:Dynamic, avatar:Dynamic, target:Dynamic, activeModeConfig:Dynamic = null):Void {
+    private static function runAdvancedRotation(world:Dynamic, avatar:Dynamic, target:Dynamic):Void {
         var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : "Current";
         var isCurrentClass = (confClass == "Current");
         var className:String = isCurrentClass ? SkillManager.getCurrentClassName() : confClass;
+        var config:Dynamic = (className != "") ? SkillManager.findClassConfig(className) : null;
+        if (config == null) {
+            var now = ApiTime.now();
+            if (now - _lastFallbackWarnTime > 3000) {
+                _lastFallbackWarnTime = now;
+                ApiLogger.warn("Combat", "Smart Combat: class config not found for '" + className + "'. Falling back to custom rotation.");
+            }
+            runSimpleRotation(world, avatar);
+            return;
+        }
 
         if (isCurrentClass && className != "") {
             if (_lastDetectedClass == "") {
@@ -331,11 +337,10 @@ class CombatEngine {
                 if (skillMode != "Auto" && avail.indexOf(skillMode) == -1) {
                     skillMode = "Auto";
                 }
-                activeModeConfig = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
             }
         }
 
-        var modeConfig:Dynamic = (activeModeConfig != null) ? activeModeConfig : SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
+        var modeConfig:Dynamic = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
         if (modeConfig == null) {
             var now = ApiTime.now();
             if (now - _lastFallbackWarnTime > 3000) {
@@ -347,7 +352,7 @@ class CombatEngine {
         }
 
         var skillUseMode:String = (modeConfig.mode != null) ? modeConfig.mode : ((modeConfig.skillUseMode != null) ? modeConfig.skillUseMode : "WaitForCooldown");
-        var skillTimeout:Float = (modeConfig.timeout != null) ? ApiUtils.parseFloat(modeConfig.timeout, 100) : ((modeConfig.skillTimeout != null) ? ApiUtils.parseFloat(modeConfig.skillTimeout, 100) : 100);
+        var skillTimeout:Float = (modeConfig.timeout != null) ? ApiUtils.parseFloat(modeConfig.timeout, 0) : ((modeConfig.skillTimeout != null) ? ApiUtils.parseFloat(modeConfig.skillTimeout, 0) : 0);
         var skills:Array<Dynamic> = (modeConfig.skills != null && Std.isOfType(modeConfig.skills, Array)) ? cast modeConfig.skills : [];
         if (skills.length == 0 && modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
             skills = SkillDslParser.parseCombo(Std.string(modeConfig.combo));
@@ -391,9 +396,19 @@ class CombatEngine {
             return;
         }
 
+        // Verify action exists on current class
+        var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
+        if (actObj == null || actObj.isOK == false) {
+            _skillIndex = (_skillIndex + 1) % skills.length;
+            _skillWaitStart = ApiTime.now();
+            _stepFirstFailTime = -1;
+            return;
+        }
+
         var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
         var now:Float = ApiTime.now();
 
+        // If rule condition is not met (e.g. hp < 50%), skip to next skill in combo
         if (!rulesPass) {
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
@@ -402,22 +417,40 @@ class CombatEngine {
         }
         _stepFirstFailTime = -1;
 
+        // If game GCD is active, wait without advancing
         if (SkillCaster.isGcdActive(world)) return;
 
         var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
-        if (fireResult == SkillCaster.SR_FIRED || fireResult == SkillCaster.SR_RESOURCE) {
+        if (fireResult == SkillCaster.SR_FIRED) {
+            // Successfully fired, advance to next skill
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
             _stepFirstFailTime = -1;
-        } else {
-            var elapsedWait:Float = now - _skillWaitStart;
-            // skillTimeout is in ms: if <= 0 or elapsedWait >= skillTimeout, move to next skill
-            if (skillTimeout <= 0 || elapsedWait >= skillTimeout) {
-                _skillIndex = (_skillIndex + 1) % skills.length;
-                _skillWaitStart = now;
-                _stepFirstFailTime = -1;
-            }
+            return;
         }
+
+        // TimingBlocked (on cooldown) or ResourceBlocked (out of mana):
+        // In WaitForCooldown mode, we MUST wait for the skill to become ready!
+        var elapsedWait:Float = now - _skillWaitStart;
+
+        // Explicit timeout configured by user (must be > 1500ms since GCD alone is 1500ms).
+        // Timeouts <= 1500 (such as 0 or legacy 100 default) mean wait indefinitely.
+        if (skillTimeout > 1500 && elapsedWait >= skillTimeout) {
+            _skillIndex = (_skillIndex + 1) % skills.length;
+            _skillWaitStart = now;
+            _stepFirstFailTime = -1;
+            return;
+        }
+
+        // Safety fallback: if resource blocked (out of MP) for > 10 seconds, advance to avoid locking rotation
+        if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
+            _skillIndex = (_skillIndex + 1) % skills.length;
+            _skillWaitStart = now;
+            _stepFirstFailTime = -1;
+            return;
+        }
+
+        // Otherwise: DO NOT ADVANCE! Stay at _skillIndex and wait for cooldown/mana!
     }
 
     private static function runUseIfAvailable(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>):Void {

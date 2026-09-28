@@ -70,43 +70,8 @@ class SkillCaster {
      */
     public static function canFireSkill(idx:Int):Bool {
         if (Api.game == null || Api.game.world == null || Api.game.world.myAvatar == null) return false;
-        var world:Dynamic = Api.game.world;
-        var avatar:Dynamic = Api.game.world.myAvatar;
-
-        var actObj:Dynamic = getSkillAction(idx);
-        if (actObj == null || actObj.isOK == false) return false;
-
-        var dl:Dynamic = (avatar != null) ? avatar.dataLeaf : null;
-        if (dl != null && dl.intState == 0) return false;
-
-        var timingReady:Bool = false;
-        try { timingReady = (world.actionTimeCheck(actObj) == true); } catch (_:Dynamic) {}
-        if (!timingReady) return false;
-
-        if (dl != null && dl.auras != null && world.auraCatOf != null) {
-            try {
-                var auras:Array<Dynamic> = cast dl.auras;
-                for (aura in auras) {
-                    var cat:String = world.auraCatOf(aura);
-                    if (cat == "stun" || cat == "stone" || cat == "paralyze" || cat == "disable" || cat == "disabled") {
-                        return false;
-                    }
-                }
-            } catch (_:Dynamic) {}
-        }
-
-        var rawMp:Int = actObj.mp != null ? ApiUtils.parseInt(actObj.mp, 0) : 0;
-        if (rawMp > 0 && dl != null) {
-            var cmc:Float = 1.0;
-            if (dl.sta != null && Reflect.field(dl.sta, "$cmc") != null) {
-                cmc = ApiUtils.parseFloat(Reflect.field(dl.sta, "$cmc"), 1.0);
-            }
-            var effectiveMpCost:Int = Math.round(rawMp * cmc);
-            var curMp:Int = (dl.intMP != null) ? Std.int(dl.intMP) : 0;
-            if (curMp < effectiveMpCost) return false;
-        }
-
-        return true;
+        var res = fireSkill(Api.game.world, Api.game.world.myAvatar, idx);
+        return res == SR_FIRED || res == SR_TIMING;
     }
 
     /**
