@@ -92,6 +92,49 @@ class ApiStorage {
         return null;
     }
 
+    private static var _permissionRequested:Bool = false;
+
+    public static function requestAndroidStoragePermission():Void {
+        if (_permissionRequested) return;
+        _permissionRequested = true;
+        if (!isAndroid()) return;
+        var FileClass:Dynamic = getFileClass();
+        if (FileClass == null) return;
+        try {
+            var docDir:Dynamic = null;
+            #if flash
+            try { docDir = untyped FileClass.documentsDirectory; } catch (_:Dynamic) {}
+            #end
+            if (docDir == null) docDir = getStaticProp(FileClass, "documentsDirectory");
+            if (docDir == null) {
+                #if flash
+                try { docDir = untyped FileClass.userDirectory; } catch (_:Dynamic) {}
+                #end
+                if (docDir == null) docDir = getStaticProp(FileClass, "userDirectory");
+            }
+            if (docDir != null) {
+                var pStatus:Dynamic = null;
+                #if flash
+                try { pStatus = untyped docDir.permissionStatus; } catch (_:Dynamic) {}
+                #end
+                if (pStatus == null) pStatus = Reflect.field(docDir, "permissionStatus");
+                ApiLogger.info("Storage", "Android storage permission status: " + pStatus);
+                if (pStatus != null && pStatus != "granted") {
+                    ApiLogger.info("Storage", "Requesting Android storage permission...");
+                    #if flash
+                    try {
+                        untyped docDir.requestPermission();
+                    } catch (err:Dynamic) {
+                        ApiLogger.warn("Storage", "Error calling requestPermission: " + err);
+                    }
+                    #end
+                }
+            }
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Storage", "Could not request Android storage permission: " + e);
+        }
+    }
+
     /**
      * Single data directory with read & write access:
      * - Desktop/Wine/Windows: File.applicationStorageDirectory (%APPDATA%/<appID>/Local Store/)
@@ -104,6 +147,7 @@ class ApiStorage {
 
         // On Android, use user-accessible shared storage (Documents/AQWPocket) so users can manage files & scripts
         if (isAndroid()) {
+            requestAndroidStoragePermission();
             try {
                 var docDir:Dynamic = null;
                 #if flash
