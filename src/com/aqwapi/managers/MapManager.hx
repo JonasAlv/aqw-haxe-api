@@ -2,9 +2,12 @@ package com.aqwapi.managers;
 
 import com.aqwapi.Api;
 import com.aqwapi.Game;
+import com.aqwapi.utils.ApiTime;
 
 class MapManager {
     private var _game:Game;
+    private var _lastJoinTime:Float = 0;
+    private var _lastJumpTime:Float = 0;
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -17,9 +20,22 @@ class MapManager {
     private var _usePrivateRoom:Bool = true;
     private var _privateRoomNumber:Int = 100000;
 
+    private function _pauseScriptIfRunning(ms:Float):Void {
+        try {
+            var engine = com.aqwapi.scripting.HScriptEngine.SINGLETON;
+            if (engine != null && engine.isRunning) {
+                engine.sleep(ms);
+            }
+        } catch (_:Dynamic) {}
+    }
+
     public function join(mapName:String, cell:String = "Enter", pad:String = "Spawn"):Void {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return;
+        var now = ApiTime.now();
+        if (now - _lastJoinTime < 2000) return;
+        _lastJoinTime = now;
+        _pauseScriptIfRunning(2000);
         var avatar:Dynamic = g.world.myAvatar;
         var username:String = "";
         if (avatar != null) {
@@ -106,6 +122,10 @@ class MapManager {
         if (g == null || g.world == null) return;
         if (g.world.moveToCell != null) {
             if (g.world.strFrame != cell) {
+                var now = ApiTime.now();
+                if (now - _lastJumpTime < 500) return;
+                _lastJumpTime = now;
+                _pauseScriptIfRunning(500);
                 g.world.moveToCell(cell, pad);
             }
         }

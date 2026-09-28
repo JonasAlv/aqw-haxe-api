@@ -921,6 +921,11 @@ class HScriptEngine {
             return;
         }
 
+        if (Api.map != null && !Api.map.isLoaded) {
+            statusText = "Loading map...";
+            return;
+        }
+
         var now = ApiTime.now();
         if (waitTimer > 0 && now < waitTimer) return;
 
