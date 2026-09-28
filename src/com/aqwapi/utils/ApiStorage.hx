@@ -155,6 +155,34 @@ class ApiStorage {
                     ApiLogger.warn("Storage", "Failed to seed " + fname + ": " + e);
                 }
             }
+
+            // Ensure scripts folder exists and seed bundled scripts
+            try {
+                var scriptsDir = dir.resolvePath("scripts");
+                if (!scriptsDir.exists) {
+                    scriptsDir.createDirectory();
+                }
+                var bundledScriptsDir = appDir.resolvePath("assets/scripts");
+                if (bundledScriptsDir != null && bundledScriptsDir.exists) {
+                    var listing:Array<Dynamic> = untyped bundledScriptsDir.getDirectoryListing();
+                    if (listing != null) {
+                        for (sf in listing) {
+                            if (sf != null && !sf.isDirectory) {
+                                var targetScript = scriptsDir.resolvePath(sf.name);
+                                if (!targetScript.exists) {
+                                    var scriptContent = readFileStream(sf);
+                                    if (scriptContent != null && StringTools.trim(scriptContent).length > 0) {
+                                        writeFileStream(targetScript, scriptContent);
+                                        ApiLogger.info("Storage", "Seeded script " + sf.name + " to storage");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Storage", "Failed to seed scripts: " + e);
+            }
         }
     }
 
@@ -306,6 +334,116 @@ class ApiStorage {
                 ApiLogger.warn("Storage", "Error writing bytes: " + e);
             }
         }
+        return false;
+    }
+
+    public static function listScripts():Array<String> {
+        var scripts:Array<String> = [];
+        var cleanName = function(fName:String):String {
+            if (fName == null) return null;
+            if (StringTools.endsWith(fName.toLowerCase(), ".hxs")) {
+                return fName.substring(0, fName.length - 4);
+            }
+            return fName;
+        };
+
+        // 1. Scan bundled scripts in applicationDirectory/assets/scripts
+        try {
+            var FileClass:Dynamic = getFileClass();
+            if (FileClass != null) {
+                var appDir:Dynamic = getStaticProp(FileClass, "applicationDirectory");
+                if (appDir != null) {
+                    var bDir = appDir.resolvePath("assets/scripts");
+                    if (bDir != null && bDir.exists && bDir.isDirectory) {
+                        var list:Array<Dynamic> = untyped bDir.getDirectoryListing();
+                        if (list != null) {
+                            for (f in list) {
+                                if (f != null && !f.isDirectory) {
+                                    var s = cleanName(f.name);
+                                    if (s != null && s != "" && scripts.indexOf(s) == -1) {
+                                        scripts.push(s);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        // 2. Scan user scripts in applicationStorageDirectory/scripts
+        try {
+            var dir = getDataDirectory();
+            if (dir != null) {
+                var uDir = dir.resolvePath("scripts");
+                if (uDir != null && uDir.exists && uDir.isDirectory) {
+                    var list:Array<Dynamic> = untyped uDir.getDirectoryListing();
+                    if (list != null) {
+                        for (f in list) {
+                            if (f != null && !f.isDirectory) {
+                                var s = cleanName(f.name);
+                                if (s != null && s != "" && scripts.indexOf(s) == -1) {
+                                    scripts.push(s);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        if (scripts.indexOf("ShadowBattleon_Leveling") == -1) {
+            scripts.unshift("ShadowBattleon_Leveling");
+        }
+
+        return scripts;
+    }
+
+    public static function isBundledScript(scriptName:String):Bool {
+        if (scriptName == null || scriptName == "") return false;
+        if (scriptName == "ShadowBattleon_Leveling") return true;
+        try {
+            var FileClass:Dynamic = getFileClass();
+            if (FileClass != null) {
+                var appDir:Dynamic = null;
+                #if flash
+                try { appDir = untyped FileClass.applicationDirectory; } catch (_:Dynamic) {}
+                #end
+                if (appDir == null) {
+                    appDir = getStaticProp(FileClass, "applicationDirectory");
+                }
+                if (appDir != null) {
+                    var f = appDir.resolvePath("assets/scripts/" + scriptName + ".hxs");
+                    if (f != null && f.exists) return true;
+                }
+            }
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    public static function isUserScript(scriptName:String):Bool {
+        if (scriptName == null || scriptName == "") return false;
+        if (isBundledScript(scriptName)) return false;
+        var dir = getDataDirectory();
+        if (dir == null) return false;
+        try {
+            var f = dir.resolvePath("scripts/" + scriptName + ".hxs");
+            return (f != null && f.exists == true);
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    public static function deleteUserScript(scriptName:String):Bool {
+        if (scriptName == null || scriptName == "") return false;
+        var dir = getDataDirectory();
+        if (dir == null) return false;
+        try {
+            var f = dir.resolvePath("scripts/" + scriptName + ".hxs");
+            if (f != null && f.exists) {
+                f.deleteFile();
+                return true;
+            }
+        } catch (_:Dynamic) {}
         return false;
     }
 }

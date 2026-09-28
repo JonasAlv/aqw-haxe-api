@@ -27,13 +27,6 @@ class ApiUtils {
         }
         var str:String = StringTools.trim(Std.string(x));
         if (str == "") return def;
-        #if flash
-        try {
-            var num:Float = untyped __global__["parseInt"](str, 10);
-            if (num != num) return def;
-            return Std.int(num);
-        } catch (_:Dynamic) {}
-        #end
         var res:Null<Int> = Std.parseInt(str);
         return (res != null) ? res : def;
     }
@@ -49,13 +42,6 @@ class ApiUtils {
         }
         var str:String = StringTools.trim(Std.string(x));
         if (str == "") return def;
-        #if flash
-        try {
-            var num:Float = untyped __global__["parseFloat"](str);
-            if (num != num) return def;
-            return num;
-        } catch (_:Dynamic) {}
-        #end
         var res:Float = Std.parseFloat(str);
         return (res != res) ? def : res;
     }
