@@ -79,10 +79,12 @@ class ApiStorage {
     }
 
     /**
-     * Single data directory with read & write access:
-     * - All platforms (Desktop/ADL/Wine/Windows/Android): File.applicationStorageDirectory
-     *   On Windows/Wine: %APPDATA%/<appID>/Local Store/
-     *   On Android: /data/user/0/<appID>/app_storage/
+     * Data directory for WRITES (user-editable files that persist):
+     * - Desktop/ADL/Wine: File.applicationStorageDirectory (%APPDATA%/<appID>/Local Store/)
+     * - Android: File.applicationStorageDirectory (/data/user/0/<appID>/app_storage/)
+     *
+     * For READS, readText() first tries applicationDirectory/assets/ on desktop (fast native path),
+     * then falls back here for user-overridden files.
      */
     public static function getDataDirectory():Dynamic {
         if (_dataDir != null) return _dataDir;
@@ -220,7 +222,32 @@ class ApiStorage {
         var clean = cleanFileName(fileName);
         if (clean == "") return null;
 
-        // 1. Try reading from user storage (applicationStorageDirectory)
+        // 1. On desktop (ADL/Wine): try bundled applicationDirectory/assets/ first — fast native path
+        if (isDesktop()) {
+            try {
+                var FileClass:Dynamic = getFileClass();
+                if (FileClass != null) {
+                    var appDir:Dynamic = null;
+                    #if flash
+                    try { appDir = untyped FileClass.applicationDirectory; } catch (_:Dynamic) {}
+                    #end
+                    if (appDir == null) appDir = getStaticProp(FileClass, "applicationDirectory");
+                    if (appDir != null) {
+                        var f1 = appDir.resolvePath("assets/" + clean);
+                        var txt1 = readFileStream(f1);
+                        if (txt1 != null && StringTools.trim(txt1).length > 0) return txt1;
+
+                        var f2 = appDir.resolvePath(clean);
+                        var txt2 = readFileStream(f2);
+                        if (txt2 != null && StringTools.trim(txt2).length > 0) return txt2;
+                    }
+                }
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Storage", "Error reading bundled asset " + clean + ": " + e);
+            }
+        }
+
+        // 2. Try user storage (applicationStorageDirectory) — user-overridden files, or Android primary path
         var dir = getDataDirectory();
         if (dir != null) {
             try {
@@ -234,29 +261,29 @@ class ApiStorage {
             }
         }
 
-        // 2. Fallback to bundled app directory (File.applicationDirectory/assets/<clean> or File.applicationDirectory/<clean>)
-        try {
-            var FileClass:Dynamic = getFileClass();
-            if (FileClass != null) {
-                var appDir:Dynamic = null;
-                #if flash
-                try { appDir = untyped FileClass.applicationDirectory; } catch (_:Dynamic) {}
-                #end
-                if (appDir == null) {
-                    appDir = getStaticProp(FileClass, "applicationDirectory");
-                }
-                if (appDir != null) {
-                    var f1 = appDir.resolvePath("assets/" + clean);
-                    var txt1 = readFileStream(f1);
-                    if (txt1 != null && StringTools.trim(txt1).length > 0) return txt1;
+        // 3. Fallback: bundled app directory for non-desktop platforms
+        if (!isDesktop()) {
+            try {
+                var FileClass:Dynamic = getFileClass();
+                if (FileClass != null) {
+                    var appDir:Dynamic = null;
+                    #if flash
+                    try { appDir = untyped FileClass.applicationDirectory; } catch (_:Dynamic) {}
+                    #end
+                    if (appDir == null) appDir = getStaticProp(FileClass, "applicationDirectory");
+                    if (appDir != null) {
+                        var f1 = appDir.resolvePath("assets/" + clean);
+                        var txt1 = readFileStream(f1);
+                        if (txt1 != null && StringTools.trim(txt1).length > 0) return txt1;
 
-                    var f2 = appDir.resolvePath(clean);
-                    var txt2 = readFileStream(f2);
-                    if (txt2 != null && StringTools.trim(txt2).length > 0) return txt2;
+                        var f2 = appDir.resolvePath(clean);
+                        var txt2 = readFileStream(f2);
+                        if (txt2 != null && StringTools.trim(txt2).length > 0) return txt2;
+                    }
                 }
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Storage", "Error reading bundled asset " + clean + ": " + e);
             }
-        } catch (e:Dynamic) {
-            ApiLogger.warn("Storage", "Error reading bundled asset " + clean + ": " + e);
         }
 
         return null;
