@@ -764,6 +764,12 @@ class SkillManager {
                     if (mObj.timeout != null && mObj.skillTimeout == null) mObj.skillTimeout = mObj.timeout;
                     if (mObj.resetComboOnTargetChange != null && mObj.resetOnTarget == null) mObj.resetOnTarget = mObj.resetComboOnTargetChange;
                     if (mObj.stopOnTargetAuras != null && mObj.stopTargetAuras == null) mObj.stopTargetAuras = mObj.stopOnTargetAuras;
+
+                    if (mObj.skills == null || !Std.isOfType(mObj.skills, Array) || (cast(mObj.skills, Array<Dynamic>)).length == 0) {
+                        if (mObj.combo != null && Std.string(mObj.combo) != "") {
+                            mObj.skills = SkillDslParser.parseCombo(Std.string(mObj.combo));
+                        }
+                    }
                 }
             }
         } catch (_:Dynamic) {}
@@ -784,10 +790,12 @@ class SkillManager {
         if (config == null) return null;
 
         var modeConfig:Dynamic = null;
-        if (skillMode != null && skillMode != "" && Reflect.hasField(config, skillMode)) {
+        var isExplicitMode:Bool = (skillMode != null && skillMode != "" && skillMode != "Auto");
+
+        if (isExplicitMode && Reflect.hasField(config, skillMode)) {
             modeConfig = Reflect.field(config, skillMode);
         }
-        if (modeConfig == null && skillMode != null && skillMode != "") {
+        if (modeConfig == null && isExplicitMode) {
             for (key in Reflect.fields(config)) {
                 if (key.toLowerCase() == skillMode.toLowerCase()) {
                     modeConfig = Reflect.field(config, key);
@@ -795,7 +803,7 @@ class SkillManager {
                 }
             }
         }
-        if (modeConfig == null && skillMode != null && skillMode != "") {
+        if (modeConfig == null && isExplicitMode) {
             var details = getModeDetails(className, skillMode);
             if (details != null && details.combo != null && details.combo != "") {
                 var parsedSkills = SkillDslParser.parseCombo(details.combo);
@@ -833,6 +841,15 @@ class SkillManager {
                 }
             }
         }
+
+        if (modeConfig != null) {
+            if (modeConfig.skills == null || !Std.isOfType(modeConfig.skills, Array) || (cast(modeConfig.skills, Array<Dynamic>)).length == 0) {
+                if (modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
+                    modeConfig.skills = SkillDslParser.parseCombo(Std.string(modeConfig.combo));
+                }
+            }
+        }
+
         return modeConfig;
     }
 

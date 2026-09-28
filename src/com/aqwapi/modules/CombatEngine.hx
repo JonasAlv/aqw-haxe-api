@@ -10,6 +10,7 @@ import com.aqwapi.managers.SkillManager;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.utils.SkillDslParser;
 
 class CombatEngine {
     private static var _timer:Timer;
@@ -63,7 +64,9 @@ class CombatEngine {
 
         var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : "Current";
         if (confClass == "Current") {
-            skillMode = "Auto";
+            if (skillMode == null || skillMode == "") {
+                skillMode = "Auto";
+            }
             _lastDetectedClass = "";
         }
 
@@ -313,9 +316,19 @@ class CombatEngine {
         var config:Dynamic = (className != "") ? SkillManager.findClassConfig(className) : null;
         if (config == null) { runSimpleRotation(world, avatar); return; }
 
-        if (isCurrentClass && _lastDetectedClass != className && className != "") {
-            _lastDetectedClass = className;
-            skillMode = "Auto";
+        if (isCurrentClass && className != "") {
+            if (_lastDetectedClass == "") {
+                _lastDetectedClass = className;
+                if (skillMode == null || skillMode == "") {
+                    skillMode = "Auto";
+                }
+            } else if (_lastDetectedClass != className) {
+                _lastDetectedClass = className;
+                var avail = SkillManager.getAvailableModes(className);
+                if (skillMode != "Auto" && avail.indexOf(skillMode) == -1) {
+                    skillMode = "Auto";
+                }
+            }
         }
 
         var modeConfig:Dynamic = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
@@ -324,6 +337,10 @@ class CombatEngine {
         var skillUseMode:String = (modeConfig.mode != null) ? modeConfig.mode : ((modeConfig.skillUseMode != null) ? modeConfig.skillUseMode : "WaitForCooldown");
         var skillTimeout:Float = (modeConfig.timeout != null) ? ApiUtils.parseFloat(modeConfig.timeout, 100) : ((modeConfig.skillTimeout != null) ? ApiUtils.parseFloat(modeConfig.skillTimeout, 100) : 100);
         var skills:Array<Dynamic> = (modeConfig.skills != null && Std.isOfType(modeConfig.skills, Array)) ? cast modeConfig.skills : [];
+        if (skills.length == 0 && modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
+            skills = SkillDslParser.parseCombo(Std.string(modeConfig.combo));
+            modeConfig.skills = skills;
+        }
         if (skills.length == 0) { runSimpleRotation(world, avatar); return; }
 
         var resetOnTarget:Bool = (modeConfig.resetComboOnTargetChange == true || modeConfig.resetOnTarget == true);
@@ -358,13 +375,9 @@ class CombatEngine {
         var now:Float = ApiTime.now();
 
         if (!rulesPass) {
-            if (_stepFirstFailTime < 0) _stepFirstFailTime = now;
-            var elapsedRule:Float = now - _stepFirstFailTime;
-            if (skillTimeout > 0 && elapsedRule > skillTimeout) {
-                _skillIndex = (_skillIndex + 1) % skills.length;
-                _skillWaitStart = now;
-                _stepFirstFailTime = -1;
-            }
+            _skillIndex = (_skillIndex + 1) % skills.length;
+            _skillWaitStart = now;
+            _stepFirstFailTime = -1;
             return;
         }
         _stepFirstFailTime = -1;
@@ -372,17 +385,14 @@ class CombatEngine {
         if (SkillCaster.isGcdActive(world)) return;
 
         var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
-        if (fireResult == SkillCaster.SR_FIRED) {
-            _skillIndex = (_skillIndex + 1) % skills.length;
-            _skillWaitStart = now;
-            _stepFirstFailTime = -1;
-        } else if (fireResult == SkillCaster.SR_RESOURCE) {
+        if (fireResult == SkillCaster.SR_FIRED || fireResult == SkillCaster.SR_RESOURCE) {
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
             _stepFirstFailTime = -1;
         } else {
             var elapsedWait:Float = now - _skillWaitStart;
-            if (skillTimeout > 0 && elapsedWait > skillTimeout) {
+            var maxWaitMs:Float = (skillTimeout <= 0) ? 10000 : (skillTimeout <= 100 ? skillTimeout * 1000 : skillTimeout);
+            if (elapsedWait > maxWaitMs) {
                 _skillIndex = (_skillIndex + 1) % skills.length;
                 _skillWaitStart = now;
                 _stepFirstFailTime = -1;

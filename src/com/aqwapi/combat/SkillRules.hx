@@ -14,42 +14,17 @@ class SkillRules {
         if (arr.length == 0) return true;
 
         var pStats:Dynamic = getPlayerStats(world, avatar);
-        var isMultiAura:Bool = (skill.hasMultiAuraRule == true);
         var multiAuraOp:String = (skill.multiAuraOperator != null) ? Std.string(skill.multiAuraOperator).toUpperCase() : "AND";
 
-        if (isMultiAura) {
-            var multiAuraRules:Array<Dynamic> = [];
-            var otherRules:Array<Dynamic> = [];
-
+        if (multiAuraOp == "OR") {
+            var anyPassed:Bool = false;
             for (rule in arr) {
-                if (rule != null && Std.string(rule.type) == "MultiAura") {
-                    multiAuraRules.push(rule);
-                } else {
-                    otherRules.push(rule);
+                if (evaluateRule(rule, world, avatar, target, pStats, skillId, waitUntil)) {
+                    anyPassed = true;
+                    break;
                 }
             }
-
-            for (rule in otherRules) {
-                if (!evaluateRule(rule, world, avatar, target, pStats, skillId, waitUntil)) return false;
-            }
-
-            if (multiAuraRules.length > 0) {
-                if (multiAuraOp == "OR") {
-                    var anyPassed:Bool = false;
-                    for (mRule in multiAuraRules) {
-                        if (evaluateRule(mRule, world, avatar, target, pStats, skillId, waitUntil)) {
-                            anyPassed = true;
-                            break;
-                        }
-                    }
-                    if (!anyPassed) return false;
-                } else {
-                    for (mRule in multiAuraRules) {
-                        if (!evaluateRule(mRule, world, avatar, target, pStats, skillId, waitUntil)) return false;
-                    }
-                }
-            }
-            return true;
+            return anyPassed;
         } else {
             for (rule in arr) {
                 if (!evaluateRule(rule, world, avatar, target, pStats, skillId, waitUntil)) return false;
