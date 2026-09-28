@@ -902,7 +902,10 @@ class HScriptEngine {
         Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STOPPED, "HScript Stopped!"));
         ApiLogger.info("HScript", "HScript Stopped!");
 
-        if (Api.quest != null) Api.quest.stopAuto();
+        if (Api.quest != null) {
+            Api.quest.stopAuto();
+            Api.quest.clearQueue();
+        }
         if (Api.combat != null) Api.combat.stopAuto();
         else CombatEngine.stop();
     }

@@ -16,9 +16,12 @@ class QuestManager {
     private var _questIDs:Array<Dynamic> = [];
     private var _lastTurnIns:Dynamic = {};
     private var _lastLoadRequests:Map<Int, Float> = new Map<Int, Float>();
-    private var _lastAcceptRequests:Map<Int, Float> = new Map<Int, Float>();
     private var _lastAcceptTime:Float = 0;
     private var _lastCompleteTime:Float = 0;
+    public static inline var ACTION_COOLDOWN_MS:Int = 1100; // 1000ms AQW server cooldown + 100ms lag compensation
+    private var _actionQueue:Array<{type:String, questId:Int, itemId:Int}> = [];
+    private var _queueTimer:Timer = null;
+    private var _lastActionTime:Float = 0;
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -211,10 +214,141 @@ class QuestManager {
         if (_game == null || _game.world == null || questId <= 0) return;
         if (isInProgress(questId)) return;
 
+        for (task in _actionQueue) {
+            if (task.type == "accept" && task.questId == questId) return;
+        }
+
+        _actionQueue.push({type: "accept", questId: questId, itemId: -1});
+        _pauseScriptIfRunning();
+        processQueue();
+    }
+
+    public function acceptMultiple(questIds:Array<Int>):Void {
+        if (questIds == null || questIds.length == 0) return;
+        for (qid in questIds) {
+            if (qid > 0) accept(qid);
+        }
+    }
+
+    public function ensureAccept(questId:Int):Void {
+        if (!isAccepted(questId) && !isAcceptQueued(questId)) {
+            if (!isLoaded(questId)) load(questId);
+            accept(questId);
+        }
+    }
+
+    public function complete(questId:Int, itemId:Int = -1):Void {
+        if (_game == null || _game.world == null || questId <= 0) return;
+        if (!isInProgress(questId)) return;
+
+        for (task in _actionQueue) {
+            if (task.type == "complete" && task.questId == questId) return;
+        }
+
+        _actionQueue.push({type: "complete", questId: questId, itemId: itemId});
+        _pauseScriptIfRunning();
+        processQueue();
+    }
+
+    public inline function turnIn(questId:Int, itemId:Int = -1):Void {
+        complete(questId, itemId);
+    }
+
+    public function completeMultiple(questIds:Array<Int>):Void {
+        if (questIds == null || questIds.length == 0) return;
+        for (qid in questIds) {
+            if (qid > 0 && isAccepted(qid)) complete(qid);
+        }
+    }
+
+    public function isActionQueued(type:String, questId:Int):Bool {
+        for (task in _actionQueue) {
+            if (task.type == type && task.questId == questId) return true;
+        }
+        return false;
+    }
+
+    public inline function isAcceptQueued(questId:Int):Bool {
+        return isActionQueued("accept", questId);
+    }
+
+    public inline function isCompleteQueued(questId:Int):Bool {
+        return isActionQueued("complete", questId);
+    }
+
+    public function clearQueue():Void {
+        _actionQueue = [];
+        if (_queueTimer != null) {
+            _queueTimer.stop();
+            _queueTimer.removeEventListener(TimerEvent.TIMER, onQueueTimer);
+            _queueTimer = null;
+        }
+    }
+
+    private function _pauseScriptIfRunning():Void {
+        try {
+            var engine = com.aqwapi.scripting.HScriptEngine.SINGLETON;
+            if (engine != null && engine.isRunning) {
+                engine.sleep(ACTION_COOLDOWN_MS);
+            }
+        } catch (_:Dynamic) {}
+    }
+
+    private function processQueue():Void {
+        if (_actionQueue.length == 0) return;
+        if (_queueTimer != null && _queueTimer.running) return;
+
         var now = ApiTime.now();
-        if (_lastAcceptRequests.exists(questId) && (now - _lastAcceptRequests.get(questId)) < 1000) return;
-        _lastAcceptRequests.set(questId, now);
-        _lastAcceptTime = now;
+        var elapsed = now - _lastActionTime;
+        if (elapsed < ACTION_COOLDOWN_MS) {
+            var waitMs = Std.int(ACTION_COOLDOWN_MS - elapsed);
+            if (waitMs < 20) waitMs = 20;
+            if (_queueTimer != null) {
+                _queueTimer.stop();
+                _queueTimer.removeEventListener(TimerEvent.TIMER, onQueueTimer);
+            }
+            _queueTimer = new Timer(waitMs, 1);
+            _queueTimer.addEventListener(TimerEvent.TIMER, onQueueTimer, false, 0, true);
+            _queueTimer.start();
+            return;
+        }
+
+        var task = _actionQueue.shift();
+        if (task == null) return;
+
+        _lastActionTime = ApiTime.now();
+
+        if (task.type == "accept") {
+            _executeAccept(task.questId);
+        } else if (task.type == "complete") {
+            _executeComplete(task.questId, task.itemId);
+        }
+
+        if (_actionQueue.length > 0) {
+            if (_queueTimer != null) {
+                _queueTimer.stop();
+                _queueTimer.removeEventListener(TimerEvent.TIMER, onQueueTimer);
+            }
+            _queueTimer = new Timer(ACTION_COOLDOWN_MS, 1);
+            _queueTimer.addEventListener(TimerEvent.TIMER, onQueueTimer, false, 0, true);
+            _queueTimer.start();
+        }
+    }
+
+    private function onQueueTimer(e:TimerEvent):Void {
+        if (_queueTimer != null) {
+            _queueTimer.stop();
+            _queueTimer.removeEventListener(TimerEvent.TIMER, onQueueTimer);
+            _queueTimer = null;
+        }
+        processQueue();
+    }
+
+    private function _executeAccept(questId:Int):Void {
+        if (_game == null || _game.world == null || questId <= 0) return;
+        if (isInProgress(questId)) return;
+
+        _lastAcceptTime = ApiTime.now();
 
         if (_game.world.lock != null) {
             try {
@@ -243,29 +377,13 @@ class QuestManager {
         }
     }
 
-    public function acceptMultiple(questIds:Array<Int>):Void {
-        if (questIds == null || questIds.length == 0) return;
-        for (qid in questIds) {
-            if (qid > 0) accept(qid);
-        }
-    }
-
-    public function ensureAccept(questId:Int):Void {
-        if (!isAccepted(questId)) {
-            if (!isLoaded(questId)) load(questId);
-            accept(questId);
-        }
-    }
-
-    public function complete(questId:Int, itemId:Int = -1):Void {
+    private function _executeComplete(questId:Int, itemId:Int = -1):Void {
         if (_game == null || _game.world == null || questId <= 0) return;
         if (!isInProgress(questId)) return;
 
         var now = ApiTime.now();
-        if (now - _lastCompleteTime < 1250) return;
-
         var lastQTurnIn:Float = Reflect.hasField(_lastTurnIns, Std.string(questId)) ? Reflect.field(_lastTurnIns, Std.string(questId)) : 0.0;
-        if (now - lastQTurnIn < 2500) return;
+        if (now - lastQTurnIn < ACTION_COOLDOWN_MS) return;
         Reflect.setField(_lastTurnIns, Std.string(questId), now);
 
         _lastCompleteTime = now;
@@ -292,17 +410,6 @@ class QuestManager {
                     _game.world.tryQuestComplete(questId);
                 }
             } catch (e:Dynamic) {}
-        }
-    }
-
-    public inline function turnIn(questId:Int, itemId:Int = -1):Void {
-        complete(questId, itemId);
-    }
-
-    public function completeMultiple(questIds:Array<Int>):Void {
-        if (questIds == null || questIds.length == 0) return;
-        for (qid in questIds) {
-            if (qid > 0 && isAccepted(qid)) complete(qid);
         }
     }
 
@@ -393,6 +500,7 @@ class QuestManager {
 
     public function canComplete(questId:Int):Bool {
         if (_game == null || _game.world == null) return false;
+        if (isCompleteQueued(questId)) return false;
 
         // Must be currently in progress
         if (!isInProgress(questId)) return false;
@@ -402,7 +510,7 @@ class QuestManager {
     }
 
     public inline function isAccepted(questId:Int):Bool {
-        return isInProgress(questId);
+        return isInProgress(questId) || isAcceptQueued(questId);
     }
 
     public inline function hasActive(questId:Int):Bool {
