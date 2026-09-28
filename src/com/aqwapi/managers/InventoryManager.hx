@@ -145,6 +145,16 @@ class InventoryManager {
             var bEquip:Dynamic = bestMatch.bEquip;
             if (bEquip == 1 || bEquip == "1" || bEquip == true) { resolve(null); return; }
 
+            // If it is a consumable / potion / scroll, delegate to equipUsable
+            var sES:String = (bestMatch.sES != null) ? Std.string(bestMatch.sES).toLowerCase() : "";
+            var sType:String = (bestMatch.sType != null) ? Std.string(bestMatch.sType).toLowerCase() : "";
+            var bU:Dynamic = bestMatch.bU;
+            if (sES == "co" || sType == "item" || sType == "serveruse" || bU == 1 || bU == "1" || bU == true) {
+                equipUsable(itemNameOrId);
+                resolve(bestMatch);
+                return;
+            }
+
             var listener:Dynamic->Void = null;
             var timeoutTimer:Timer = null;
 

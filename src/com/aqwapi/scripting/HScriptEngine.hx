@@ -140,6 +140,12 @@ class HScriptEngine {
         _interp.variables.set("isForgeUnlocked", function(name:String):Bool {
             return Api.enhancement.isForgeUnlocked(name);
         });
+        _interp.variables.set("isEnhancing", function():Bool {
+            return Api.enhancement != null && Api.enhancement.isBusy;
+        });
+        _interp.variables.set("isEnhanceBusy", function():Bool {
+            return Api.enhancement != null && Api.enhancement.isBusy;
+        });
 
         // Logging & Notifications
         _interp.variables.set("log", function(msg:Dynamic):Void {
@@ -412,6 +418,34 @@ class HScriptEngine {
         _interp.variables.set("equip", function(itemName:String):Void {
             Api.inventory.equip(itemName);
         });
+        _interp.variables.set("equipPotion", function(itemName:String):Void {
+            if (Api.inventory != null) Api.inventory.equipUsable(itemName);
+        });
+        _interp.variables.set("equipUsable", function(itemName:String):Void {
+            if (Api.inventory != null) Api.inventory.equipUsable(itemName);
+        });
+        _interp.variables.set("refreshPotion", function(potionName:String, auraName:String = ""):Bool {
+            var aName:String = (auraName != null && auraName != "") ? auraName : potionName;
+            if (Api.player != null && Api.player.hasAura(aName)) return false;
+            if (Api.inventory != null && Api.inventory.hasItem(potionName)) {
+                Api.inventory.equipUsable(potionName);
+            }
+            if (Api.combat != null && Api.combat.canUseSkill(5)) {
+                return Api.combat.useSkill(5);
+            }
+            return false;
+        });
+        _interp.variables.set("usePotion", function(potionName:String, auraName:String = ""):Bool {
+            var aName:String = (auraName != null && auraName != "") ? auraName : potionName;
+            if (Api.player != null && Api.player.hasAura(aName)) return false;
+            if (Api.inventory != null && Api.inventory.hasItem(potionName)) {
+                Api.inventory.equipUsable(potionName);
+            }
+            if (Api.combat != null && Api.combat.canUseSkill(5)) {
+                return Api.combat.useSkill(5);
+            }
+            return false;
+        });
         _interp.variables.set("equipClass", function(type:String):Bool {
             return Api.combat.equipLoadout(type);
         });
@@ -575,52 +609,6 @@ class HScriptEngine {
                 }
             }
             return false;
-        });
-        _interp.variables.set("getAuraRemaining", function(auraName:String, target:String = "self"):Float {
-            if (Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null) {
-                var avt = Api.game.world.myAvatar;
-                var tgt = avt.target;
-                return CombatEngine.getAuraRemaining(auraName, target, Api.game.world, avt, tgt);
-            }
-            return 0.0;
-        });
-        _interp.variables.set("getPlayerAuraRemaining", function(auraName:String):Float {
-            return Api.player != null ? Api.player.getAuraRemaining(auraName) : 0.0;
-        });
-        _interp.variables.set("getTargetAuraRemaining", function(auraName:String):Float {
-            var t = Api.player != null ? Api.player.target : null;
-            return t != null ? t.getAuraRemaining(auraName) : 0.0;
-        });
-        _interp.variables.set("getAuraDuration", function(auraName:String, target:String = "self"):Float {
-            if (target == "self" || target == "player") {
-                return Api.player != null ? Api.player.getAuraDuration(auraName) : 0.0;
-            } else {
-                var t = Api.player != null ? Api.player.target : null;
-                return t != null ? t.getAuraDuration(auraName) : 0.0;
-            }
-        });
-        _interp.variables.set("getAuraStacks", function(auraName:String, target:String = "self"):Float {
-            if (target == "self" || target == "player") {
-                return Api.player != null ? Api.player.getAuraStacks(auraName) : 0.0;
-            } else {
-                var t = Api.player != null ? Api.player.target : null;
-                return t != null ? t.getAuraStacks(auraName) : 0.0;
-            }
-        });
-
-        // Target Status Helpers
-        _interp.variables.set("targetHp", function():Int {
-            var t = Api.player != null ? Api.player.target : null;
-            return t != null ? t.hp : 0;
-        });
-        _interp.variables.set("targetMaxHp", function():Int {
-            var t = Api.player != null ? Api.player.target : null;
-            return t != null ? t.maxHp : 0;
-        });
-        _interp.variables.set("targetHpPercent", function():Float {
-            var t = Api.player != null ? Api.player.target : null;
-            if (t == null || t.maxHp <= 0) return 0.0;
-            return t.hp / t.maxHp;
         });
 
         // Player Status Helpers

@@ -78,13 +78,6 @@ class SkillDslParser {
                     var pTo:Null<Int> = Std.parseInt(val);
                     currentData.skillTimeout = (pTo != null) ? pTo : 100;
 
-                case "stopontargetauras", "stop_on_target_auras", "stopauras":
-                    currentData.stopOnTargetAuras = val;
-
-                case "resetcomboontargetchange", "resetontarget":
-                    var lowerVal:String = val.toLowerCase();
-                    currentData.resetComboOnTargetChange = (lowerVal == "true" || lowerVal == "1" || lowerVal == "yes");
-
                 case "combo", "skills", "rotation":
                     currentData.combo = val;
                     currentData.skills = parseCombo(val);
@@ -194,23 +187,7 @@ class SkillDslParser {
             };
         }
 
-        // 2. Target Health: target:hp, tgt:hp, target_hp, target.hp, mon:hp, target:health
-        if (StringTools.startsWith(lower, "target:hp") || StringTools.startsWith(lower, "tgt:hp") ||
-            StringTools.startsWith(lower, "target_hp") || StringTools.startsWith(lower, "target.hp") ||
-            StringTools.startsWith(lower, "tgt_hp") || StringTools.startsWith(lower, "mon:hp") ||
-            StringTools.startsWith(lower, "mon_hp")) {
-            var hpIdx:Int = lower.indexOf("hp");
-            var sub:String = StringTools.trim(r.substring(hpIdx + 2));
-            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
-            return parseStatRule("TargetHealth", sub);
-        } else if (StringTools.startsWith(lower, "target:health") || StringTools.startsWith(lower, "tgt:health") || StringTools.startsWith(lower, "mon:health")) {
-            var hIdx:Int = lower.indexOf("health");
-            var sub:String = StringTools.trim(r.substring(hIdx + 6));
-            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
-            return parseStatRule("TargetHealth", sub);
-        }
-
-        // 3. Party Health: party:hp, party_hp, party.hp, party:health
+        // 2. Party Health: party:hp, party_hp, party.hp, party:health
         if (StringTools.startsWith(lower, "party:hp") || StringTools.startsWith(lower, "party_hp") || StringTools.startsWith(lower, "party.hp")) {
             var sub:String = StringTools.trim(r.substring(8));
             if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
@@ -221,7 +198,7 @@ class SkillDslParser {
             return parseStatRule("PartyHealth", sub);
         }
 
-        // 4. Health: hp > 70%, hp < 2000, health < 50%
+        // 3. Health: hp > 70%, hp < 2000, health < 50%
         if (StringTools.startsWith(lower, "health")) {
             var sub:String = StringTools.trim(r.substring(6));
             if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
@@ -233,7 +210,7 @@ class SkillDslParser {
             return parseStatRule("Health", sub);
         }
 
-        // 5. Mana: mp < 70%, mp > 30, mana < 20%
+        // 4. Mana: mp < 70%, mp > 30, mana < 20%
         if (StringTools.startsWith(lower, "mana")) {
             var sub:String = StringTools.trim(r.substring(4));
             if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
@@ -245,86 +222,7 @@ class SkillDslParser {
             return parseStatRule("Mana", sub);
         }
 
-        // 6. Aura Timer / Remaining: auraTime(self:Name) <= 1.5s, auraRemaining(target:Name) < 2s
-        var atIdx:Int = -1;
-        var atPrefixLen:Int = 0;
-        if (lower.indexOf("auratime(") != -1) {
-            atIdx = lower.indexOf("auratime(");
-            atPrefixLen = 9;
-        } else if (lower.indexOf("aura_time(") != -1) {
-            atIdx = lower.indexOf("aura_time(");
-            atPrefixLen = 10;
-        } else if (lower.indexOf("auratimer(") != -1) {
-            atIdx = lower.indexOf("auratimer(");
-            atPrefixLen = 10;
-        } else if (lower.indexOf("auraremaining(") != -1) {
-            atIdx = lower.indexOf("auraremaining(");
-            atPrefixLen = 14;
-        }
-
-        if (atIdx != -1) {
-            var openParen:Int = atIdx + atPrefixLen;
-            var closeParen:Int = r.indexOf(")", openParen);
-            if (closeParen != -1) {
-                var inside:String = r.substring(openParen, closeParen);
-                var after:String = StringTools.trim(r.substring(closeParen + 1));
-
-                var target:String = "self";
-                var name:String = inside;
-
-                var colonIdx:Int = inside.indexOf(":");
-                if (colonIdx != -1) {
-                    target = StringTools.trim(inside.substring(0, colonIdx)).toLowerCase();
-                    name = StringTools.trim(inside.substring(colonIdx + 1));
-                }
-
-                var comp:String = "less";
-                var valStr:String = "";
-
-                if (StringTools.startsWith(after, ">=")) {
-                    comp = "greater";
-                    valStr = StringTools.trim(after.substring(2));
-                } else if (StringTools.startsWith(after, "<=")) {
-                    comp = "less";
-                    valStr = StringTools.trim(after.substring(2));
-                } else if (StringTools.startsWith(after, ">")) {
-                    comp = "greater";
-                    valStr = StringTools.trim(after.substring(1));
-                } else if (StringTools.startsWith(after, "<")) {
-                    comp = "less";
-                    valStr = StringTools.trim(after.substring(1));
-                } else if (StringTools.startsWith(after, "==")) {
-                    comp = "equal";
-                    valStr = StringTools.trim(after.substring(2));
-                } else if (StringTools.startsWith(after, "=")) {
-                    comp = "equal";
-                    valStr = StringTools.trim(after.substring(1));
-                } else {
-                    valStr = after;
-                }
-
-                var afterLower = valStr.toLowerCase();
-                var isMs:Bool = (afterLower.indexOf("ms") != -1);
-                var numStr = StringTools.replace(afterLower, "ms", "");
-                numStr = StringTools.replace(numStr, "s", "");
-                var parsedVal:Float = ApiUtils.parseFloat(StringTools.trim(numStr), 0.0);
-                if (isMs) {
-                    parsedVal = parsedVal / 1000.0;
-                } else if (parsedVal > 60 && afterLower.indexOf("s") == -1) {
-                    parsedVal = parsedVal / 1000.0;
-                }
-
-                return {
-                    type: "AuraTime",
-                    auraName: name,
-                    auraTarget: target,
-                    comparison: comp,
-                    value: parsedVal
-                };
-            }
-        }
-
-        // 7. Aura: !aura(self:Name) or aura(target:Name) >= 22 or aura(Name)
+        // 4. Aura: !aura(self:Name) or aura(target:Name) >= 22 or aura(Name)
         var auraIdx:Int = lower.indexOf("aura(");
         if (auraIdx != -1) {
             var isNeg:Bool = (auraIdx > 0 && r.charAt(auraIdx - 1) == "!");
@@ -454,14 +352,6 @@ class SkillDslParser {
             var to:Int = (r.timeout != null) ? ApiUtils.parseInt(r.timeout, 0) : 0;
             return "wait(" + to + "ms)";
         }
-        if (rtype == "TargetHealth") {
-            var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
-            var isPct:Bool = (r.isPercentage == true);
-            var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<");
-            var unit:String = isPct ? "%" : "";
-            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
-            return "tgt:hp " + comp + " " + valStr + unit;
-        }
         if (rtype == "PartyHealth") {
             var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
             var isPct:Bool = (r.isPercentage == true);
@@ -478,14 +368,6 @@ class SkillDslParser {
             var unit:String = isPct ? "%" : "";
             var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
             return stat + " " + comp + " " + valStr + unit;
-        }
-        if (rtype == "AuraTime" || rtype == "AuraRemaining" || rtype == "AuraTimer") {
-            var target:String = (r.auraTarget != null && r.auraTarget != "") ? Std.string(r.auraTarget) : "self";
-            var name:String = (r.auraName != null) ? Std.string(r.auraName) : "";
-            var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
-            var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<=");
-            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(Math.round(val * 10) / 10);
-            return "auraTime(" + target + ":" + name + ") " + comp + " " + valStr + "s";
         }
         if (rtype == "Aura" || rtype == "MultiAura") {
             var target:String = (r.auraTarget != null && r.auraTarget != "") ? Std.string(r.auraTarget) : "self";

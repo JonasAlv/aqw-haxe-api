@@ -1,7 +1,6 @@
 package com.aqwapi.data;
 
 import com.aqwapi.Api;
-import com.aqwapi.utils.ApiUtils;
 
 class EntityDTO {
     public var id:String = "";
@@ -213,13 +212,6 @@ class EntityDTO {
                     if (uLeaf != null && uLeaf.auras != null) auraSources.push(uLeaf.auras);
                 } catch (e:Dynamic) {}
             }
-            var pnmVal = _sf(raw, "pnm");
-            if (pnmVal != null && Std.string(pnmVal) != "" && w.uoTree != null) {
-                try {
-                    var uLeaf = Reflect.field(w.uoTree, Std.string(pnmVal).toLowerCase());
-                    if (uLeaf != null && uLeaf.auras != null) auraSources.push(uLeaf.auras);
-                } catch (e:Dynamic) {}
-            }
         }
 
         for (src in auraSources) {
@@ -269,35 +261,5 @@ class EntityDTO {
 
     public function hasAura(auraName:String):Bool {
         return getAura(auraName) != null;
-    }
-
-    public function getAuraStacks(auraName:String):Float {
-        var a = getAura(auraName);
-        if (a == null) return 0.0;
-        var val = _sf(a, "val");
-        if (val == null) return 1.0;
-        return ApiUtils.parseFloat(val, 1.0);
-    }
-
-    public function getAuraDuration(auraName:String):Float {
-        var a = getAura(auraName);
-        if (a == null) return 0.0;
-        var dur = _sf(a, "dur");
-        return (dur != null) ? ApiUtils.parseFloat(dur, 0.0) : 0.0;
-    }
-
-    public function getAuraRemaining(auraName:String):Float {
-        var a = getAura(auraName);
-        if (a == null) return 0.0;
-        var durVal = _sf(a, "dur");
-        var dur:Float = (durVal != null) ? ApiUtils.parseFloat(durVal, 0.0) : 0.0;
-        if (dur <= 0) return 0.0;
-        var tsVal = _sf(a, "ts");
-        var ts:Float = (tsVal != null) ? ApiUtils.parseFloat(tsVal, 0.0) : 0.0;
-        if (ts <= 0) return dur;
-        var tsMs:Float = (ts < 10000000000.0) ? (ts * 1000.0) : ts;
-        var nowMs:Float = Date.now().getTime();
-        var rem:Float = (tsMs + (dur * 1000.0) - nowMs) / 1000.0;
-        return rem > 0 ? rem : 0.0;
     }
 }

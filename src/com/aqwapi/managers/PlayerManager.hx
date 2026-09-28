@@ -124,27 +124,6 @@ class PlayerManager {
         return getAura(auraName) != null;
     }
 
-    public function getAuraStacks(auraName:String):Float {
-        var a = _avatar();
-        if (a == null) return 0.0;
-        var ent = new EntityDTO(a);
-        return ent.getAuraStacks(auraName);
-    }
-
-    public function getAuraDuration(auraName:String):Float {
-        var a = _avatar();
-        if (a == null) return 0.0;
-        var ent = new EntityDTO(a);
-        return ent.getAuraDuration(auraName);
-    }
-
-    public function getAuraRemaining(auraName:String):Float {
-        var a = _avatar();
-        if (a == null) return 0.0;
-        var ent = new EntityDTO(a);
-        return ent.getAuraRemaining(auraName);
-    }
-
     public function setSpawnPoint(cell:String = null, pad:String = null):Void {
         var g = _g();
         if (g != null && g.world != null && Reflect.hasField(g.world, "setSpawnPoint")) {
