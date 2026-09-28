@@ -276,6 +276,15 @@ class HScriptEngine {
                 if (qid > 0) Api.quest.accept(qid);
             }
         });
+        _interp.variables.set("autoQuest", function(quests:Dynamic):Void {
+            if (Api.quest != null) Api.quest.startAuto(quests);
+        });
+        _interp.variables.set("stopAutoQuest", function():Void {
+            if (Api.quest != null) Api.quest.stopAuto();
+        });
+        _interp.variables.set("isAutoQuestRunning", function():Bool {
+            return Api.quest != null && Api.quest.isAutoRunning;
+        });
         _interp.variables.set("ensureAccept", function(questId:Int):Void {
             if (!Api.quest.isAccepted(questId)) {
                 if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);

@@ -588,16 +588,36 @@ class QuestManager {
         return arr.join(", ");
     }
 
-    public function startAuto(questString:String):Void {
+    public inline function auto(quests:Dynamic):Void {
+        startAuto(quests);
+    }
+
+    public inline function autoQuest(quests:Dynamic):Void {
+        startAuto(quests);
+    }
+
+    public function startAuto(quests:Dynamic):Void {
         stopAuto();
 
-        if (questString == null || questString.length == 0) return;
+        if (quests == null) return;
 
-        var parts:Array<String> = questString.split(",");
+        var qList:Array<String> = [];
+        if (Std.isOfType(quests, Array)) {
+            var rawArr:Array<Dynamic> = cast quests;
+            for (item in rawArr) {
+                if (item != null) qList.push(Std.string(item));
+            }
+        } else {
+            var str:String = Std.string(quests);
+            if (str.length == 0) return;
+            qList = str.split(",");
+        }
+
         _questIDs = [];
         var qidsToLoad:Array<Int> = [];
-        for (raw in parts) {
-            var subParts:Array<String> = raw.split(":");
+        for (raw in qList) {
+            var rawTrimmed = StringTools.trim(raw);
+            var subParts:Array<String> = rawTrimmed.split(":");
             var val:Int = ApiUtils.parseInt(subParts[0], 0);
             if (val > 0) {
                 var itemId:Int = -1;
