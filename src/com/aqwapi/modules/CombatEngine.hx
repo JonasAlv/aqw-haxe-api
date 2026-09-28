@@ -106,11 +106,6 @@ class CombatEngine {
                     world.cancelAutoAttack();
                 }
             } catch (_:Dynamic) {}
-            try {
-                if (world.autoActionTimer != null && world.autoActionTimer.running) {
-                    world.autoActionTimer.stop();
-                }
-            } catch (_:Dynamic) {}
         }
     }
 
@@ -287,11 +282,6 @@ class CombatEngine {
                 if (world.cancelAutoAttack != null) {
                     try { world.cancelAutoAttack(); } catch (_:Dynamic) {}
                 }
-                try {
-                    if (world.autoActionTimer != null && world.autoActionTimer.running) {
-                        world.autoActionTimer.stop();
-                    }
-                } catch (_:Dynamic) {}
                 return;
             } else if (_pausedByTargetAura) {
                 _pausedByTargetAura = false;
@@ -304,11 +294,7 @@ class CombatEngine {
                         try { untyped world.approachTarget(); } catch (_:Dynamic) {}
                     }
                 } else {
-                    var isAAActive:Bool = false;
-                    try {
-                        isAAActive = (world.autoActionTimer != null && world.autoActionTimer.running);
-                    } catch (_:Dynamic) {}
-                    if (!isAAActive && !SkillCaster.isGcdActive(world)) {
+                    if (!SkillCaster.isGcdActive(world)) {
                         SkillCaster.fireSkill(world, avatar, 0);
                     }
                 }
