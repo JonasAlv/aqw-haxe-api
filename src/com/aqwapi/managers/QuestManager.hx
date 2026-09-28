@@ -16,6 +16,7 @@ class QuestManager {
     private var _questIDs:Array<Dynamic> = [];
     private var _lastTurnIns:Dynamic = {};
     private var _lastLoadRequests:Map<Int, Float> = new Map<Int, Float>();
+    private var _lastAcceptRequests:Map<Int, Float> = new Map<Int, Float>();
     private var _lastAcceptTime:Float = 0;
     private var _lastCompleteTime:Float = 0;
 
@@ -206,17 +207,18 @@ class QuestManager {
         if (isInProgress(questId)) return;
 
         var now = ApiTime.now();
-        if (now - _lastAcceptTime < 1000) return;
-        _lastAcceptTime = now;
-
-        if (_game.world.lock != null) {
-            try {
-                var lObj:Dynamic = Reflect.field(_game.world.lock, "acceptQuest");
-                if (lObj != null) lObj.ts = Date.now().getTime();
-            } catch (e:Dynamic) {}
-        }
+        if (_lastAcceptRequests.exists(questId) && (now - _lastAcceptRequests.get(questId)) < 1500) return;
 
         if (isLoaded(questId)) {
+            _lastAcceptRequests.set(questId, now);
+            _lastAcceptTime = now;
+            if (_game.world.lock != null) {
+                try {
+                    var lObj:Dynamic = Reflect.field(_game.world.lock, "acceptQuest");
+                    if (lObj != null) lObj.ts = Date.now().getTime();
+                } catch (e:Dynamic) {}
+            }
+
             var accepted:Bool = false;
             if (_game.sfc != null) {
                 try {
@@ -402,6 +404,14 @@ class QuestManager {
     }
 
     public inline function isAccepted(questId:Int):Bool {
+        return isInProgress(questId);
+    }
+
+    public inline function hasActive(questId:Int):Bool {
+        return isInProgress(questId);
+    }
+
+    public inline function isActive(questId:Int):Bool {
         return isInProgress(questId);
     }
 

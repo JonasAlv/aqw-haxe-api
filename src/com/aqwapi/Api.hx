@@ -49,6 +49,35 @@ class Api {
     public static function get_enhancements_prop():EnhancementManager { return enhancement; }
     public static function get_enhancements():EnhancementManager { return enhancement; }
 
+    // Direct script helpers and forwarders on bot / api
+    public static var cell(get, never):String;
+    @:getter(cell)
+    public static function get_cell_prop():String { return player != null ? player.cell : ""; }
+    public static function get_cell():String { return player != null ? player.cell : ""; }
+
+    public static var pad(get, never):String;
+    @:getter(pad)
+    public static function get_pad_prop():String { return player != null ? player.pad : ""; }
+    public static function get_pad():String { return player != null ? player.pad : ""; }
+
+    public static var isAlive(get, never):Bool;
+    @:getter(isAlive)
+    public static function get_isAlive_prop():Bool { return player != null && player.isAlive; }
+    public static function get_isAlive():Bool { return player != null && player.isAlive; }
+
+    public static var isInCombat(get, never):Bool;
+    @:getter(isInCombat)
+    public static function get_isInCombat_prop():Bool { return player != null && player.isInCombat; }
+    public static function get_isInCombat():Bool { return player != null && player.isInCombat; }
+
+    public static inline function jump(c:String, p:String = "Spawn"):Void {
+        if (map != null) map.jump(c, p);
+    }
+
+    public static inline function join(m:String, c:String = "Enter", p:String = "Spawn"):Void {
+        if (map != null) map.join(m, c, p);
+    }
+
     // Direct script helpers on bot / api
     public static function smartEnhance(?className:Dynamic, ?force:Dynamic, ?onComplete:Dynamic):Void {
         if (enhancement == null) return;
