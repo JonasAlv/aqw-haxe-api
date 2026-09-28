@@ -127,17 +127,17 @@ class CombatEngine {
                     Api.inventory.equip(confClass);
                 }
             }
+            var isCurrentClass = (confClass == null || confClass == "" || confClass.toLowerCase() == "current");
             var confMode = getSettingString("api_smart_mode", "");
-            if (skillMode != null && skillMode != "" && skillMode != "Base" && skillMode != "Auto") {
+            if (isCurrentClass && (confMode == "" || confMode == "Auto" || confMode == "Auto (First Available)")) {
+                skillMode = "Auto";
+            } else if (skillMode != null && skillMode != "" && skillMode != "Base" && skillMode != "Auto") {
                 // Keep explicitly set mode
             } else if (confMode != null && confMode != "") {
                 skillMode = confMode;
             } else if (skillMode == null || skillMode == "") {
                 skillMode = "Auto";
             }
-
-            // If class is Current, detect equipped class and use its first available mode
-            var isCurrentClass = (confClass == null || confClass == "" || confClass.toLowerCase() == "current");
             var targetClass = isCurrentClass ? getCurrentClassName() : confClass;
             if (targetClass != null && targetClass != "") {
                 var modes = getAvailableModes(targetClass);
