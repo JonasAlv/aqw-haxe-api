@@ -635,11 +635,17 @@ class ScriptBindings {
         bind("bankItem", function(itemName:String):Void {
             if (Api.inventory != null) Api.inventory.bank(itemName);
         });
-        bind("unbank", function(itemName:String):Void {
-            if (Api.inventory != null) Api.inventory.unbank(itemName);
+        bind("unbank", function(items:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.unbank(items);
         });
-        bind("unbankItem", function(itemName:String):Void {
-            if (Api.inventory != null) Api.inventory.unbank(itemName);
+        bind("unbankItem", function(items:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.unbank(items);
+        });
+        bind("ensureUnbanked", function(items:Dynamic):Bool {
+            return Api.inventory != null ? Api.inventory.ensureUnbanked(items) : true;
+        });
+        bind("isUnbanking", function():Bool {
+            return Api.inventory != null && Api.inventory.isUnbanking;
         });
         bind("isInBank", function(itemNameOrId:String):Bool {
             return Api.inventory != null ? Api.inventory.isInBank(itemNameOrId) : false;

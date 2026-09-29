@@ -4,6 +4,7 @@ import com.aqwapi.events.GameEvent;
 import com.aqwapi.Api;
 import com.aqwapi.data.ItemDTO;
 import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.Promise;
 import com.aqwapi.Game;
 import haxe.Timer;
@@ -239,44 +240,142 @@ class InventoryManager {
         });
     }
 
-    public function unbank(itemName:String):Promise<Dynamic> {
-        return new Promise<Dynamic>(function(resolve:Dynamic->Void) {
-            if (_game == null || _game.world == null || _game.world.bankinfo == null || _game.world.bankinfo.items == null) { resolve(null); return; }
-            var targetName:String = itemName.toLowerCase();
-            var uItem:Dynamic = null;
-            var bankItems:Array<Dynamic> = cast _game.world.bankinfo.items;
-            for (i in bankItems) { if (i != null && i.sName != null && Std.string(i.sName).toLowerCase() == targetName) { uItem = i; break; } }
-            if (uItem == null) { resolve(null); return; }
+    public var isUnbanking:Bool = false;
+    private var _unbankQueue:Array<String> = [];
+    private var _unbankTimer:Timer = null;
+    private var _bankLoadPollTimer:Timer = null;
 
-            var listener:Dynamic->Void = null;
-            var timeoutTimer:Timer = null;
-
-            var cleanup = function() {
-                if (timeoutTimer != null) { timeoutTimer.stop(); timeoutTimer = null; }
-                Api.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
-            };
-
-            listener = function(e:Dynamic) {
-                cleanup();
-                resolve(e);
-            };
-
-            Api.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
-            timeoutTimer = Timer.delay(function() {
-                cleanup();
-                resolve(null);
-            }, 2500);
-
-            if (_game.world.sendBankToInvRequest != null) {
-                _game.world.sendBankToInvRequest(uItem);
-            } else if (_game.sfc != null) {
-                var reqId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.sfc.myUserId;
-                _game.sfc.sendString("%xt%zm%bankToInv%" + reqId + "%" + uItem.ItemID + "%" + uItem.CharItemID + "%");
-            } else {
-                cleanup();
-                resolve(null);
+    public function unbank(items:Dynamic):Void {
+        if (items == null) return;
+        var toAdd:Array<String> = [];
+        if (Std.isOfType(items, Array)) {
+            var arr:Array<Dynamic> = cast items;
+            for (it in arr) {
+                if (it != null) {
+                    var s = StringTools.trim(Std.string(it));
+                    if (s != "") toAdd.push(s);
+                }
             }
-        });
+        } else {
+            var s = Std.string(items);
+            if (s.indexOf(",") != -1) {
+                for (p in s.split(",")) {
+                    var pt = StringTools.trim(p);
+                    if (pt != "") toAdd.push(pt);
+                }
+            } else if (s != "") {
+                toAdd.push(s);
+            }
+        }
+
+        if (toAdd.length == 0) return;
+
+        for (item in toAdd) {
+            var lower = item.toLowerCase();
+            var exists = false;
+            for (q in _unbankQueue) {
+                if (q.toLowerCase() == lower) { exists = true; break; }
+            }
+            if (!exists) _unbankQueue.push(item);
+        }
+
+        isUnbanking = true;
+        _startUnbankProcess();
+    }
+
+    public function ensureUnbanked(items:Dynamic):Bool {
+        if (items == null) return true;
+        if (!isBankLoaded) {
+            unbank(items);
+            return false;
+        }
+        var itemList:Array<String> = [];
+        if (Std.isOfType(items, Array)) {
+            var arr:Array<Dynamic> = cast items;
+            for (it in arr) if (it != null) itemList.push(StringTools.trim(Std.string(it)));
+        } else {
+            var s = Std.string(items);
+            if (s.indexOf(",") != -1) {
+                for (p in s.split(",")) itemList.push(StringTools.trim(p));
+            } else if (s != "") {
+                itemList.push(s);
+            }
+        }
+
+        var anyInBank = false;
+        for (it in itemList) {
+            if (isInBank(it)) {
+                anyInBank = true;
+                break;
+            }
+        }
+
+        if (anyInBank || isUnbanking) {
+            unbank(items);
+            return false;
+        }
+
+        return true;
+    }
+
+    private function _startUnbankProcess():Void {
+        if (!isBankLoaded) {
+            loadBank();
+            if (_bankLoadPollTimer != null) return;
+            _bankLoadPollTimer = new Timer(300);
+            _bankLoadPollTimer.run = function() {
+                if (isBankLoaded) {
+                    if (_bankLoadPollTimer != null) {
+                        _bankLoadPollTimer.stop();
+                        _bankLoadPollTimer = null;
+                    }
+                    _processUnbankQueue();
+                }
+            };
+            return;
+        }
+        _processUnbankQueue();
+    }
+
+    private function _processUnbankQueue():Void {
+        if (_unbankTimer != null) return;
+        _unbankTimer = new Timer(650);
+        _unbankTimer.run = function() {
+            if (_unbankQueue.length == 0) {
+                if (_unbankTimer != null) {
+                    _unbankTimer.stop();
+                    _unbankTimer = null;
+                }
+                isUnbanking = false;
+                return;
+            }
+
+            var nextItem = _unbankQueue.shift();
+            if (nextItem == null) return;
+
+            if (isInBank(nextItem)) {
+                var targetName = nextItem.toLowerCase();
+                var uItem:Dynamic = null;
+                if (_game != null && _game.world != null && _game.world.bankinfo != null && _game.world.bankinfo.items != null) {
+                    var bItems:Array<Dynamic> = cast _game.world.bankinfo.items;
+                    for (i in bItems) {
+                        if (i != null && i.sName != null && Std.string(i.sName).toLowerCase() == targetName) {
+                            uItem = i;
+                            break;
+                        }
+                    }
+                }
+                if (uItem != null) {
+                    ApiLogger.info("Bank", "Unbanking " + nextItem + " to backpack...");
+                    if (_game.world.sendBankToInvRequest != null) {
+                        _game.world.sendBankToInvRequest(uItem);
+                    } else if (_game.sfc != null) {
+                        var reqId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.sfc.myUserId;
+                        _game.sfc.sendString("%xt%zm%bankToInv%" + reqId + "%" + uItem.ItemID + "%" + uItem.CharItemID + "%");
+                    }
+                }
+            }
+        };
     }
 
     public function loadBank():Void {

@@ -94,9 +94,12 @@ Every `.hxs` script defines these standard lifecycle functions:
 - `isQuestComplete(id)` *(Bool)*: Returns true if the quest has been completed and saved on the server (for story quests).
 - `canComplete(id)` *(Bool)*: Returns true if all turn-in requirements are currently in your inventory.
 
-### Drops & Inventory
+### Drops, Inventory & Bank
 - `acceptAcdrops(enabled? = true)`: Enables auto-accepting AdventureCoins drops for the session and sweeps current screen drops.
 - `acceptAllDrops(enabled? = true)`: Enables auto-accepting all item drops for the session and sweeps current screen drops.
+- `unbank(items)`: Retrieves an item or array of items (`["Item 1", "Item 2"]`) from your Bank into your backpack with automatic queue pacing.
+- `ensureUnbanked(items)` *(Bool)*: Ensures items are out of the bank. Returns `true` once items are confirmed in inventory.
+- `isInBank(itemName)` *(Bool)*: Returns `true` if the item is currently in your bank.
 - `getDrop(itemName)`: Picks up a specific drop.
 - `hasItem(itemName, qty? = 1)` *(Bool)*: Returns `true` if you have the required item quantity in your backpack.
 - `getItemCount(itemName)` *(Int)*: Returns the current quantity of an item in your backpack.
@@ -174,6 +177,28 @@ function onStart() {
     acceptAllDrops();  // Auto-accept all drops (regular + AC)
 }
 ```
+
+### 🏦 The Bank Trap & Unbanking Routine (Crucial)
+In AQW, if an item exists in your **Bank**, any new drops of that item will automatically be routed directly into your Bank instead of your backpack. Because quest turn-ins only check your backpack inventory, this causes the bot to farm forever!
+
+To eliminate this problem, **always unbank your quest items in `onStart()`**:
+```javascript
+function onStart() {
+    acceptAllDrops();
+    equipLoadout("farm");
+
+    // Unbank all quest items used across this script:
+    unbank(["Bone Scrap", "Dark Core", "Broken Helm", "Fire Shard"]);
+
+    join("shadowbattleon");
+}
+```
+
+#### How `unbank([...])` works under the hood:
+1. **Auto Bank Loading**: If bank data has not been retrieved from the server in this login session, it automatically sends `loadBank()` and waits for the bank list.
+2. **Smart Filtering**: It checks which items from your array are actually in the bank. Items already in your inventory or not owned are safely ignored.
+3. **Paced Transfer Queue**: It transfers items one by one with a safe 650ms cooldown between packets to prevent server disconnects.
+4. **Combat Safety**: While unbanking is in flight (`isUnbanking == true`), `hunt()` automatically pauses combat so you never accidentally kill a monster while an unbank packet is in flight!
 
 ---
 
@@ -384,3 +409,4 @@ When copying this document into an AI (ChatGPT, Claude, Gemini, etc.) to generat
 > 4. For sequential multi-map quests, always guard with `if (!hunt(...)) return;` or `if (!huntQuest(...)) return;` so `onTick()` does not evaluate downstream stages early.
 > 5. If the script turns in a quest before finishing, pass `stop` to `ensureComplete(questId, stop)`. Never pass `stop` to `hunt` if a quest turn-in is required.
 > 6. Always include `join("house");` inside `onStop()`.
+> 7. If the quest requires non-temporary items that might be stored in the Bank, always unbank them in `onStart()`: `unbank(["Item 1", "Item 2"]);`.

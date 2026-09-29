@@ -379,9 +379,10 @@ class CombatManager {
         }
         _activeHuntKey = huntKey;
 
-        // 3. Safety checks: player dead or map loading
+        // 3. Safety checks: player dead, map loading, or unbanking items
         if (Api.player != null && !Api.player.isAlive) return false;
         if (Api.map != null && !Api.map.isLoaded) return false;
+        if (Api.inventory != null && Api.inventory.isUnbanking) return false;
 
         // 4. Resolve which cell the monster spawns in across the map
         var targetCell:String = "";
