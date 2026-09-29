@@ -11,11 +11,12 @@ import com.aqwapi.managers.PresetManager;
 
 /**
  * Normalized registry for all HScript sandbox variables and shortcuts.
- * Consolidates all top-level shortcuts and `bot.*` shortcuts in one dedicated canonical file.
  *
- * Any shortcut registered via `bind()` is automatically available BOTH as:
- *   1. `bot.<shortcut>(...)`  (e.g. `bot.hunt(...)`, `bot.isMap(...)`, `bot.ensure(...)`)
- *   2. `<shortcut>(...)`      (e.g. `hunt(...)`, `isMap(...)`, `ensure(...)`)
+ * One canonical name per action. No aliases. No ambiguous short forms.
+ * Every function registered here is directly callable by name in .hxs scripts.
+ *
+ * Namespaces (bot, api, map, combat, etc.) are available for advanced use
+ * but are NOT part of the primary scripting API.
  */
 class ScriptBindings {
 
@@ -71,6 +72,7 @@ class ScriptBindings {
 
     /**
      * Core Manager Namespaces (e.g. bot, player, map, combat, etc.)
+     * These are available for advanced use but scripts should prefer top-level functions.
      */
     private static function registerNamespaces(interp:ScriptInterp):Void {
         interp.variables.set("api", Api);
@@ -97,9 +99,10 @@ class ScriptBindings {
         interp.variables.set("events", Api.dispatcher);
     }
 
-    /**
-     * Map, Cell & Navigation Shortcuts
-     */
+    // -------------------------------------------------------------------------
+    // Map & Navigation
+    // -------------------------------------------------------------------------
+
     private static function registerMapShortcuts():Void {
         bind("join", function(mapName:String, cell:String = null, pad:String = null):Void {
             if (Api.map != null) Api.map.join(mapName, cell, pad);
@@ -144,9 +147,6 @@ class ScriptBindings {
         bind("ensureMap", function(mapName:String, cell:String = null, pad:String = null):Bool {
             return Api.map != null ? Api.map.ensure(mapName, cell, pad) : false;
         });
-        bind("ensure", function(mapName:String, cell:String = null, pad:String = null):Bool {
-            return Api.map != null ? Api.map.ensure(mapName, cell, pad) : false;
-        });
         bind("ensureCell", function(cell:String, pad:String = null):Bool {
             if (Api.map == null) return false;
             if (Api.map.isCell(cell)) return true;
@@ -162,9 +162,6 @@ class ScriptBindings {
             if (Api.player != null) Api.player.setSpawnPoint(cell, pad);
         });
         bind("setDeathSpawn", function(enabled:Bool = true):Void {
-            if (Api.map != null) Api.map.autoDeathSpawn = enabled;
-        });
-        bind("deathSpawn", function(enabled:Bool = true):Void {
             if (Api.map != null) Api.map.autoDeathSpawn = enabled;
         });
         bind("walkTo", function(x:Float, y:Float, speed:Float = 16):Void {
@@ -184,20 +181,27 @@ class ScriptBindings {
         bind("getCellPads", function():Array<String> {
             return Api.map != null ? Api.map.getCellPads() : [];
         });
-        bind("getPads", function():Array<String> {
-            return Api.map != null ? Api.map.getCellPads() : [];
+        bind("setPrivateRoom", function(enabled:Bool, roomNumber:Int = 100000):Void {
+            if (Api.map != null) {
+                Api.map.usePrivateRoom = enabled;
+                if (roomNumber > 0) Api.map.privateRoomNumber = roomNumber;
+            }
+        });
+        bind("isPrivateRoom", function():Bool {
+            return Api.map != null && Api.map.usePrivateRoom;
+        });
+        bind("dungeonQueue", function(mapName:String, roomNum:Int = -1):Void {
+            if (Api.map != null) Api.map.dungeonQueue(mapName, roomNum);
         });
     }
 
-    /**
-     * Combat, Targeting & Hunting Shortcuts
-     */
+    // -------------------------------------------------------------------------
+    // Combat & Targeting
+    // -------------------------------------------------------------------------
+
     private static function registerCombatShortcuts():Void {
-        // High-level cross-map hunt & kill
+        // High-level hunt & kill
         bind("hunt", function(monster:String, itemOrCount:Dynamic = null, qtyOrCallback:Dynamic = 1, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
-            return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qtyOrCallback, mmidOrCallback, onComplete) : false;
-        });
-        bind("kill", function(monster:String, itemOrCount:Dynamic = null, qtyOrCallback:Dynamic = 1, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
             return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qtyOrCallback, mmidOrCallback, onComplete) : false;
         });
         bind("resetHunt", function():Void {
@@ -214,9 +218,6 @@ class ScriptBindings {
         bind("selectTarget", function(monster:Dynamic):Void {
             if (Api.combat != null) Api.combat.selectTarget(Std.string(monster));
         });
-        bind("target", function(monster:Dynamic):Void {
-            if (Api.combat != null) Api.combat.selectTarget(Std.string(monster));
-        });
         bind("attackTarget", function(target:Dynamic = null):Void {
             if (Api.combat == null) return;
             if (target == null) {
@@ -231,14 +232,6 @@ class ScriptBindings {
         bind("dropCombat", function():Void {
             if (Api.combat != null) Api.combat.dropCombat();
         });
-        bind("reload", function(pad:String = null):Void {
-            if (Api.combat != null) Api.combat.dropCombat();
-            else if (Api.map != null) Api.map.reload(pad);
-        });
-        bind("reloadCell", function(pad:String = null):Void {
-            if (Api.combat != null) Api.combat.dropCombat();
-            else if (Api.map != null) Api.map.reload(pad);
-        });
         bind("cancelAutoAttack", function():Void {
             if (Api.combat != null) Api.combat.cancelAutoAttack();
         });
@@ -247,12 +240,6 @@ class ScriptBindings {
         });
         bind("pauseCombat", function():Void {
             if (Api.combat != null) Api.combat.pauseCombat();
-        });
-        bind("pauseAttack", function():Void {
-            if (Api.combat != null) Api.combat.pauseCombat();
-        });
-        bind("approach", function():Void {
-            if (Api.combat != null) Api.combat.approachTarget();
         });
         bind("approachTarget", function():Void {
             if (Api.combat != null) Api.combat.approachTarget();
@@ -271,9 +258,6 @@ class ScriptBindings {
         bind("stopCombat", function():Void {
             if (Api.combat != null) Api.combat.stopCombat();
         });
-        bind("endCombat", function():Void {
-            if (Api.combat != null) Api.combat.stopCombat();
-        });
         bind("stopAttack", function():Void {
             if (Api.combat != null) Api.combat.stopAttack();
         });
@@ -288,9 +272,6 @@ class ScriptBindings {
         bind("canUseSkill", function(index:Int):Bool {
             return Api.combat != null ? Api.combat.canUseSkill(index) : false;
         });
-        bind("equipClass", function(type:String):Bool {
-            return Api.combat != null ? Api.combat.equipLoadout(type) : false;
-        });
         bind("equipLoadout", function(type:String):Bool {
             return Api.combat != null ? Api.combat.equipLoadout(type) : false;
         });
@@ -299,22 +280,17 @@ class ScriptBindings {
         bind("setInfiniteRange", function(enabled:Bool = true):Void {
             if (Api.combat != null) Api.combat.setInfiniteRange(enabled);
         });
-        bind("infiniteRange", function(enabled:Bool = true):Void {
-            if (Api.combat != null) Api.combat.setInfiniteRange(enabled);
-        });
         bind("magnetize", function():Void {
             if (Api.combat != null) Api.combat.magnetize();
         });
     }
 
-    /**
-     * Quest Automation & Operations
-     */
+    // -------------------------------------------------------------------------
+    // Quests
+    // -------------------------------------------------------------------------
+
     private static function registerQuestShortcuts():Void {
         bind("autoQuest", function(quests:Dynamic):Void {
-            if (Api.quest != null) Api.quest.startAuto(quests);
-        });
-        bind("auto", function(quests:Dynamic):Void {
             if (Api.quest != null) Api.quest.startAuto(quests);
         });
         bind("stopAutoQuest", function():Void {
@@ -348,9 +324,6 @@ class ScriptBindings {
         bind("showQuests", function(questIds:Dynamic):Void {
             if (Api.quest != null) Api.quest.showQuests(Std.string(questIds));
         });
-        bind("openQuest", function(questId:Int):Void {
-            if (Api.quest != null) Api.quest.showQuests(Std.string(questId));
-        });
 
         bind("acceptQuest", function(questId:Int):Void {
             if (Api.quest != null) Api.quest.accept(questId);
@@ -368,13 +341,6 @@ class ScriptBindings {
             } else if (questIds != null) {
                 var qid = ApiUtils.parseInt(questIds, 0);
                 if (qid > 0) Api.quest.accept(qid);
-            }
-        });
-        bind("ensureAccept", function(questId:Int):Void {
-            if (Api.quest == null) return;
-            if (!Api.quest.isAccepted(questId)) {
-                if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);
-                Api.quest.accept(questId);
             }
         });
         bind("ensureQuest", function(questId:Int):Void {
@@ -422,24 +388,6 @@ class ScriptBindings {
                 if (qid > 0 && Api.quest.isAccepted(qid)) Api.quest.complete(qid);
             }
         });
-        bind("turnIn", function(questId:Int, itemId:Int = -1):Void {
-            if (Api.quest != null) Api.quest.complete(questId, itemId);
-        });
-        bind("turnInQuests", function(questIds:Dynamic):Void {
-            if (Api.quest == null) return;
-            if (Std.isOfType(questIds, Array)) {
-                var arr:Array<Dynamic> = cast questIds;
-                var intArr:Array<Int> = [];
-                for (item in arr) {
-                    var qid = ApiUtils.parseInt(item, 0);
-                    if (qid > 0) intArr.push(qid);
-                }
-                Api.quest.completeMultiple(intArr);
-            } else if (questIds != null) {
-                var qid = ApiUtils.parseInt(questIds, 0);
-                if (qid > 0 && Api.quest.isAccepted(qid)) Api.quest.complete(qid);
-            }
-        });
 
         bind("isQuestComplete", function(questId:Int):Bool {
             return Api.quest != null ? Api.quest.isComplete(questId) : false;
@@ -462,20 +410,15 @@ class ScriptBindings {
         bind("canCompleteQuest", function(questId:Int):Bool {
             return Api.quest != null ? Api.quest.canComplete(questId) : false;
         });
-        bind("canTurnInQuest", function(questId:Int):Bool {
-            return Api.quest != null ? Api.quest.canComplete(questId) : false;
-        });
-        bind("canTurnIn", function(questId:Int):Bool {
-            return Api.quest != null ? Api.quest.canComplete(questId) : false;
-        });
         bind("getQuestValue", function(slot:Int):Int {
             return Api.quest != null ? Api.quest.getQuestValue(slot) : 0;
         });
     }
 
-    /**
-     * Inventory, Items & Potions
-     */
+    // -------------------------------------------------------------------------
+    // Inventory & Items
+    // -------------------------------------------------------------------------
+
     private static function registerInventoryShortcuts():Void {
         bind("hasItem", function(itemName:String, quantity:Int = 1):Bool {
             return Api.inventory != null ? Api.inventory.hasItem(itemName, quantity) : false;
@@ -492,12 +435,6 @@ class ScriptBindings {
             Api.inventory.equip(itemName);
             return false;
         });
-        bind("ensureEquip", function(itemName:String):Bool {
-            if (Api.inventory == null) return false;
-            if (Api.inventory.isEquipped(itemName)) return true;
-            Api.inventory.equip(itemName);
-            return false;
-        });
         bind("isEquipped", function(itemName:String):Bool {
             return Api.inventory != null ? Api.inventory.isEquipped(itemName) : false;
         });
@@ -507,22 +444,8 @@ class ScriptBindings {
         bind("isCosmetic", function(itemName:String):Bool {
             return Api.inventory != null ? Api.inventory.isCosmetic(itemName) : false;
         });
-        bind("equipPotion", function(itemName:String):Void {
-            if (Api.inventory != null) Api.inventory.equipUsable(itemName);
-        });
         bind("equipUsable", function(itemName:String):Void {
             if (Api.inventory != null) Api.inventory.equipUsable(itemName);
-        });
-        bind("refreshPotion", function(potionName:String, auraName:String = ""):Bool {
-            var aName:String = (auraName != null && auraName != "") ? auraName : potionName;
-            if (Api.player != null && Api.player.hasAura(aName)) return false;
-            if (Api.inventory != null && Api.inventory.hasItem(potionName)) {
-                Api.inventory.equipUsable(potionName);
-            }
-            if (Api.combat != null && Api.combat.canUseSkill(5)) {
-                return Api.combat.useSkill(5);
-            }
-            return false;
         });
         bind("usePotion", function(potionName:String, auraName:String = ""):Bool {
             var aName:String = (auraName != null && auraName != "") ? auraName : potionName;
@@ -540,9 +463,6 @@ class ScriptBindings {
         bind("isInventoryFull", function():Bool {
             return Api.inventory != null && Api.inventory.isFull;
         });
-        bind("isBagFull", function():Bool {
-            return Api.inventory != null && Api.inventory.isFull;
-        });
         bind("freeSlots", function():Int {
             return Api.inventory != null ? Api.inventory.freeSlots : 0;
         });
@@ -554,30 +474,21 @@ class ScriptBindings {
         });
     }
 
-    /**
-     * Drops
-     */
+    // -------------------------------------------------------------------------
+    // Drops
+    // -------------------------------------------------------------------------
+
     private static function registerDropShortcuts():Void {
-        var fnAcceptAC:Dynamic = function(?enabled:Dynamic):Void {
-            var b:Bool = (enabled == null || enabled == true || enabled == 1 || enabled == "true");
-            if (enabled == false || enabled == 0 || enabled == "false") b = false;
-            if (Api.drop != null) Api.drop.acceptACDrops(b);
-        };
-        var fnAcceptAll:Dynamic = function(?enabled:Dynamic):Void {
+        bind("acceptAllDrops", function(?enabled:Dynamic):Void {
             var b:Bool = (enabled == null || enabled == true || enabled == 1 || enabled == "true");
             if (enabled == false || enabled == 0 || enabled == "false") b = false;
             if (Api.drop != null) Api.drop.acceptAllDrops(b);
-        };
-
-        // Normalized primary function names
-        bind("acceptAllDrops", fnAcceptAll);
-        bind("acceptAcdrops", fnAcceptAC);
-        bind("acceptAcDrops", fnAcceptAC);
-        bind("acceptACDrops", fnAcceptAC);
-
-        // Backward compatibility
-        bind("acceptACs", fnAcceptAC);
-        bind("acceptAll", fnAcceptAll);
+        });
+        bind("acceptAcDrops", function(?enabled:Dynamic):Void {
+            var b:Bool = (enabled == null || enabled == true || enabled == 1 || enabled == "true");
+            if (enabled == false || enabled == 0 || enabled == "false") b = false;
+            if (Api.drop != null) Api.drop.acceptACDrops(b);
+        });
         bind("getDrop", function(drops:Dynamic):Void {
             if (Api.drop == null) return;
             if (Std.isOfType(drops, Array)) {
@@ -612,9 +523,10 @@ class ScriptBindings {
         });
     }
 
-    /**
-     * Shop & Bank Shortcuts
-     */
+    // -------------------------------------------------------------------------
+    // Shop & Bank
+    // -------------------------------------------------------------------------
+
     private static function registerShopAndBankShortcuts():Void {
         bind("loadShop", function(shopId:Int):Void {
             if (Api.shop != null) Api.shop.loadShop(shopId);
@@ -643,14 +555,8 @@ class ScriptBindings {
         bind("openBank", function():Void {
             if (Api.inventory != null) Api.inventory.toggleBank();
         });
-        bind("toggleBank", function():Void {
-            if (Api.inventory != null) Api.inventory.toggleBank();
-        });
         bind("closeBank", function():Void {
             if (Api.inventory != null) Api.inventory.closeBank();
-        });
-        bind("bank", function(items:Dynamic):Void {
-            if (Api.inventory != null) Api.inventory.bank(items);
         });
         bind("bankItem", function(items:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.bank(items);
@@ -661,35 +567,14 @@ class ScriptBindings {
         bind("bankAllExcept", function(exclude:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.bankAllExcept(exclude);
         });
-        bind("bankAllAc", function(?exclude:Dynamic):Void {
-            if (Api.inventory != null) Api.inventory.bankAllAc(exclude);
-        });
         bind("bankAllAcItems", function(?exclude:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.bankAllAc(exclude);
-        });
-        bind("getBankableAcItems", function(?exclude:Dynamic):Array<String> {
-            return Api.inventory != null ? Api.inventory.getBankableAcItems(exclude) : [];
-        });
-        bind("unbankAllNonAc", function(?exclude:Dynamic):Void {
-            if (Api.inventory != null) Api.inventory.unbankAllNonAc(exclude);
-        });
-        bind("unbankAllNonAcItems", function(?exclude:Dynamic):Void {
-            if (Api.inventory != null) Api.inventory.unbankAllNonAc(exclude);
-        });
-        bind("getBankNonAcItems", function(?exclude:Dynamic):Array<String> {
-            return Api.inventory != null ? Api.inventory.getBankNonAcItems(exclude) : [];
-        });
-        bind("bankAcAndUnbankNonAc", function(?exclude:Dynamic):Void {
-            if (Api.inventory != null) Api.inventory.bankAcAndUnbankNonAc(exclude);
-        });
-        bind("isBanking", function():Bool {
-            return Api.inventory != null && Api.inventory.isBanking;
         });
         bind("getBankableItems", function(?exclude:Dynamic):Array<String> {
             return Api.inventory != null ? Api.inventory.getBankableItems(exclude) : [];
         });
-        bind("unbank", function(items:Dynamic):Void {
-            if (Api.inventory != null) Api.inventory.unbank(items);
+        bind("getBankableAcItems", function(?exclude:Dynamic):Array<String> {
+            return Api.inventory != null ? Api.inventory.getBankableAcItems(exclude) : [];
         });
         bind("unbankItem", function(items:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.unbank(items);
@@ -703,14 +588,17 @@ class ScriptBindings {
         bind("ensurePresetUnbanked", function(presetName:String):Bool {
             return Api.inventory != null ? Api.inventory.ensurePresetUnbanked(presetName) : true;
         });
-        bind("getPresetItems", function(presetName:String):Array<String> {
-            return PresetManager.instance.getPresetItems(presetName);
+        bind("unbankAllNonAcItems", function(?exclude:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.unbankAllNonAc(exclude);
         });
-        bind("hasPreset", function(presetName:String):Bool {
-            return PresetManager.instance.hasPreset(presetName);
+        bind("getBankNonAcItems", function(?exclude:Dynamic):Array<String> {
+            return Api.inventory != null ? Api.inventory.getBankNonAcItems(exclude) : [];
         });
-        bind("getPresetNames", function():Array<String> {
-            return PresetManager.instance.getPresetNames();
+        bind("bankAcAndUnbankNonAc", function(?exclude:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.bankAcAndUnbankNonAc(exclude);
+        });
+        bind("isBanking", function():Bool {
+            return Api.inventory != null && Api.inventory.isBanking;
         });
         bind("isUnbanking", function():Bool {
             return Api.inventory != null && Api.inventory.isUnbanking;
@@ -721,11 +609,21 @@ class ScriptBindings {
         bind("isBankLoaded", function():Bool {
             return Api.inventory != null && Api.inventory.isBankLoaded;
         });
+        bind("getPresetItems", function(presetName:String):Array<String> {
+            return PresetManager.instance.getPresetItems(presetName);
+        });
+        bind("hasPreset", function(presetName:String):Bool {
+            return PresetManager.instance.hasPreset(presetName);
+        });
+        bind("getPresetNames", function():Array<String> {
+            return PresetManager.instance.getPresetNames();
+        });
     }
 
-    /**
-     * Player Status & Auras
-     */
+    // -------------------------------------------------------------------------
+    // Player Status & Auras
+    // -------------------------------------------------------------------------
+
     private static function registerPlayerStatusShortcuts():Void {
         bind("hp", function():Int {
             return Api.player != null ? Api.player.hp : 0;
@@ -755,9 +653,6 @@ class ScriptBindings {
         });
         bind("isDead", function():Bool {
             return Api.player == null || !Api.player.isAlive;
-        });
-        bind("inCombat", function():Bool {
-            return Api.player != null && Api.player.isInCombat;
         });
         bind("isInCombat", function():Bool {
             return Api.player != null && Api.player.isInCombat;
@@ -794,6 +689,9 @@ class ScriptBindings {
         bind("getTarget", function():Dynamic {
             return Api.player != null ? Api.player.target : null;
         });
+        bind("hasPlayerAura", function(auraName:String):Bool {
+            return Api.player != null ? Api.player.hasAura(auraName) : false;
+        });
         bind("hasTargetAura", function(auraName:String):Bool {
             var t = (Api.player != null) ? Api.player.target : null;
             if (t != null && t.hasAura(auraName)) return true;
@@ -804,23 +702,6 @@ class ScriptBindings {
                 }
             }
             return false;
-        });
-        bind("hasPlayerAura", function(auraName:String):Bool {
-            return Api.player != null ? Api.player.hasAura(auraName) : false;
-        });
-        bind("targetHasAura", function(auraName:String):Bool {
-            var t = (Api.player != null) ? Api.player.target : null;
-            if (t != null && t.hasAura(auraName)) return true;
-            if (Api.player != null && Api.monster != null) {
-                var cellMonsters = Api.monster.getByCell(Api.player.cell);
-                for (m in cellMonsters) {
-                    if (m != null && m.alive && m.hasAura(auraName)) return true;
-                }
-            }
-            return false;
-        });
-        bind("playerHasAura", function(auraName:String):Bool {
-            return Api.player != null ? Api.player.hasAura(auraName) : false;
         });
         bind("hasMonsterAura", function(auraName:String, cell:String = null):Bool {
             var c = (cell != null && cell != "") ? cell : (Api.player != null ? Api.player.cell : "");
@@ -846,19 +727,16 @@ class ScriptBindings {
         });
     }
 
-    /**
-     * Monster & Cell Clearing Queries
-     */
+    // -------------------------------------------------------------------------
+    // Monster & Cell Queries
+    // -------------------------------------------------------------------------
+
     private static function registerMonsterQueryShortcuts():Void {
         bind("isMonsterAliveInCell", function(cell:String):Bool {
             return Api.monster != null ? Api.monster.isMonsterAliveInCell(cell) : false;
         });
         bind("getLivingMonstersInCell", function(cell:String):Array<Dynamic> {
             return Api.monster != null ? cast Api.monster.getLivingMonstersInCell(cell) : [];
-        });
-        bind("isRoomClear", function(cell:String = null):Bool {
-            var c = (cell != null && cell != "") ? cell : (Api.player != null ? Api.player.cell : "");
-            return Api.monster != null ? !Api.monster.isMonsterAliveInCell(c) : true;
         });
         bind("isCellClear", function(cell:String = null):Bool {
             var c = (cell != null && cell != "") ? cell : (Api.player != null ? Api.player.cell : "");
@@ -886,9 +764,10 @@ class ScriptBindings {
         });
     }
 
-    /**
-     * Network, Packets & Dungeons
-     */
+    // -------------------------------------------------------------------------
+    // Network & Packets
+    // -------------------------------------------------------------------------
+
     private static function registerNetworkShortcuts():Void {
         bind("sendPacket", function(packet:String):Void {
             if (Api.game != null && Api.game.sfc != null) {
@@ -900,23 +779,12 @@ class ScriptBindings {
                 Api.transport.sendExtensionCommand(cmd, args != null ? args : []);
             }
         });
-        bind("dungeonQueue", function(mapName:String, roomNum:Int = -1):Void {
-            if (Api.map != null) Api.map.dungeonQueue(mapName, roomNum);
-        });
-        bind("setPrivateRoom", function(enabled:Bool, roomNumber:Int = 100000):Void {
-            if (Api.map != null) {
-                Api.map.usePrivateRoom = enabled;
-                if (roomNumber > 0) Api.map.privateRoomNumber = roomNumber;
-            }
-        });
-        bind("isPrivateRoom", function():Bool {
-            return Api.map != null && Api.map.usePrivateRoom;
-        });
     }
 
-    /**
-     * Enhancement Shortcuts
-     */
+    // -------------------------------------------------------------------------
+    // Enhancements
+    // -------------------------------------------------------------------------
+
     private static function registerEnhancementShortcuts():Void {
         bind("smartEnhance", function(?a:Dynamic, ?b:Dynamic, ?c:Dynamic):Void {
             if (Api.enhancement != null) Api.enhancement.smartEnhance(a, b, c);
@@ -936,14 +804,12 @@ class ScriptBindings {
         bind("isEnhancing", function():Bool {
             return Api.enhancement != null && Api.enhancement.isBusy;
         });
-        bind("isEnhanceBusy", function():Bool {
-            return Api.enhancement != null && Api.enhancement.isBusy;
-        });
     }
 
-    /**
-     * Logging, Sleep & System Controls
-     */
+    // -------------------------------------------------------------------------
+    // Logging, Sleep & System Controls
+    // -------------------------------------------------------------------------
+
     private static function registerLoggingAndSystem(engine:HScriptEngine):Void {
         bind("log", function(msg:Dynamic):Void {
             ApiLogger.info("HScript", Std.string(msg));
@@ -988,9 +854,10 @@ class ScriptBindings {
         });
     }
 
-    /**
-     * Standard Libraries & Math Helpers
-     */
+    // -------------------------------------------------------------------------
+    // Standard Libraries & Math Helpers
+    // -------------------------------------------------------------------------
+
     private static function registerStdLibraries(interp:ScriptInterp):Void {
         interp.variables.set("Math", Math);
         interp.variables.set("Std", Std);
@@ -998,9 +865,6 @@ class ScriptBindings {
         interp.variables.set("Date", Date);
         interp.variables.set("ApiTime", ApiTime);
         interp.variables.set("now", function():Float {
-            return ApiTime.now();
-        });
-        interp.variables.set("time", function():Float {
             return ApiTime.now();
         });
         interp.variables.set("ApiUtils", ApiUtils);
