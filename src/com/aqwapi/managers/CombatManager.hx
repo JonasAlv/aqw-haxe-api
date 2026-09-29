@@ -178,6 +178,30 @@ class CombatManager {
 
     public function startSmart():Void { CombatEngine.start(true, false); }
 
+    public function startSmartStandalone(confClass:String = "Current", confMode:String = "Auto"):Void {
+        var needsEquip:Bool = false;
+        if (confClass != null && confClass != "" && confClass.toLowerCase() != "current") {
+            var curClass = SkillManager.getCurrentClassName();
+            if (curClass == "" || curClass.toLowerCase() != confClass.toLowerCase()) {
+                needsEquip = true;
+            }
+        }
+
+        CombatEngine.smartClass = confClass;
+        this.mode = confMode;
+
+        if (needsEquip && Api.inventory != null) {
+            com.aqwapi.utils.ApiLogger.info("Combat", "Equipping '" + confClass + "' before starting Smart Combat...");
+            Api.inventory.equipWait(confClass, function() {
+                com.aqwapi.utils.ApiTime.delay(600, function() {
+                    startSmart();
+                });
+            });
+        } else {
+            startSmart();
+        }
+    }
+
     public function start(smart:Bool = true):Void {
         if (smart) startSmart();
         else CombatEngine.start(false, false);
