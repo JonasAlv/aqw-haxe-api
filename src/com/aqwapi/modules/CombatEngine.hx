@@ -65,17 +65,8 @@ class CombatEngine {
         isSmart = smart;
         IS_ON = true;
 
-        var confClass = (smartClass != null && smartClass != "" && smartClass.toLowerCase() != "current") ? smartClass : "Current";
-        if (confClass != "Current") {
-            var currentClass = SkillManager.getCurrentClassName();
-            if (currentClass == "" || currentClass.toLowerCase() != confClass.toLowerCase()) {
-                if (Api.inventory != null) {
-                    ApiLogger.info("Combat", "Switching to configured Smart Combat class: '" + confClass + "' (current was: '" + currentClass + "')");
-                    Api.inventory.equip(confClass);
-                    SkillManager.invalidateCurrentClass();
-                }
-            }
-        } else {
+        var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : "Current";
+        if (confClass == "Current") {
             if (skillMode == null || skillMode == "") {
                 skillMode = "Auto";
             }
