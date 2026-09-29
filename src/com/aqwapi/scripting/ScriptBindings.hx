@@ -193,11 +193,14 @@ class ScriptBindings {
      */
     private static function registerCombatShortcuts():Void {
         // High-level cross-map hunt & kill
-        bind("hunt", function(monster:String, itemOrCount:Dynamic = null, qty:Int = 1, mmid:Dynamic = null):Bool {
-            return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qty, mmid) : false;
+        bind("hunt", function(monster:String, itemOrCount:Dynamic = null, qtyOrCallback:Dynamic = 1, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
+            return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qtyOrCallback, mmidOrCallback, onComplete) : false;
         });
-        bind("kill", function(monster:String, itemOrCount:Dynamic = null, qty:Int = 1, mmid:Dynamic = null):Bool {
-            return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qty, mmid) : false;
+        bind("kill", function(monster:String, itemOrCount:Dynamic = null, qtyOrCallback:Dynamic = 1, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
+            return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qtyOrCallback, mmidOrCallback, onComplete) : false;
+        });
+        bind("resetHunt", function():Void {
+            if (Api.combat != null) Api.combat.resetHunt();
         });
 
         // Targeting & Direct Attack

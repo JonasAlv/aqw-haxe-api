@@ -212,40 +212,87 @@ class CombatManager {
     private var _huntCurrentKills:Int = 0;
     private var _huntLastCell:String = null;
     private var _huntMonAliveMap:Map<String, Bool> = new Map();
+    private var _activeHuntKey:String = null;
+    private var _completedHunts:Map<String, Bool> = new Map();
 
-    public function hunt(monsterName:String, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
-        var targetMMID:Dynamic = mmid;
+    public function resetHunt():Void {
+        _huntMonster = null;
+        _huntTargetKills = 0;
+        _huntCurrentKills = 0;
+        _huntLastCell = null;
+        _activeHuntKey = null;
+        _completedHunts = new Map();
+        _huntMonAliveMap = new Map();
+    }
+
+    public function hunt(monsterName:String, itemOrCount:Dynamic = null, quantityOrCallback:Dynamic = 1, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
+        var targetMMID:Dynamic = null;
         var isKillCount:Bool = false;
         var targetKills:Int = 0;
+        var targetQuantity:Int = 1;
+        var callback:Dynamic = null;
+
+        if (Reflect.isFunction(quantityOrCallback)) {
+            callback = quantityOrCallback;
+            targetQuantity = 1;
+        } else if (quantityOrCallback != null) {
+            targetQuantity = Std.int(quantityOrCallback);
+        }
+
+        if (Reflect.isFunction(mmidOrCallback)) {
+            callback = mmidOrCallback;
+        } else if (mmidOrCallback != null) {
+            targetMMID = mmidOrCallback;
+        }
+
+        if (Reflect.isFunction(onComplete)) {
+            callback = onComplete;
+        }
 
         if (itemOrCount != null) {
             if (Std.isOfType(itemOrCount, Int) || Std.isOfType(itemOrCount, Float)) {
                 isKillCount = true;
                 targetKills = Std.int(itemOrCount);
-                if (targetMMID == null && quantity > 1) {
-                    targetMMID = quantity;
+                if (targetMMID == null && targetQuantity > 1 && !Reflect.isFunction(quantityOrCallback)) {
+                    targetMMID = targetQuantity;
                 }
             }
         }
 
+        var huntKey = monsterName + (isKillCount ? (":k" + targetKills) : (":i" + Std.string(itemOrCount) + "x" + targetQuantity)) + (targetMMID != null ? ("#" + targetMMID) : "");
+
         // 1. If tracking an item drop, check if the required quantity is already collected
         if (!isKillCount && itemOrCount != null && Std.string(itemOrCount) != "") {
             var itemName:String = Std.string(itemOrCount);
-            if (Api.inventory != null && Api.inventory.hasItem(itemName, quantity)) {
+            if (Api.inventory != null && Api.inventory.hasItem(itemName, targetQuantity)) {
                 if (CombatEngine.targetName != null && monsterName != null
                     && CombatEngine.targetName.toLowerCase() == monsterName.toLowerCase()) {
                     CombatEngine.targetName = null;
                 }
                 CombatEngine.lockedMMID = null;
+                if (_activeHuntKey == huntKey) {
+                    _activeHuntKey = null;
+                    stopCombat();
+                    if (callback != null) {
+                        try { callback(); } catch (e:Dynamic) {}
+                    }
+                }
                 return true;
             }
         }
 
-        // 2. If tracking kill count (e.g. bot.hunt("Possessed Armor", 10))
+        // 2. If tracking kill count (e.g. hunt("Possessed Armor", 10))
         if (isKillCount && targetKills > 0) {
-            var huntKey = monsterName + (targetMMID != null ? ("#" + targetMMID) : "");
+            if (_completedHunts.exists(huntKey)) {
+                return true;
+            }
             if (_huntMonster != huntKey || _huntTargetKills != targetKills) {
+                // If another hunt is currently active and not yet finished, yield
+                if (_activeHuntKey != null && _activeHuntKey != huntKey) {
+                    return false;
+                }
                 _huntMonster = huntKey;
+                _activeHuntKey = huntKey;
                 _huntTargetKills = targetKills;
                 _huntCurrentKills = 0;
                 _huntLastCell = null;
@@ -258,9 +305,21 @@ class CombatManager {
                 }
                 CombatEngine.lockedMMID = null;
                 _huntMonAliveMap = new Map();
+                _completedHunts.set(huntKey, true);
+                if (_activeHuntKey == huntKey) _activeHuntKey = null;
+                stopCombat();
+                if (callback != null) {
+                    try { callback(); } catch (e:Dynamic) {}
+                }
                 return true;
             }
         }
+
+        // If another hunt task is currently running, don't interrupt it
+        if (_activeHuntKey != null && _activeHuntKey != huntKey) {
+            return false;
+        }
+        _activeHuntKey = huntKey;
 
         // 3. Safety checks: player dead or map loading
         if (Api.player != null && !Api.player.isAlive) return false;
@@ -333,6 +392,12 @@ class CombatManager {
                             CombatEngine.targetName = null;
                             CombatEngine.lockedMMID = null;
                             _huntMonAliveMap = new Map();
+                            _completedHunts.set(huntKey, true);
+                            if (_activeHuntKey == huntKey) _activeHuntKey = null;
+                            stopCombat();
+                            if (callback != null) {
+                                try { callback(); } catch (e:Dynamic) {}
+                            }
                             return true;
                         }
                     } else if (!wasAlive && isAliveNow) {
@@ -353,6 +418,12 @@ class CombatManager {
                         CombatEngine.targetName = null;
                         CombatEngine.lockedMMID = null;
                         _huntMonAliveMap = new Map();
+                        _completedHunts.set(huntKey, true);
+                        if (_activeHuntKey == huntKey) _activeHuntKey = null;
+                        stopCombat();
+                        if (callback != null) {
+                            try { callback(); } catch (e:Dynamic) {}
+                        }
                         return true;
                     }
                 }

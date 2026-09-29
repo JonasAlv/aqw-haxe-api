@@ -221,6 +221,7 @@ class HScriptEngine {
         if (Api.combat != null) {
             Api.combat.stopAuto();
             Api.combat.dropCombat();
+            Api.combat.resetHunt();
         } else {
             CombatEngine.stop();
         }
