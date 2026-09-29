@@ -13,7 +13,7 @@ The official standard for all `.hxs` scripts is **clean, top-level natural langu
 // Test Script: Hunt 10 Possessed Armor in ShadowBattleon
 function onStart() {
     log("starting routine");
-    acceptAcdrops();
+    acceptAcDrops();
     equipLoadout("farm");
     join("shadowbattleon");
 }
@@ -41,9 +41,10 @@ Reading `onTick()` in plain English:
 4. [Combat & Hunting](#combat--hunting)
 5. [Quests & Quest Chains](#quests--quest-chains)
 6. [Drops, Inventory & Bank](#drops-inventory--bank)
-7. [Player Status & Auras](#player-status--auras)
-8. [The 6 Scripting Architectural Patterns](#the-6-scripting-architectural-patterns)
-9. [AI Script Generation Prompting Guide](#ai-script-generation-prompting-guide)
+7. [Blacklist Management](#blacklist-management)
+8. [Player Status & Auras](#player-status--auras)
+9. [The 6 Scripting Architectural Patterns](#the-6-scripting-architectural-patterns)
+10. [AI Script Generation Prompting Guide](#ai-script-generation-prompting-guide)
 
 ---
 
@@ -53,7 +54,7 @@ Every `.hxs` script defines these standard lifecycle functions:
 
 | Hook | When it executes | Common Usage |
 |---|---|---|
-| `onStart()` | Executed **once** when the script starts | Set drop filters (`acceptAcdrops()`), equip loadouts, join starting map, start background `autoQuest()` |
+| `onStart()` | Executed **once** when the script starts | Set drop filters (`acceptAcDrops()`), equip loadouts, join starting map, start background `autoQuest()` |
 | `onTick()` | Executed **periodically** (every 100ms) | Main routine (hunting monsters, checking quests, ensuring map location) |
 | `onStop()` | Executed **once** when finished or stopped | Final teleport (e.g. `join("house")`), cleanup, final completion logs |
 | `onPacket(packet)` | Executed on every incoming server packet | Custom packet sniffing, rare event triggers |
@@ -66,11 +67,15 @@ Every `.hxs` script defines these standard lifecycle functions:
 ## Top-Level Quick Reference
 
 ### Navigation
-- `join(mapName, cell?, pad?)`: Transfers to a map. `join("house")` routes directly to your personal house.
+- `join(mapName, cell?, pad?)`: Transfers to a map. `join("house")` routes directly to your personal house. Automatically delays up to 2000ms if recently leaving combat to prevent transfer rejection.
+- `joinHouse(username?)`: Transfers to your personal house, or specified player's house. Automatically manages safe combat exit cooldown.
 - `ensureMap(mapName, cell?, pad?)`: Ensures you are in the target map and cell. Automatically drops combat stealthily before transferring if you are fighting.
 - `ensureCell(cell, pad?)`: Ensures you are in the specified room on the current map.
 - `jump(cell, pad?)`: Jumps to a room on the current map. Defaults to `"Spawn"` on `"Enter"`, and `"Left"` on all other rooms.
-- `reload()`: Drops combat in-place with **stealth coordinate retention** (breaks aggro without character warping).
+- `dropCombat()`: Drops combat in-place with **stealth coordinate retention** (breaks aggro without character warping).
+- `setDeathSpawn(enabled? = true)`: Enables/disables auto-respawn at spawn point on death.
+- `setSkipCutscenes(enabled? = true)`: Toggles automatic cutscene skipping on map joins.
+- `skipCutscene()`: Immediately aborts any active in-game cutscene.
 
 ### Combat & Hunting
 - `hunt(monster, count?, callback?)`: High-level full-map hunter. Discovers the cell, jumps there, locks target, tracks kills, and auto-drops combat when done.
@@ -79,15 +84,19 @@ Every `.hxs` script defines these standard lifecycle functions:
   - Format A: `hunt("Mob", ["Item A:10", "Item B:5", "Item C:1"])`
   - Format B: `hunt("Mob", [["Item A", 10], ["Item B", 5], ["Item C", 1]])`
   - Format C: `hunt("Mob", ["Item A", "Item B", "Item C"], 10)` (shared quantity)
-- `huntQuest(questId, monster?, callback?)`: Automatically inspects quest requirements from the game data and hunts `monster` until all items for `questId` are collected (`canComplete(questId) == true`).
+- `huntQuest(questId, monster?, callback?)`: Automatically inspects quest requirements from the game data and hunts `monster` until all items for `questId` are collected (`canCompleteQuest(questId) == true`).
 - `ensureCombat()`: Ensures smart combat rotations and auto-attack are active (safely idles while loading).
 - `equipLoadout("farm" | "solo" | "support")`: Equips predefined class and skill rotations.
-- `stopCombat()` / `endCombat()`: Stops attacking and breaks combat aggro in-place.
+- `stopCombat()` / `stopAttack()`: Stops attacking and breaks combat aggro in-place.
 - `attack(monster)` / `selectTarget(monster)`: Targets a specific monster.
 - `useSkill(1..4)`: Manually activates a skill.
+- `canUseSkill(1..4)`: Returns true if skill is off cooldown and has sufficient mana.
+- `usePotion(potionName, auraName?)`: Equips and consumes a potion if the aura is not active.
+- `setInfiniteRange(enabled? = true)`: Toggles infinite attack and targeting range.
+- `magnetize()`: Teleports all monsters in the current cell directly onto your avatar coordinates.
 
 ### Quests
-- `ensureQuest(id)` / `ensureAccept(id)`: Accepts the quest if not already in your active quest log.
+- `ensureQuest(id)`: Accepts the quest if not already in your active quest log.
 - `ensureComplete(id, rewardChoice?, callback?)`: Turns in the quest once all requirements are fulfilled. `rewardChoice` can be an Item ID, reward name string (e.g. `"Blood Gem of the Archfiend"`), or `"unowned"` (auto-selects the first unowned reward).
 - `ensureCompleteChoose(id, preferredItems?)`: Automatically selects the next reward not owned in backpack or bank. Ideal for multi-reward quests farmed multiple times without duplicate errors.
 - `isChoiceQuest(id)` *(Bool)*: Returns `true` if the quest requires selecting a reward.
@@ -97,33 +106,53 @@ Every `.hxs` script defines these standard lifecycle functions:
 - `autoQuest([ids])`: Runs quest acceptance, requirement checking, and turn-in automatically in the background (800ms timer, 1100ms safe server cooldown).
 - `stopAutoQuest()`: Stops background auto-questing.
 - `isQuestComplete(id)` *(Bool)*: Returns true if the quest has been completed and saved on the server (for story quests).
-- `canComplete(id)` *(Bool)*: Returns true if all turn-in requirements are currently in your inventory.
+- `canCompleteQuest(id)` *(Bool)*: Returns true if all turn-in requirements are currently in your inventory.
 
 ### Drops, Inventory & Bank
-- `acceptAcdrops(enabled? = true)`: Enables auto-accepting AdventureCoins drops for the session and sweeps current screen drops.
+- `acceptAcDrops(enabled? = true)`: Enables auto-accepting AdventureCoins drops for the session and sweeps current screen drops.
 - `acceptAllDrops(enabled? = true)`: Enables auto-accepting all item drops for the session and sweeps current screen drops.
-- `bank(items)`: Deposits an item or array of items (`["Item 1", "Item 2"]`) into your Bank with automatic 650ms queue pacing.
+- `getDrop(itemName)`: Picks up a specific drop.
+- `getDrops(filter?)`: Picks up pending drops matching filter or all drops (`"all"`).
+- `bankItem(items)`: Deposits an item or array of items (`["Item 1", "Item 2"]`) into your Bank with automatic queue pacing.
 - `bankAll(excludeItems?)`: Deposits **all unequipped, non-temporary** items from backpack into your Bank, optionally skipping any items in `excludeItems`.
 - `bankAllExcept(presetOrList)`: Deposits unequipped backpack items, preserving both equipped gear AND any items in the specified preset or item list (e.g. `bankAllExcept("vhl")`).
-- `isBanking()` *(Bool)*: Returns `true` while the bank deposit queue is actively processing.
-- `getBankableItems(excludeItems?)` *(Array<String>)*: Returns the list of unequipped, non-temporary backpack item names eligible for banking.
-- `unbank(items)`: Retrieves an item or array of items (`["Item 1", "Item 2"]`) from your Bank into your backpack with automatic queue pacing.
-- `unbankPreset(name)`: Unbanks all items from a named hardfarm preset (e.g. `"vhl"`, `"lr"`, `"nsod"`) with automatic queue pacing.
+- `bankAllAcItems(excludeItems?)`: Deposits all unequipped AC items into free bank storage.
+- `unbankItem(items)`: Retrieves an item or array of items (`["Item 1", "Item 2"]`) from your Bank into your backpack with automatic queue pacing.
+- `unbankPreset(name)`: Unbanks all items from a named hardfarm preset (e.g. `"nulgath"`, `"vhl"`, `"lr"`, `"nsod"`) with automatic queue pacing.
 - `ensurePresetUnbanked(name)` *(Bool)*: Returns `true` once all items in the preset are verified to be in your backpack.
+- `ensureUnbanked(items)` *(Bool)*: Ensures items are out of the bank. Returns `true` once items are confirmed in inventory.
+- `unbankAllNonAcItems(excludeItems?)`: Loads your bank and withdraws all non-AC items back into inventory (automatically halting if inventory fills up).
+- `bankAcAndUnbankNonAc(excludeItems?)`: Sequentially banks all AC items first, then withdraws non-AC items.
+- `getBankableItems(excludeItems?)` *(Array<String>)*: Returns the list of unequipped, non-temporary backpack item names eligible for banking.
+- `getBankableAcItems(excludeItems?)` *(Array<String>)*: Returns the list of unequipped AC item names eligible for banking.
 - `getPresetItems(name)` *(Array<String>)*: Returns the array of item names belonging to the specified preset.
 - `hasPreset(name)` *(Bool)*: Returns `true` if the named preset exists.
 - `getPresetNames()` *(Array<String>)*: Returns the list of all available preset names.
+- `isBanking()` *(Bool)*: Returns `true` while the bank deposit queue is actively processing.
 - `isUnbanking()` *(Bool)*: Returns `true` while the unbank queue is actively processing.
-- `ensureUnbanked(items)` *(Bool)*: Ensures items are out of the bank. Returns `true` once items are confirmed in inventory.
 - `isInBank(itemName)` *(Bool)*: Returns `true` if the item is currently in your bank.
-- `getDrop(itemName)`: Picks up a specific drop.
 - `hasItem(itemName, qty? = 1)` *(Bool)*: Returns `true` if you have the required item quantity in your backpack.
 - `getItemCount(itemName)` *(Int)*: Returns the current quantity of an item in your backpack.
 - `ensureEquipped(itemName)`: Equips an item or class if not currently worn.
+- `isInventoryFull()` *(Bool)*: Returns `true` if backpack is full.
+- `freeSlots()` *(Int)*: Returns count of empty inventory slots.
+
+### Blacklist
+- `addBlacklist(name)`: Adds an item to the blacklist filter.
+- `removeBlacklist(name)`: Removes an item from the blacklist filter.
+- `isBlacklisted(name)` *(Bool)*: Returns `true` if an item is currently on the blacklist.
+- `getBlacklist()` *(Array<String>)*: Returns the list of all blacklisted item names.
+- `clearBlacklist()`: Clears all items from the blacklist.
+- `sellBlacklist()`: Iterates through inventory and immediately sells all owned blacklisted items.
 
 ### System & Flow Control
 - `log(message)`: Outputs a timestamped message to the bot log console.
-- `sleep(ms)` / `wait(ms)`: Pauses `onTick()` execution for the specified milliseconds.
+- `warn(message)`: Outputs a warning message to the bot log console.
+- `error(message)`: Outputs an error message to the bot log console.
+- `clearLog()`: Clears the console log.
+- `notify(message)`: Displays an in-game notification popup/banner.
+- `sleep(ms)`: Pauses `onTick()` execution for the specified milliseconds.
+- `delay(ms, callback)`: Schedules a callback to execute after `ms` milliseconds.
 - `stop()`: Halts the script, drops combat automatically, and triggers `onStop()`.
 
 ---
@@ -141,6 +170,19 @@ AQW blocks map transfers while in combat. When you call `join()` or `ensureMap()
 // Transfers safely without ever getting blocked by combat aggro:
 ensureMap("shadowbattleon");
 ensureMap("shadowbattleon", "r2", "Left");
+```
+
+### Safe Combat Cooldown on Map Transfers
+The AQW game server rejects map transfers (`cmd: "tfer"`) if sent within 2000ms of leaving combat. The API automatically tracks combat exit timestamps. When `join(map)` or `joinHouse()` is invoked:
+1. If the player left combat less than 2000ms ago, the API automatically calculates the remaining cooldown time and safely delays the transfer packet.
+2. The transfer is dispatched cleanly without triggering server rejections or disconnects.
+
+This allows routines in `onStop()` to call `join("house")` right after halting combat without needing manual `sleep(2000)` calls:
+```javascript
+function onStop() {
+    log("Routine complete");
+    join("house"); // Automatically handles the 2-second combat cooldown safely!
+}
 ```
 
 ---
@@ -188,7 +230,7 @@ ensureComplete(1234);                             // Never reached!
 Always enable drop handling in `onStart()`:
 ```javascript
 function onStart() {
-    acceptAcdrops();   // Auto-accept all AC-tagged drops
+    acceptAcDrops();   // Auto-accept all AC-tagged drops
     // or:
     acceptAllDrops();  // Auto-accept all drops (regular + AC)
 }
@@ -204,20 +246,20 @@ function onStart() {
     equipLoadout("farm");
 
     // Unbank all quest items used across this script:
-    unbank(["Bone Scrap", "Dark Core", "Broken Helm", "Fire Shard"]);
+    unbankItem(["Bone Scrap", "Dark Core", "Broken Helm", "Fire Shard"]);
 
     join("shadowbattleon");
 }
 ```
 
-#### How `unbank([...])` works under the hood:
+#### How `unbankItem([...])` works under the hood:
 1. **Private House Safety**: The engine checks if you are in your private house. If you are in a public room, it automatically joins `house` first before transferring items, ensuring you never bank or unbank in public.
 2. **Auto Bank Loading**: If bank data has not been retrieved from the server in this login session, it sends `sendLoadBankRequest(["All"])` and waits for the bank list.
 3. **Smart Filtering**: It checks which items from your array are actually in the bank. Items already in your inventory or not owned are safely ignored.
 4. **Paced Transfer Queue**: It transfers items one by one with a safe 1000ms server cooldown timer (including lag compensation) between packets to prevent kicks or bans.
 5. **Combat Safety**: While unbanking is in flight (`isUnbanking == true`), `hunt()` automatically pauses combat so you never accidentally kill a monster while an unbank packet is in flight.
 
-### Depositing Items to Bank (`bankAll()` & `bank()`)
+### Depositing Items to Bank (`bankAll()` & `bankItem()`)
 To quickly empty your inventory before a big farm without accidentally banking what you're wearing:
 
 ```javascript
@@ -239,11 +281,11 @@ function onStop() {
 }
 ```
 
-### AC & Non-AC Optimization (`bankAllAc()` & `unbankAllNonAc()`)
+### AC & Non-AC Optimization (`bankAllAcItems()` & `unbankAllNonAcItems()`)
 In AQW, AC-tagged items have free unlimited bank storage, whereas non-AC items consume limited bank slots. To optimize your storage and avoid wasting bank slots:
 
-- `bankAllAc(?exclude)`: Banks all unequipped AC items into free bank storage.
-- `unbankAllNonAc(?exclude)`: Loads your bank and withdraws all non-AC items back into inventory (automatically halting if inventory fills up).
+- `bankAllAcItems(?exclude)`: Banks all unequipped AC items into free bank storage.
+- `unbankAllNonAcItems(?exclude)`: Loads your bank and withdraws all non-AC items back into inventory (automatically halting if inventory fills up).
 - `bankAcAndUnbankNonAc(?exclude)`: Sequentially banks all AC items first, then withdraws all Non-AC items.
 
 ```javascript
@@ -274,7 +316,8 @@ AQW hardfarms involve dozens of reagents, quest items, and temporary boss drops.
 
 To completely prevent this without writing 50-item lists manually, use the **built-in hardfarm presets** stored in `assets/item_presets.json`:
 
-#### 11 Available Presets:
+#### 12 Available Presets:
+- `"nulgath"` (*Nulgath Nation*) - 27 items: Vouchers (member & non-mem), Gems, Diamonds, Tainted Gems, Dark Crystal Shards, Blood Gems, Totems, Essences, Emblems, Receipts, Fiend Tokens, Bone Dust, Approvals/Favors, Unidentified items (1, 6, 9, 10, 13, 16, 19, 20, 24, 25, 34), Relic of Chaos.
 - `"vhl"` (*Void Highlord*) - 32 items: Roentgeniums, Crystals A & B, Unidentified 10/13/19, Elders' Blood, Totems, Blood Gems, Vouchers, etc.
 - `"lr"` (*Legion Revenant*) - 24 items: LF1, LF2 (all 10 cohorts), LF3, Spellscrolls, Conquest Wreaths, Exalted Crowns, Legion Tokens.
 - `"dot"` (*Dragon of Time*) - 49 items: All temporal artifacts, boss fangs, and quest requirements.
@@ -313,6 +356,37 @@ function onTick() {
 
 ---
 
+## Blacklist Management
+
+The Blacklist system blocks unwanted items before they enter your drop queue and enables quick liquidation of junk items:
+
+### Blocking Drops
+When an item is added to the blacklist:
+- `acceptAllDrops()` will automatically reject the blacklisted item.
+- The item will never clutter your drop UI or inventory space.
+
+### Mass-Selling Blacklisted Items
+If unwanted items already exist in your backpack (e.g. from previous quests or mob farming), `sellBlacklist()` safely scans your inventory and sells every blacklisted item one by one.
+
+### Scripting Example:
+```javascript
+function onStart() {
+    log("Setting up drop filters and blacklist");
+    acceptAllDrops();
+
+    // Add unwanted junk drops to blacklist:
+    addBlacklist("Bone Scrap");
+    addBlacklist("Zardman Tooth");
+
+    // Mass-sell any blacklisted items currently taking up bag space:
+    sellBlacklist();
+
+    join("shadowbattleon");
+}
+```
+
+---
+
 ## The 6 Scripting Architectural Patterns
 
 ### Pattern 1: Minimalist Kill-Count Hunter
@@ -320,7 +394,7 @@ Hunts a target number of monsters and safely teleports to house when finished:
 ```javascript
 function onStart() {
     log("starting routine");
-    acceptAcdrops();
+    acceptAcDrops();
     equipLoadout("farm");
     join("shadowbattleon");
 }
@@ -516,8 +590,8 @@ When copying this document into an AI (ChatGPT, Claude, Gemini, etc.) to generat
 > You are generating an AQW `.hxs` script using the AQW Haxe Scripting API. Follow these mandatory rules:
 > 1. Always implement `function onStart()`, `function onTick()`, and `function onStop()`.
 > 2. NEVER use object prefixes (`bot.`, `map.`, `combat.`). Use direct top-level methods (`join`, `ensureMap`, `hunt`, `huntQuest`, `ensureQuest`, `ensureComplete`, `stop`).
-> 3. Use `acceptAcdrops()` or `acceptAllDrops()` inside `onStart()`.
+> 3. Use `acceptAcDrops()` or `acceptAllDrops()` inside `onStart()`.
 > 4. For sequential multi-map quests, always guard with `if (!hunt(...)) return;` or `if (!huntQuest(...)) return;` so `onTick()` does not evaluate downstream stages early.
 > 5. If the script turns in a quest before finishing, pass `stop` to `ensureComplete(questId, stop)`. Never pass `stop` to `hunt` if a quest turn-in is required.
 > 6. Always include `join("house");` inside `onStop()`.
-> 7. If the quest requires non-temporary items that might be stored in the Bank, always unbank them in `onStart()`: `unbank(["Item 1", "Item 2"]);`.
+> 7. If the quest requires non-temporary items that might be stored in the Bank, always unbank them in `onStart()`: `unbankItem(["Item 1", "Item 2"]);`.
