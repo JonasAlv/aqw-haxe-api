@@ -61,8 +61,17 @@ class PlayerManager {
 
     public var username(get, never):String;
     @:getter(username)
-    public function get_username_prop():String { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _ds(a.dataLeaf.strUsername) : ""; }
-    public function get_username():String { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _ds(a.dataLeaf.strUsername) : ""; }
+    public function get_username_prop():String { return get_username(); }
+    public function get_username():String {
+        var a = _avatar();
+        if (a != null) {
+            if (a.dataLeaf != null && a.dataLeaf.strUsername != null) return _ds(a.dataLeaf.strUsername);
+            if (a.objData != null && a.objData.strUsername != null) return _ds(a.objData.strUsername);
+        }
+        var g = _g();
+        if (g != null && g.sfc != null && g.sfc.myUserName != null) return _ds(g.sfc.myUserName);
+        return "";
+    }
 
     public var isAlive(get, never):Bool;
     @:getter(isAlive)

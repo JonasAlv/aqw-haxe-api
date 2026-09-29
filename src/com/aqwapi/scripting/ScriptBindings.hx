@@ -637,6 +637,9 @@ class ScriptBindings {
         bind("toggleBank", function():Void {
             if (Api.inventory != null) Api.inventory.toggleBank();
         });
+        bind("closeBank", function():Void {
+            if (Api.inventory != null) Api.inventory.closeBank();
+        });
         bind("bank", function(items:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.bank(items);
         });

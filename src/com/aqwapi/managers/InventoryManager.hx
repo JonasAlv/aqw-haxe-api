@@ -300,15 +300,14 @@ class InventoryManager {
         return ensureUnbanked(items);
     }
 
-    public static inline var BANK_COOLDOWN_MS:Int = 1000;
+    public static inline var BANK_COOLDOWN_MS:Int = 1100;
     private var _isBankLoaded:Bool = false;
     private var _unbankTimer:Timer = null;
     private var _bankLoadPollTimer:Timer = null;
     private var _housePollTimer:Timer = null;
 
     private function _ensureInHouse(onInHouse:Void->Void):Void {
-        var curMap:String = (Api.map != null) ? Api.map.currentMap : "";
-        var inHouse:Bool = (curMap.indexOf("house") != -1) && (Api.map != null && Api.map.isLoaded);
+        var inHouse:Bool = (Api.map != null && Api.map.isHouse() && Api.map.isLoaded);
         if (inHouse) {
             onInHouse();
             return;
@@ -328,8 +327,8 @@ class InventoryManager {
         _housePollTimer = new Timer(500);
         _housePollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
             elapsed += 500;
-            var nowMap:String = (Api.map != null) ? Api.map.currentMap : "";
-            if (nowMap.indexOf("house") != -1 && Api.map != null && Api.map.isLoaded) {
+            var inHouseNow:Bool = (Api.map != null && Api.map.isHouse() && Api.map.isLoaded);
+            if (inHouseNow) {
                 if (_housePollTimer != null) {
                     _housePollTimer.stop();
                     _housePollTimer = null;
@@ -389,6 +388,7 @@ class InventoryManager {
                     _bankTimer = null;
                 }
                 isBanking = false;
+                closeBank();
                 ApiLogger.info("Bank", "Banking complete.");
                 return;
             }
@@ -536,6 +536,7 @@ class InventoryManager {
                     _unbankTimer = null;
                 }
                 isUnbanking = false;
+                closeBank();
                 ApiLogger.info("Bank", "Unbanking complete.");
                 return;
             }
@@ -601,6 +602,7 @@ class InventoryManager {
         }
         isBanking = false;
         isUnbanking = false;
+        closeBank();
     }
 
     public function loadBank():Void {
@@ -628,6 +630,16 @@ class InventoryManager {
             _game.world.toggleBank();
     }
 
+    public function closeBank():Void {
+        if (_game != null && _game.ui != null && _game.ui.mcPopup != null) {
+            try {
+                if (_game.ui.mcPopup.currentLabel == "Bank" || _game.ui.mcPopup.currentLabel == "HouseBank") {
+                    _game.ui.mcPopup.fClose();
+                }
+            } catch (e:Dynamic) {}
+        }
+    }
+
     public function isInBank(itemNameOrId:String):Bool {
         if (_game == null || _game.world == null || _game.world.bankinfo == null) return false;
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
@@ -640,30 +652,32 @@ class InventoryManager {
             } catch (e:Dynamic) {}
         }
 
-        if (_game.world.bankinfo.items != null) {
-            var bItems:Array<Dynamic> = cast _game.world.bankinfo.items;
-            for (i in bItems) {
-                if (i == null) continue;
-                if (isIdLookup) {
-                    if (i.ItemID == targetId) return true;
-                } else if (i.sName != null) {
-                    if (Std.string(i.sName).toLowerCase() == targetName) return true;
-                }
-            }
-        }
-
-        if (_game.world.bankinfo.bankItems != null) {
-            for (k in Reflect.fields(_game.world.bankinfo.bankItems)) {
-                var it:Dynamic = Reflect.field(_game.world.bankinfo.bankItems, k);
-                if (it != null) {
+        try {
+            if (_game.world.bankinfo.items != null) {
+                var bItems:Array<Dynamic> = cast _game.world.bankinfo.items;
+                for (i in bItems) {
+                    if (i == null) continue;
                     if (isIdLookup) {
-                        if (it.ItemID == targetId) return true;
-                    } else if (it.sName != null) {
-                        if (Std.string(it.sName).toLowerCase() == targetName) return true;
+                        if (i.ItemID == targetId) return true;
+                    } else if (i.sName != null) {
+                        if (Std.string(i.sName).toLowerCase() == targetName) return true;
                     }
                 }
             }
-        }
+
+            if (_game.world.bankinfo.bankItems != null) {
+                for (k in Reflect.fields(_game.world.bankinfo.bankItems)) {
+                    var it:Dynamic = Reflect.field(_game.world.bankinfo.bankItems, k);
+                    if (it != null) {
+                        if (isIdLookup) {
+                            if (it.ItemID == targetId) return true;
+                        } else if (it.sName != null) {
+                            if (Std.string(it.sName).toLowerCase() == targetName) return true;
+                        }
+                    }
+                }
+            }
+        } catch (e:Dynamic) {}
 
         return false;
     }
@@ -675,9 +689,10 @@ class InventoryManager {
         if (_isBankLoaded) return true;
         if (_game != null && _game.world != null && _game.world.bankinfo != null) {
             var bi:Dynamic = _game.world.bankinfo;
-            if (bi.isLoaded == true) return true;
-            if (bi.bankItems != null && Reflect.fields(bi.bankItems).length > 0) return true;
-            if (bi.items != null && (cast(bi.items, Array<Dynamic>)).length > 0) return true;
+            try {
+                if (bi.bankItems != null && Reflect.fields(bi.bankItems).length > 0) return true;
+                if (bi.items != null && (cast(bi.items, Array<Dynamic>)).length > 0) return true;
+            } catch (e:Dynamic) {}
         }
         return false;
     }

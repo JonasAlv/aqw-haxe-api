@@ -159,6 +159,9 @@ class MapManager {
         if (g == null || g.world == null) return;
         var un:String = username != null ? StringTools.trim(username) : "";
         if (un == "" && Api.player != null) un = Api.player.username;
+        if (un == "" && g.world.myAvatar != null && g.world.myAvatar.objData != null && g.world.myAvatar.objData.strUsername != null) {
+            un = Std.string(g.world.myAvatar.objData.strUsername);
+        }
         if (g.world.gotoHouse != null) {
             try { g.world.gotoHouse(un); return; } catch (e:Dynamic) {}
         }
@@ -333,6 +336,12 @@ class MapManager {
     public inline function get_currentMap():String { return get_name(); }
 
     public function isHouse():Bool {
+        var g = _g();
+        if (g != null && g.world != null && g.world.isMyHouse != null) {
+            try {
+                if (g.world.isMyHouse() == true) return true;
+            } catch (e:Dynamic) {}
+        }
         var cur = get_name().toLowerCase();
         return cur.indexOf("house") != -1;
     }
