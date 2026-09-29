@@ -353,6 +353,7 @@ class InventoryManager {
 
     public static inline var BANK_COOLDOWN_MS:Int = 1100;
     private var _isBankLoaded:Bool = false;
+    private var _isBankLoading:Bool = false;
     private var _unbankTimer:Timer = null;
     private var _bankLoadPollTimer:Timer = null;
     private var _housePollTimer:Timer = null;
@@ -406,27 +407,43 @@ class InventoryManager {
     }
 
     private function _startBankProcess():Void {
-        if (!isBankLoaded) {
-            ApiLogger.info("Bank", "Loading bank items...");
-            loadBank();
-            if (_bankLoadPollTimer != null) return;
-            var pollElapsed:Int = 0;
-            _bankLoadPollTimer = new Timer(300);
-            _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
-                pollElapsed += 300;
-                if (isBankLoaded || pollElapsed >= 8000) {
-                    if (_bankLoadPollTimer != null) {
-                        _bankLoadPollTimer.stop();
-                        _bankLoadPollTimer = null;
-                    }
-                    if (_bankQueue.length > 0) _processBankQueue();
-                    if (_unbankQueue.length > 0) _processUnbankQueue();
-                }
-            });
-            _bankLoadPollTimer.start();
+        var executeProcess = function():Void {
+            if (_bankQueue.length > 0) _processBankQueue();
+            if (_unbankQueue.length > 0) _processUnbankQueue();
+        };
+
+        if (isBankLoaded) {
+            executeProcess();
             return;
         }
-        _processBankQueue();
+
+        ApiLogger.info("Bank", "Loading bank items...");
+        var completed:Bool = false;
+        var onLoadedCallback = function():Void {
+            if (completed) return;
+            completed = true;
+            if (_bankLoadPollTimer != null) {
+                _bankLoadPollTimer.stop();
+                _bankLoadPollTimer = null;
+            }
+            executeProcess();
+        };
+
+        loadBank(onLoadedCallback);
+
+        if (_bankLoadPollTimer != null) {
+            _bankLoadPollTimer.stop();
+            _bankLoadPollTimer = null;
+        }
+        var pollElapsed:Int = 0;
+        _bankLoadPollTimer = new Timer(300);
+        _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
+            pollElapsed += 300;
+            if (isBankLoaded || pollElapsed >= 8000) {
+                onLoadedCallback();
+            }
+        });
+        _bankLoadPollTimer.start();
     }
 
     private function _processBankQueue():Void {
@@ -565,41 +582,37 @@ class InventoryManager {
         var result:Array<String> = [];
         var seen = new Map<String, Bool>();
 
-        try {
-            var bItems:Array<Dynamic> = null;
-            if (_game.world.bankinfo.items != null) {
-                bItems = cast _game.world.bankinfo.items;
-            } else if (_game.world.bankinfo.BankArray != null) {
-                bItems = cast _game.world.bankinfo.BankArray;
+        var checkItem = function(it:Dynamic):Void {
+            if (it == null || it.sName == null) return;
+            var isAC:Bool = (it.bCoins == 1 || it.bCoins == "1" || it.bCoins == true);
+            if (!isAC) {
+                var name:String = Std.string(it.sName);
+                var lower = StringTools.trim(name).toLowerCase();
+                if (!exMap.exists(lower) && !seen.exists(lower)) {
+                    seen.set(lower, true);
+                    result.push(name);
+                }
             }
+        };
 
-            if (bItems != null) {
-                for (it in bItems) {
-                    if (it == null || it.sName == null) continue;
-                    var isAC:Bool = (it.bCoins == 1 || it.bCoins == "1" || it.bCoins == true);
-                    if (!isAC) {
-                        var name:String = Std.string(it.sName);
-                        var lower = name.toLowerCase();
-                        if (!exMap.exists(lower) && !seen.exists(lower)) {
-                            seen.set(lower, true);
-                            result.push(name);
-                        }
-                    }
+        try {
+            var bi:Dynamic = _game.world.bankinfo;
+            if (bi.bankItems != null) {
+                for (k in Reflect.fields(bi.bankItems)) {
+                    checkItem(Reflect.field(bi.bankItems, k));
                 }
-            } else if (_game.world.bankinfo.bankItems != null) {
-                for (k in Reflect.fields(_game.world.bankinfo.bankItems)) {
-                    var it:Dynamic = Reflect.field(_game.world.bankinfo.bankItems, k);
-                    if (it == null || it.sName == null) continue;
-                    var isAC:Bool = (it.bCoins == 1 || it.bCoins == "1" || it.bCoins == true);
-                    if (!isAC) {
-                        var name:String = Std.string(it.sName);
-                        var lower = name.toLowerCase();
-                        if (!exMap.exists(lower) && !seen.exists(lower)) {
-                            seen.set(lower, true);
-                            result.push(name);
-                        }
-                    }
-                }
+            }
+            if (bi.BankArray != null) {
+                var arr:Array<Dynamic> = cast bi.BankArray;
+                for (it in arr) checkItem(it);
+            }
+            if (bi.items != null) {
+                var arr:Array<Dynamic> = cast bi.items;
+                for (it in arr) checkItem(it);
+            }
+            if (_game.world.myAvatar != null && _game.world.myAvatar.bank != null) {
+                var arr:Array<Dynamic> = cast _game.world.myAvatar.bank;
+                for (it in arr) checkItem(it);
             }
         } catch (e:Dynamic) {}
 
@@ -609,41 +622,49 @@ class InventoryManager {
     public function unbankAllNonAc(?excludeItems:Dynamic):Void {
         isUnbanking = true;
         _ensureInHouse(function() {
-            if (!isBankLoaded) {
-                ApiLogger.info("Bank", "Loading bank items...");
-                loadBank();
-                if (_bankLoadPollTimer != null) return;
-                var pollElapsed:Int = 0;
-                _bankLoadPollTimer = new Timer(300);
-                _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
-                    pollElapsed += 300;
-                    if (isBankLoaded || pollElapsed >= 8000) {
-                        if (_bankLoadPollTimer != null) {
-                            _bankLoadPollTimer.stop();
-                            _bankLoadPollTimer = null;
-                        }
-                        var nonAc = getBankNonAcItems(excludeItems);
-                        if (nonAc.length > 0) {
-                            ApiLogger.info("Bank", "Unbanking " + nonAc.length + " Non-AC items from bank...");
-                            unbank(nonAc);
-                        } else {
-                            ApiLogger.info("Bank", "No Non-AC items found in bank.");
-                            isUnbanking = false;
-                        }
-                    }
-                });
-                _bankLoadPollTimer.start();
+            var executeUnbank = function():Void {
+                var nonAc = getBankNonAcItems(excludeItems);
+                if (nonAc.length > 0) {
+                    ApiLogger.info("Bank", "Unbanking " + nonAc.length + " Non-AC items from bank...");
+                    unbank(nonAc);
+                } else {
+                    ApiLogger.info("Bank", "No Non-AC items found in bank.");
+                    isUnbanking = false;
+                }
+            };
+
+            if (isBankLoaded) {
+                executeUnbank();
                 return;
             }
 
-            var nonAc = getBankNonAcItems(excludeItems);
-            if (nonAc.length > 0) {
-                ApiLogger.info("Bank", "Unbanking " + nonAc.length + " Non-AC items from bank...");
-                unbank(nonAc);
-            } else {
-                ApiLogger.info("Bank", "No Non-AC items found in bank.");
-                isUnbanking = false;
+            ApiLogger.info("Bank", "Loading bank items...");
+            var completed:Bool = false;
+            var onLoadedCallback = function():Void {
+                if (completed) return;
+                completed = true;
+                if (_bankLoadPollTimer != null) {
+                    _bankLoadPollTimer.stop();
+                    _bankLoadPollTimer = null;
+                }
+                executeUnbank();
+            };
+
+            loadBank(onLoadedCallback);
+
+            if (_bankLoadPollTimer != null) {
+                _bankLoadPollTimer.stop();
+                _bankLoadPollTimer = null;
             }
+            var pollElapsed:Int = 0;
+            _bankLoadPollTimer = new Timer(300);
+            _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
+                pollElapsed += 300;
+                if (isBankLoaded || pollElapsed >= 8000) {
+                    onLoadedCallback();
+                }
+            });
+            _bankLoadPollTimer.start();
         });
     }
 
@@ -652,46 +673,67 @@ class InventoryManager {
     }
 
     public function bankAcAndUnbankNonAc(?excludeItems:Dynamic):Void {
-        var toBank = getBankableAcItems(excludeItems);
-        if (toBank.length > 0) {
-            ApiLogger.info("Bank", "Depositing " + toBank.length + " AC items first...");
-            bank(toBank);
-            var pollTimer:Timer = new Timer(500);
-            pollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
-                if (!isBanking) {
-                    pollTimer.stop();
-                    unbankAllNonAc(excludeItems);
-                }
-            });
-            pollTimer.start();
-        } else {
-            ApiLogger.info("Bank", "No AC items to bank. Unbanking Non-AC items...");
-            unbankAllNonAc(excludeItems);
-        }
+        isBanking = true;
+        _ensureInHouse(function() {
+            var toBank = getBankableAcItems(excludeItems);
+            if (toBank.length > 0) {
+                ApiLogger.info("Bank", "Depositing " + toBank.length + " AC items first...");
+                bank(toBank);
+                var pollTimer:Timer = new Timer(300);
+                pollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
+                    if (_bankQueue.length == 0 && _bankTimer == null) {
+                        pollTimer.stop();
+                        isBanking = false;
+                        unbankAllNonAc(excludeItems);
+                    }
+                });
+                pollTimer.start();
+            } else {
+                ApiLogger.info("Bank", "No AC items to bank. Unbanking Non-AC items...");
+                isBanking = false;
+                unbankAllNonAc(excludeItems);
+            }
+        });
     }
 
     private function _startUnbankProcess():Void {
-        if (!isBankLoaded) {
-            ApiLogger.info("Bank", "Loading bank items...");
-            loadBank();
-            if (_bankLoadPollTimer != null) return;
-            var pollElapsed:Int = 0;
-            _bankLoadPollTimer = new Timer(300);
-            _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
-                pollElapsed += 300;
-                if (isBankLoaded || pollElapsed >= 8000) {
-                    if (_bankLoadPollTimer != null) {
-                        _bankLoadPollTimer.stop();
-                        _bankLoadPollTimer = null;
-                    }
-                    if (_bankQueue.length > 0) _processBankQueue();
-                    if (_unbankQueue.length > 0) _processUnbankQueue();
-                }
-            });
-            _bankLoadPollTimer.start();
+        var executeProcess = function():Void {
+            if (_unbankQueue.length > 0) _processUnbankQueue();
+            if (_bankQueue.length > 0) _processBankQueue();
+        };
+
+        if (isBankLoaded) {
+            executeProcess();
             return;
         }
-        _processUnbankQueue();
+
+        ApiLogger.info("Bank", "Loading bank items...");
+        var completed:Bool = false;
+        var onLoadedCallback = function():Void {
+            if (completed) return;
+            completed = true;
+            if (_bankLoadPollTimer != null) {
+                _bankLoadPollTimer.stop();
+                _bankLoadPollTimer = null;
+            }
+            executeProcess();
+        };
+
+        loadBank(onLoadedCallback);
+
+        if (_bankLoadPollTimer != null) {
+            _bankLoadPollTimer.stop();
+            _bankLoadPollTimer = null;
+        }
+        var pollElapsed:Int = 0;
+        _bankLoadPollTimer = new Timer(300);
+        _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
+            pollElapsed += 300;
+            if (isBankLoaded || pollElapsed >= 8000) {
+                onLoadedCallback();
+            }
+        });
+        _bankLoadPollTimer.start();
     }
 
     private function _processUnbankQueue():Void {
@@ -724,37 +766,55 @@ class InventoryManager {
             var nextItem = _unbankQueue.shift();
             if (nextItem == null) return;
 
-            if (isInBank(nextItem)) {
-                var targetName = nextItem.toLowerCase();
-                var uItem:Dynamic = null;
-                if (_game != null && _game.world != null && _game.world.bankinfo != null) {
-                    if (_game.world.bankinfo.items != null) {
-                        var bItems:Array<Dynamic> = cast _game.world.bankinfo.items;
-                        for (i in bItems) {
-                            if (i != null && i.sName != null && Std.string(i.sName).toLowerCase() == targetName) {
-                                uItem = i;
-                                break;
-                            }
-                        }
-                    }
-                    if (uItem == null && _game.world.bankinfo.bankItems != null) {
-                        for (k in Reflect.fields(_game.world.bankinfo.bankItems)) {
-                            var bi:Dynamic = Reflect.field(_game.world.bankinfo.bankItems, k);
-                            if (bi != null && bi.sName != null && Std.string(bi.sName).toLowerCase() == targetName) {
-                                uItem = bi;
-                                break;
-                            }
+            var targetName = StringTools.trim(nextItem).toLowerCase();
+            var uItem:Dynamic = null;
+            if (_game != null && _game.world != null && _game.world.bankinfo != null) {
+                var bi:Dynamic = _game.world.bankinfo;
+                if (bi.bankItems != null) {
+                    for (k in Reflect.fields(bi.bankItems)) {
+                        var item:Dynamic = Reflect.field(bi.bankItems, k);
+                        if (item != null && item.sName != null && StringTools.trim(Std.string(item.sName)).toLowerCase() == targetName) {
+                            uItem = item;
+                            break;
                         }
                     }
                 }
-                if (uItem != null) {
-                    ApiLogger.info("Bank", "Withdrew " + nextItem);
-                    if (_game.world.sendBankToInvRequest != null) {
-                        _game.world.sendBankToInvRequest(uItem);
-                    } else if (_game.sfc != null) {
-                        var curRoom:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
-                        _game.sfc.sendXtMessage("zm", "bankToInv", [uItem.ItemID, uItem.CharItemID], "str", curRoom);
+                if (uItem == null && bi.BankArray != null) {
+                    var bItems:Array<Dynamic> = cast bi.BankArray;
+                    for (i in bItems) {
+                        if (i != null && i.sName != null && StringTools.trim(Std.string(i.sName)).toLowerCase() == targetName) {
+                            uItem = i;
+                            break;
+                        }
                     }
+                }
+                if (uItem == null && bi.items != null) {
+                    var bItems:Array<Dynamic> = cast bi.items;
+                    for (i in bItems) {
+                        if (i != null && i.sName != null && StringTools.trim(Std.string(i.sName)).toLowerCase() == targetName) {
+                            uItem = i;
+                            break;
+                        }
+                    }
+                }
+                if (uItem == null && _game.world.myAvatar != null && _game.world.myAvatar.bank != null) {
+                    var bItems:Array<Dynamic> = cast _game.world.myAvatar.bank;
+                    for (i in bItems) {
+                        if (i != null && i.sName != null && StringTools.trim(Std.string(i.sName)).toLowerCase() == targetName) {
+                            uItem = i;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (uItem != null) {
+                ApiLogger.info("Bank", "Withdrew " + nextItem);
+                if (_game.world.sendBankToInvRequest != null) {
+                    _game.world.sendBankToInvRequest(uItem);
+                } else if (_game.sfc != null) {
+                    var curRoom:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
+                    _game.sfc.sendXtMessage("zm", "bankToInv", [uItem.ItemID, uItem.CharItemID], "str", curRoom);
                 }
             }
         });
@@ -782,21 +842,136 @@ class InventoryManager {
         }
         isBanking = false;
         isUnbanking = false;
+        _isBankLoading = false;
         closeBank();
     }
 
-    public function loadBank():Void {
-        if (_game == null) return;
-        if (_game.world != null && _game.world.sendLoadBankRequest != null) {
+    public function loadBank(?onLoaded:Void->Void):Void {
+        if (_game == null) {
+            if (onLoaded != null) onLoaded();
+            return;
+        }
+
+        if (isBankLoaded) {
+            if (onLoaded != null) onLoaded();
+            return;
+        }
+
+        var onDone = function():Void {
+            _isBankLoaded = true;
+            _isBankLoading = false;
+            if (onLoaded != null) {
+                var cb = onLoaded;
+                onLoaded = null;
+                cb();
+            }
+        };
+
+        var handled:Bool = false;
+
+        // 1. Primary: requestAPI("bank", {"layout":{"cat":"all"}}, onComplete, onError, true)
+        try {
+            var reqApi = Reflect.field(_game, "requestAPI");
+            if (reqApi != null) {
+                var onComplete = function(e:Dynamic):Void {
+                    try {
+                        if (Reflect.hasField(_game, "onBankComplete")) {
+                            Reflect.callMethod(_game, Reflect.field(_game, "onBankComplete"), [e]);
+                        } else {
+                            var rawData:Dynamic = Reflect.field(e.target, "data");
+                            var arr:Dynamic = null;
+                            if (Std.isOfType(rawData, String)) {
+                                try {
+                                    arr = untyped __global__["JSON"].parse(rawData);
+                                } catch (e1:Dynamic) {
+                                    arr = haxe.Json.parse(rawData);
+                                }
+                            } else {
+                                arr = rawData;
+                            }
+                            if (_game != null && _game.world != null && _game.world.addItemsToBank != null && arr != null) {
+                                _game.world.addItemsToBank(arr);
+                            }
+                        }
+                    } catch (err:Dynamic) {
+                        try {
+                            var rawData:Dynamic = Reflect.field(e.target, "data");
+                            var arr:Dynamic = null;
+                            if (Std.isOfType(rawData, String)) {
+                                arr = untyped __global__["JSON"].parse(rawData);
+                            } else {
+                                arr = rawData;
+                            }
+                            if (_game != null && _game.world != null && _game.world.addItemsToBank != null && arr != null) {
+                                _game.world.addItemsToBank(arr);
+                            }
+                        } catch (err2:Dynamic) {}
+                    }
+                    ApiLogger.info("Bank", "Bank data loaded.");
+                    onDone();
+                };
+
+                var onError = function(e:Dynamic):Void {
+                    _isBankLoading = false;
+                    ApiLogger.warn("Bank", "Error loading bank information from server.");
+                };
+
+                var layoutObj:Dynamic = {layout: {cat: "all"}};
+                Reflect.callMethod(_game, reqApi, ["bank", layoutObj, onComplete, onError, true]);
+                handled = true;
+            }
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Bank", "requestAPI call failed: " + Std.string(e));
+        }
+
+        // 2. Fallback: getBank()
+        if (!handled) {
             try {
-                _game.world.sendLoadBankRequest(["All"]);
-                return;
+                var getB = Reflect.field(_game, "getBank");
+                if (getB != null) {
+                    Reflect.callMethod(_game, getB, []);
+                    handled = true;
+                }
             } catch (e:Dynamic) {}
         }
-        if (_game.sfc != null) {
-            var rId:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
+
+        // 3. Fallback: world.rootClass.getBank()
+        if (!handled) {
             try {
-                _game.sfc.sendXtMessage("zm", "loadBank", ["All"], "str", rId);
+                if (_game.world != null && _game.world.rootClass != null) {
+                    var rcGetB = Reflect.field(_game.world.rootClass, "getBank");
+                    if (rcGetB != null) {
+                        Reflect.callMethod(_game.world.rootClass, rcGetB, []);
+                        handled = true;
+                    }
+                }
+            } catch (e:Dynamic) {}
+        }
+
+        // 4. Fallback: toggleHouseBank() / toggleBank()
+        if (!handled) {
+            try {
+                if (_game.world != null) {
+                    if (_game.world.toggleHouseBank != null) {
+                        _game.world.toggleHouseBank();
+                        handled = true;
+                    } else if (_game.world.toggleBank != null) {
+                        _game.world.toggleBank();
+                        handled = true;
+                    }
+                }
+            } catch (e:Dynamic) {}
+        }
+
+        // 5. Fallback: legacy socket sendLoadBankRequest
+        if (!handled) {
+            try {
+                if (_game.world != null && _game.world.sendLoadBankRequest != null) {
+                    _game.world.sendLoadBankRequest(["All"]);
+                } else if (_game.sfc != null) {
+                    var rId:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
+                    _game.sfc.sendXtMessage("zm", "loadBank", ["All"], "str", rId);
+                }
             } catch (e:Dynamic) {}
         }
     }
@@ -824,7 +999,7 @@ class InventoryManager {
         if (_game == null || _game.world == null || _game.world.bankinfo == null) return false;
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
-        var targetName:String = itemNameOrId.toLowerCase();
+        var targetName:String = StringTools.trim(itemNameOrId).toLowerCase();
 
         if (isIdLookup && _game.world.bankinfo.isItemInBank != null) {
             try {
@@ -833,27 +1008,55 @@ class InventoryManager {
         }
 
         try {
-            if (_game.world.bankinfo.items != null) {
-                var bItems:Array<Dynamic> = cast _game.world.bankinfo.items;
-                for (i in bItems) {
-                    if (i == null) continue;
-                    if (isIdLookup) {
-                        if (i.ItemID == targetId) return true;
-                    } else if (i.sName != null) {
-                        if (Std.string(i.sName).toLowerCase() == targetName) return true;
+            var bi:Dynamic = _game.world.bankinfo;
+            if (bi.bankItems != null) {
+                if (isIdLookup) {
+                    if (Reflect.field(bi.bankItems, Std.string(targetId)) != null) return true;
+                }
+                for (k in Reflect.fields(bi.bankItems)) {
+                    var it:Dynamic = Reflect.field(bi.bankItems, k);
+                    if (it != null) {
+                        if (isIdLookup) {
+                            if (it.ItemID == targetId) return true;
+                        } else if (it.sName != null && StringTools.trim(Std.string(it.sName)).toLowerCase() == targetName) {
+                            return true;
+                        }
                     }
                 }
             }
 
-            if (_game.world.bankinfo.bankItems != null) {
-                for (k in Reflect.fields(_game.world.bankinfo.bankItems)) {
-                    var it:Dynamic = Reflect.field(_game.world.bankinfo.bankItems, k);
-                    if (it != null) {
-                        if (isIdLookup) {
-                            if (it.ItemID == targetId) return true;
-                        } else if (it.sName != null) {
-                            if (Std.string(it.sName).toLowerCase() == targetName) return true;
-                        }
+            if (bi.BankArray != null) {
+                var bItems:Array<Dynamic> = cast bi.BankArray;
+                for (i in bItems) {
+                    if (i == null) continue;
+                    if (isIdLookup) {
+                        if (i.ItemID == targetId) return true;
+                    } else if (i.sName != null && StringTools.trim(Std.string(i.sName)).toLowerCase() == targetName) {
+                        return true;
+                    }
+                }
+            }
+
+            if (bi.items != null) {
+                var bItems:Array<Dynamic> = cast bi.items;
+                for (i in bItems) {
+                    if (i == null) continue;
+                    if (isIdLookup) {
+                        if (i.ItemID == targetId) return true;
+                    } else if (i.sName != null && StringTools.trim(Std.string(i.sName)).toLowerCase() == targetName) {
+                        return true;
+                    }
+                }
+            }
+
+            if (_game.world.myAvatar != null && _game.world.myAvatar.bank != null) {
+                var bItems:Array<Dynamic> = cast _game.world.myAvatar.bank;
+                for (i in bItems) {
+                    if (i == null) continue;
+                    if (isIdLookup) {
+                        if (i.ItemID == targetId) return true;
+                    } else if (i.sName != null && StringTools.trim(Std.string(i.sName)).toLowerCase() == targetName) {
+                        return true;
                     }
                 }
             }
@@ -871,7 +1074,14 @@ class InventoryManager {
             var bi:Dynamic = _game.world.bankinfo;
             try {
                 if (bi.bankItems != null && Reflect.fields(bi.bankItems).length > 0) return true;
+                if (bi.BankArray != null && (cast(bi.BankArray, Array<Dynamic>)).length > 0) return true;
                 if (bi.items != null && (cast(bi.items, Array<Dynamic>)).length > 0) return true;
+            } catch (e:Dynamic) {}
+        }
+        if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.bank != null) {
+            try {
+                var avBank:Array<Dynamic> = cast _game.world.myAvatar.bank;
+                if (avBank.length > 0) return true;
             } catch (e:Dynamic) {}
         }
         return false;
@@ -949,10 +1159,24 @@ class InventoryManager {
 
     public function getBankItems():Array<ItemDTO> {
         var result:Array<ItemDTO> = [];
-        if (_game != null && _game.world != null && _game.world.bankinfo != null && _game.world.bankinfo.items != null) {
-            var rawList:Array<Dynamic> = cast _game.world.bankinfo.items;
-            for (it in rawList) if (it != null) result.push(new ItemDTO(it));
-        }
+        if (_game == null || _game.world == null || _game.world.bankinfo == null) return result;
+        var bi:Dynamic = _game.world.bankinfo;
+        try {
+            if (bi.BankArray != null) {
+                var rawList:Array<Dynamic> = cast bi.BankArray;
+                for (it in rawList) if (it != null) result.push(new ItemDTO(it));
+            }
+            if (result.length == 0 && bi.items != null) {
+                var rawList:Array<Dynamic> = cast bi.items;
+                for (it in rawList) if (it != null) result.push(new ItemDTO(it));
+            }
+            if (result.length == 0 && bi.bankItems != null) {
+                for (k in Reflect.fields(bi.bankItems)) {
+                    var it = Reflect.field(bi.bankItems, k);
+                    if (it != null) result.push(new ItemDTO(it));
+                }
+            }
+        } catch (e:Dynamic) {}
         return result;
     }
 
