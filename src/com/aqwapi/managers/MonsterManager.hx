@@ -79,6 +79,55 @@ class MonsterManager {
         return cells;
     }
 
+    public function getMonsterCells(nameOrId:String):Array<String> {
+        var cells:Array<String> = [];
+        if (nameOrId == null || nameOrId == "") return cells;
+        var search:String = StringTools.trim(nameOrId).toLowerCase();
+        var idInt:Int = ApiUtils.parseInt(nameOrId, 0);
+
+        // 1. Check live monsters in world.monsters
+        for (monster in _getRawMonsters()) {
+            if (monster == null) continue;
+            var target = new EntityDTO(monster);
+            if (target.cell == "") continue;
+            var match:Bool = (idInt > 0 && (target.id == nameOrId || target.mapId == nameOrId || target.monsterId == nameOrId))
+                || (search == "*" || target.name.toLowerCase().indexOf(search) != -1);
+            if (match && cells.indexOf(target.cell) == -1) {
+                cells.push(target.cell);
+            }
+        }
+
+        // 2. Check world.monTree (directory of all monster spawns on the map)
+        if (_game != null && _game.world != null && _game.world.monTree != null) {
+            try {
+                var rawTree:Dynamic = _game.world.monTree;
+                for (k in Reflect.fields(rawTree)) {
+                    var leaf:Dynamic = Reflect.field(rawTree, k);
+                    if (leaf == null) continue;
+                    var sFrame:String = (leaf.sFrame != null) ? Std.string(leaf.sFrame) : "";
+                    if (sFrame == "") continue;
+                    var monName:String = (leaf.strMonName != null) ? Std.string(leaf.strMonName).toLowerCase() : "";
+                    var mId:Int = (leaf.MonID != null) ? Std.int(leaf.MonID) : 0;
+                    var mmapId:Int = (leaf.MonMapID != null) ? Std.int(leaf.MonMapID) : 0;
+
+                    var match:Bool = (idInt > 0 && (idInt == mId || idInt == mmapId || Std.string(idInt) == k))
+                        || (search == "*" || monName.indexOf(search) != -1);
+
+                    if (match && cells.indexOf(sFrame) == -1) {
+                        cells.push(sFrame);
+                    }
+                }
+            } catch (e:Dynamic) {}
+        }
+
+        return cells;
+    }
+
+    public function getMonsterCell(nameOrId:String):String {
+        var list = getMonsterCells(nameOrId);
+        return list.length > 0 ? list[0] : "";
+    }
+
     public function getByCell(cell:String):Array<EntityDTO> {
         var result:Array<EntityDTO> = [];
         var targetCell:String = cell != null ? cell.toLowerCase() : "";
@@ -122,6 +171,23 @@ class MonsterManager {
             }
         }
         return result;
+    }
+
+    public function isMonsterAliveInCell(cell:String):Bool {
+        var list = getByCell(cell);
+        for (m in list) {
+            if (m != null && m.alive && m.hp > 0 && m.hasGraphic) return true;
+        }
+        return false;
+    }
+
+    public function getLivingMonstersInCell(cell:String):Array<EntityDTO> {
+        var list = getByCell(cell);
+        var res:Array<EntityDTO> = [];
+        for (m in list) {
+            if (m != null && m.alive && m.hp > 0 && m.hasGraphic) res.push(m);
+        }
+        return res;
     }
 
     private function _getRawMonsters():Array<Dynamic> {

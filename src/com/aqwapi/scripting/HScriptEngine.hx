@@ -197,6 +197,12 @@ class HScriptEngine {
         _interp.variables.set("target", function(monster:Dynamic):Void {
             Api.combat.selectTarget(Std.string(monster));
         });
+        _interp.variables.set("hunt", function(monster:String, item:String = null, qty:Int = 1):Bool {
+            return Api.combat != null ? Api.combat.hunt(monster, item, qty) : false;
+        });
+        _interp.variables.set("kill", function(monster:String, item:String = null, qty:Int = 1):Bool {
+            return Api.combat != null ? Api.combat.hunt(monster, item, qty) : false;
+        });
         _interp.variables.set("hasItem", function(itemName:String, quantity:Int = 1):Bool {
             return Api.inventory.hasItem(itemName, quantity);
         });

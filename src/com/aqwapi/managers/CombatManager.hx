@@ -186,6 +186,56 @@ class CombatManager {
         if (!isRunning()) start(smart);
     }
 
+    public function hunt(monsterName:String, itemName:String = null, quantity:Int = 1):Bool {
+        // 1. If tracking an item drop, check if the required quantity is already collected
+        if (itemName != null && itemName != "") {
+            if (Api.inventory != null && Api.inventory.hasItem(itemName, quantity)) {
+                if (CombatEngine.targetName != null && monsterName != null
+                    && CombatEngine.targetName.toLowerCase() == monsterName.toLowerCase()) {
+                    CombatEngine.targetName = null;
+                }
+                return true;
+            }
+        }
+
+        // 2. Safety checks: player dead or map loading
+        if (Api.player != null && !Api.player.isAlive) return false;
+        if (Api.map != null && !Api.map.isLoaded) return false;
+
+        // 3. Resolve which cell the monster spawns in across the map
+        var targetCell:String = "";
+        if (Api.monster != null) {
+            targetCell = Api.monster.getMonsterCell(monsterName);
+        }
+
+        // 4. Move to that cell if found and not already there
+        if (targetCell != "" && Api.map != null && !Api.map.isCell(targetCell)) {
+            Api.map.jump(targetCell, "Spawn");
+            return false;
+        }
+
+        // 5. Lock combat engine target to this specific monster
+        if (monsterName != null && monsterName != "" && monsterName != "*") {
+            CombatEngine.targetName = monsterName;
+        }
+
+        // 6. Ensure combat engine is running
+        ensure(true);
+
+        // 7. If no item was specified, return true once the monster in cell is dead, or false while fighting
+        if (itemName == null || itemName == "") {
+            var cell:String = (targetCell != "") ? targetCell : (Api.player != null ? Api.player.cell : "");
+            var alive:Bool = (Api.monster != null) ? Api.monster.isMonsterAliveInCell(cell) : false;
+            return !alive;
+        }
+
+        return false;
+    }
+
+    public function kill(monsterName:String, itemName:String = null, quantity:Int = 1):Bool {
+        return hunt(monsterName, itemName, quantity);
+    }
+
     public function startCustom(rotation:String, mode:String = "auto"):Void {
         if (rotation != null && rotation.length > 0) {
             var rotInts:Array<Int> = [];

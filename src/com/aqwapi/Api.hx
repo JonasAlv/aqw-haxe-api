@@ -72,12 +72,20 @@ class Api {
     public static function get_isInCombat_prop():Bool { return player != null && player.isInCombat; }
     public static function get_isInCombat():Bool { return player != null && player.isInCombat; }
 
-    public static inline function jump(c:String, p:String = "Spawn"):Void {
+    public static inline function jump(c:String, p:String = null):Void {
         if (map != null) map.jump(c, p);
     }
 
-    public static inline function join(m:String, c:String = "Enter", p:String = "Spawn"):Void {
+    public static inline function join(m:String, c:String = null, p:String = null):Void {
         if (map != null) map.join(m, c, p);
+    }
+
+    public static function hunt(monsterName:String, itemName:String = null, quantity:Int = 1):Bool {
+        return combat != null ? combat.hunt(monsterName, itemName, quantity) : false;
+    }
+
+    public static function kill(monsterName:String, itemName:String = null, quantity:Int = 1):Bool {
+        return combat != null ? combat.hunt(monsterName, itemName, quantity) : false;
     }
 
     // Direct script helpers on bot / api
