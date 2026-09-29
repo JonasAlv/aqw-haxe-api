@@ -1,19 +1,19 @@
 # AQW Haxe Scripting API Guide (.hxs)
 
-Welcome to the official scripting guide for the AQW Haxe API. Scripts are written in **HScript** (`.hxs` files) — a dynamic, lightweight scripting language matching standard JavaScript/ActionScript 3 syntax that executes live inside the client.
+Welcome to the official scripting guide for the AQW Haxe API. Scripts are written in **HScript** (`.hxs` files) — a dynamic, lightweight scripting language matching standard JavaScript/ActionScript 3 syntax that executes live inside the game client.
 
 ---
 
 ## 🌟 The Default Scripting Style (Top-Level & Zero-Boilerplate)
 
-The recommended and default style for all `.hxs` scripts is **clean, top-level natural language**. Redundant prefixes like `bot.`, `map.`, or `combat.` are unnecessary — every primary action is available directly at the top level.
+The official standard for all `.hxs` scripts is **clean, top-level natural language**. Redundant object prefixes like `bot.`, `map.`, or `combat.` are completely unnecessary — every primary game action is available directly at the top level.
 
 ### Canonical Example:
 ```javascript
 // Test Script: Hunt 10 Possessed Armor in ShadowBattleon
 function onStart() {
     log("starting routine");
-    acceptACs = true;
+    acceptAcdrops();
     equipLoadout("farm");
     join("shadowbattleon");
 }
@@ -38,43 +38,48 @@ Reading `onTick()` in plain English:
 1. [Script Lifecycle Hooks](#script-lifecycle-hooks)
 2. [Top-Level Quick Reference](#top-level-quick-reference)
 3. [Map & Navigation](#map--navigation)
-4. [Combat & Hunting (`hunt`)](#combat--hunting-hunt)
-5. [Quests](#quests)
+4. [Combat & Hunting](#combat--hunting)
+5. [Quests & Quest Chains](#quests--quest-chains)
 6. [Drops, Inventory & Bank](#drops-inventory--bank)
 7. [Player Status & Auras](#player-status--auras)
-8. [Namespaces (Optional)](#namespaces-optional)
-9. [End-to-End Script Templates](#end-to-end-script-templates)
+8. [The 6 Scripting Architectural Patterns](#the-6-scripting-architectural-patterns)
+9. [AI Script Generation Prompting Guide](#ai-script-generation-prompting-guide)
 
 ---
 
 ## Script Lifecycle Hooks
 
-Every `.hxs` script can define these standard lifecycle functions:
+Every `.hxs` script defines these standard lifecycle functions:
 
-| Hook | When it executes | Usage |
+| Hook | When it executes | Common Usage |
 |---|---|---|
-| `onStart()` | Executed once when the script starts | Set drop filters, equip loadouts, join starting map |
-| `onTick()` | Executed periodically (default: every 100ms) | Main routine (hunting, ensuring map, turning in quests) |
-| `onStop()` | Executed once when the script finishes or is stopped | Final teleport (e.g. `join("house")`), cleanup, final logs |
-| `onPacket(packet)` | Executed on every incoming server packet | Packet listening, triggers, packet analysis |
-| `onZoneEntered(zone)`| Executed on cell or map transfers | Area triggers, specialized buffs |
-| `onQuestUpdated(id)` | Executed when a quest objective updates | Quest tracking |
-| `onInventoryChanged(item)`| Executed when items are added/removed | Drop notifications |
+| `onStart()` | Executed **once** when the script starts | Set drop filters (`acceptAcdrops()`), equip loadouts, join starting map, start background `autoQuest()` |
+| `onTick()` | Executed **periodically** (every 100ms) | Main routine (hunting monsters, checking quests, ensuring map location) |
+| `onStop()` | Executed **once** when finished or stopped | Final teleport (e.g. `join("house")`), cleanup, final completion logs |
+| `onPacket(packet)` | Executed on every incoming server packet | Custom packet sniffing, rare event triggers |
+| `onZoneEntered(zone)`| Executed on cell or map transfers | Location-triggered buffs or special dialog handling |
+| `onQuestUpdated(id)` | Executed when a quest objective updates | Custom quest progress logging |
+| `onInventoryChanged(item)`| Executed when items are added/removed | Inventory tracking |
 
 ---
 
 ## Top-Level Quick Reference
 
 ### Navigation
-- `join(mapName, cell?, pad?)`: Transfers to a map. `join("house")` routes directly to your house.
+- `join(mapName, cell?, pad?)`: Transfers to a map. `join("house")` routes directly to your personal house.
 - `ensureMap(mapName, cell?, pad?)`: Ensures you are in the target map and cell. Automatically drops combat stealthily before transferring if you are fighting.
 - `ensureCell(cell, pad?)`: Ensures you are in the specified room on the current map.
 - `jump(cell, pad?)`: Jumps to a room on the current map. Defaults to `"Spawn"` on `"Enter"`, and `"Left"` on all other rooms.
 - `reload()`: Drops combat in-place with **stealth coordinate retention** (breaks aggro without character warping).
 
-### Combat
-- `hunt(monster, itemOrCount?, qty?, callback?)`: High-level full-map hunter. Discovers the cell, jumps there, locks target, tracks kills or item drops (single item or array of items: `[["Item A", 10], ["Item B", 5]]`), and auto-drops combat when done.
-- `huntQuest(questId, monster?, callback?)`: Automatically tracks all requirements of a quest from a monster without needing to list item names.
+### Combat & Hunting
+- `hunt(monster, count?, callback?)`: High-level full-map hunter. Discovers the cell, jumps there, locks target, tracks kills, and auto-drops combat when done.
+- `hunt(monster, item, qty?, callback?)`: Hunts monster until you have `qty` of `item` in your inventory.
+- `hunt(monster, itemsArray, callback?)`: Hunts monster until **all items** in array are gathered.
+  - Format A: `hunt("Mob", ["Item A:10", "Item B:5", "Item C:1"])`
+  - Format B: `hunt("Mob", [["Item A", 10], ["Item B", 5], ["Item C", 1]])`
+  - Format C: `hunt("Mob", ["Item A", "Item B", "Item C"], 10)` (shared quantity)
+- `huntQuest(questId, monster?, callback?)`: Automatically inspects quest requirements from the game data and hunts `monster` until all items for `questId` are collected (`canComplete(questId) == true`).
 - `ensureCombat()`: Ensures smart combat rotations and auto-attack are active (safely idles while loading).
 - `equipLoadout("farm" | "solo" | "support")`: Equips predefined class and skill rotations.
 - `stopCombat()` / `endCombat()`: Stops attacking and breaks combat aggro in-place.
@@ -83,15 +88,18 @@ Every `.hxs` script can define these standard lifecycle functions:
 
 ### Quests
 - `ensureQuest(id)` / `ensureAccept(id)`: Accepts the quest if not already in your active quest log.
-- `ensureComplete(id, itemId?)`: Turns in the quest once all requirements are fulfilled.
-- `autoQuest([ids])` / `startAutoQuests([ids])`: Runs quest acceptance and turn-in automatically in the background.
+- `ensureComplete(id, itemId?, callback?)`: Turns in the quest once all requirements are fulfilled. Accepts optional `stop` callback.
+- `autoQuest([ids])`: Runs quest acceptance, requirement checking, and turn-in automatically in the background (800ms timer, 1100ms safe server cooldown).
 - `stopAutoQuest()`: Stops background auto-questing.
+- `isQuestComplete(id)` *(Bool)*: Returns true if the quest has been completed and saved on the server (for story quests).
+- `canComplete(id)` *(Bool)*: Returns true if all turn-in requirements are currently in your inventory.
 
 ### Drops & Inventory
-- `acceptACs = true;`: Automatically picks up any AdventureCoin drop.
-- `acceptAll = true;`: Automatically picks up all drops.
-- `acceptDrop(itemName)`: Picks up a specific drop.
-- `hasItem(itemName, qty?)`: Returns `true` if you have the required item quantity in your backpack.
+- `acceptAcdrops(enabled? = true)`: Enables auto-accepting AdventureCoins drops for the session and sweeps current screen drops.
+- `acceptAllDrops(enabled? = true)`: Enables auto-accepting all item drops for the session and sweeps current screen drops.
+- `getDrop(itemName)`: Picks up a specific drop.
+- `hasItem(itemName, qty? = 1)` *(Bool)*: Returns `true` if you have the required item quantity in your backpack.
+- `getItemCount(itemName)` *(Int)*: Returns the current quantity of an item in your backpack.
 - `ensureEquipped(itemName)`: Equips an item or class if not currently worn.
 
 ### System & Flow Control
@@ -109,86 +117,70 @@ AQW blocks map transfers while in combat. When you call `join()` or `ensureMap()
 2. Captures your exact `(x, y)` avatar coordinates.
 3. Reloads the cell in-place to send the aggro reset packet `%xt%zm%moveToCell%...%`.
 4. Instantly restores your avatar position so other players don't see you warp across the room.
-5. Pauses 600ms, then transfers to the target map cleanly.
 
-### Normalized Room Pads
-Non-`"Enter"` rooms in AQW do not have a `"Spawn"` pad. The API automatically normalizes default pads:
-- Cell `"Enter"` -> defaults to `"Spawn"`
-- All other cells -> default to `"Left"`
-- This completely prevents the game from defaulting your avatar to the center of the canvas `(480, 275)`.
-
----
-
-## Combat & Hunting (`hunt`)
-
-The `hunt()` function is a complete autonomous farming engine:
 ```javascript
-hunt(monsterName, itemOrCount?, callback?)
+// Transfers safely without ever getting blocked by combat aggro:
+ensureMap("shadowbattleon");
+ensureMap("shadowbattleon", "r2", "Left");
 ```
 
-1. **Full-Map Discovery:** Automatically searches the map's monster definition tree (`monTree`) to find which cell the monster spawns in without needing hardcoded cell names.
-2. **Multi-Mob Kill Tracking:** In rooms with multiple monsters (e.g. 2-3 Possessed Armors), each individual kill transition is tracked independently.
-3. **Auto Combat Dropping:** The instant target kills or item counts are achieved, `hunt()` automatically calls `stopCombat()` to clear aggro in-place.
-4. **Completion Callbacks:** Pass `stop` as the callback to automatically halt the script and trigger `onStop()`:
-   ```javascript
-   hunt("Possessed Armor", 10, stop);
-   ```
-5. **Multi-Hunt Sequencing:** Multiple `hunt()` calls in `onTick()` automatically queue sequentially:
-   ```javascript
-   function onTick() {
-       ensureMap("shadowbattleon");
-       hunt("Possessed Armor", 10);      // Runs first to 10 kills
-       hunt("Bone Cruncher", 5, stop);   // Automatically waits, then runs to 5 kills and stops
-   }
-   ```
+---
+
+## Combat & Hunting
+
+### Full-Map Monster Discovery
+You never need to hardcode cell names for monsters. When you call `hunt("Possessed Armor", ...)`, the engine:
+1. Scans all rooms on the current map to find where `"Possessed Armor"` spawns.
+2. Automatically jumps to that room and locks the target.
+3. Once the target kills or items are gathered, it immediately drops combat in-place.
+
+### Completion Callbacks
+Pass `stop` as the callback to automatically halt the script and trigger `onStop()`:
+```javascript
+hunt("Possessed Armor", 10, stop);
+```
 
 ---
 
-## Quests
+## Quests & Quest Chains
 
-There are two primary ways to handle quests depending on your goal:
+### 1. Looping Farms vs Sequential Storylines
+There are two primary paradigms for quests:
+1. **Looping Farms** (e.g. repetitive leveling in ShadowBattleon): Use `autoQuest([9421, 9422, 9423])` in `onStart()`. It handles accepting and turning in all quests concurrently in the background.
+2. **Sequential Storylines / Sagas**: Use `ensureQuest(id)` and `ensureComplete(id)` step by step.
 
-### 1. Multi-Quest Looping Farms (`autoQuest`)
-For background farming where you continuously complete and re-accept multiple quests (e.g. leveling in ShadowBattleon with quests 9421, 9422, 9423):
-- Call `autoQuest([9421, 9422, 9423]);` once in `onStart()`.
-- It runs in the background on an independent 800ms timer with a serialized queue (1100ms server cooldown).
-- It handles pre-loading, accepting, turning in, and re-accepting with zero packet spam.
-- Keeps `onTick()` completely free of quest boilerplate!
-
-### 2. Sequential & Storyline Quests (`ensureQuest` & `ensureComplete`)
-For storyline chains, one-off dailies, or specific reward selections where Quest B only unlocks after Quest A completes:
+### 2. Passing `stop` on Completion
+When a quest must turn in before stopping, pass `stop` to `ensureComplete`, **never** `hunt`:
 ```javascript
-function onTick() {
-    ensureMap("shadowbattleon");
-    ensureQuest(1234);
+// ✅ CORRECT:
+hunt("Possessed Armor", "Armor Scrap", 10);
+ensureComplete(1234, stop); // Turns in the quest, THEN halts!
 
-    hunt("Possessed Armor", "Armor Scrap", 10);
+// ❌ WRONG:
+hunt("Possessed Armor", "Armor Scrap", 10, stop); // Exits before turning in!
+ensureComplete(1234);                             // Never reached!
+```
 
-    ensureComplete(1234, stop);
+---
+
+## Drops, Inventory & Bank
+
+### Drop Management
+Always enable drop handling in `onStart()`:
+```javascript
+function onStart() {
+    acceptAcdrops();   // Auto-accept all AC-tagged drops
+    // or:
+    acceptAllDrops();  // Auto-accept all drops (regular + AC)
 }
 ```
-- `ensureQuest(1234)` ensures the quest is loaded and accepted.
-- `hunt(...)` tracks the required item and returns `true` once 10 are in your bag.
-- `ensureComplete(1234, stop)`: **Crucial**: Notice `stop` is passed to `ensureComplete`, **not** `hunt`! If `stop` were passed to `hunt`, the script would immediately exit before the quest could turn in. Passing `stop` to `ensureComplete` ensures the turn-in packet is delivered to the server before stopping!
 
 ---
 
-## Namespaces (Optional)
+## The 6 Scripting Architectural Patterns
 
-If you prefer an object-oriented style, all modular managers remain available:
-- `map.ensure(...)`, `map.join(...)`, `map.jump(...)`, `map.reload()`
-- `combat.ensure()`, `combat.hunt(...)`, `combat.stop()`
-- `quest.ensureAccept(...)`, `quest.ensureComplete(...)`
-- `drop.acceptACs = true`, `drop.acceptAll = true`
-- `player.hp`, `player.mp`, `player.isInCombat`, `player.hasAura(...)`
-
-Both top-level shortcuts and namespaced methods execute the exact same underlying logic.
-
----
-
-## End-to-End Script Templates
-
-### 1. Minimalist Kill-Count Hunter
+### Pattern 1: Minimalist Kill-Count Hunter
+Hunts a target number of monsters and safely teleports to house when finished:
 ```javascript
 function onStart() {
     log("starting routine");
@@ -208,34 +200,94 @@ function onStop() {
 }
 ```
 
-### 2. Multi-Monster Sequential Hunter
+---
+
+### Pattern 2: Sequential Storyline Quest Chain (`if (!huntQuest) return;`)
+For multi-quest sagas where Quest 2 unlocks only after Quest 1 is turned in:
 ```javascript
 function onStart() {
-    acceptAcdrops();
+    acceptAllDrops();
     equipLoadout("farm");
-    join("shadowbattleon");
 }
 
 function onTick() {
+    // --- Quest 1 ---
     ensureMap("shadowbattleon");
-    hunt("Possessed Armor", 10);
-    hunt("Bone Cruncher", 5, stop);
+    if (!huntQuest(9421, "Possessed Armor")) return;
+    ensureComplete(9421);
+
+    // --- Quest 2 ---
+    ensureMap("infernalarena");
+    if (!huntQuest(9422, "Infernal Knight")) return;
+    ensureComplete(9422);
+
+    // --- Quest 3 ---
+    ensureMap("iceplane");
+    if (!huntQuest(9423, "Frost Giant")) return;
+    ensureComplete(9423);
+
+    // All quests complete!
+    stop();
 }
 
 function onStop() {
-    log("Routine completed.");
+    log("Quest chain finished!");
+    join("house");
+}
+```
+> **Why `if (!huntQuest(...)) return;` is used**: While the quest requirements are still being hunted, `huntQuest` returns `false`, exiting `onTick()` for this cycle. The rest of the file waits until Quest 1 is 100% complete!
+
+---
+
+### Pattern 3: Data-Driven Task Table (10+ Quests & 30+ Items)
+The cleanest, most compact way to write massive 10+ quest chains (e.g. Void Highlord, ArchMage, Legion Revenant):
+```javascript
+var tasks = [
+    { map: "shadowbattleon", quest: 9421, mob: "Possessed Armor", items: [["Bone Scrap", 10], ["Dark Core", 5]] },
+    { map: "infernalarena",  quest: 9422, mob: "Infernal Knight", items: [["Fire Shard", 10], ["Ash Ore", 3]] },
+    { map: "iceplane",       quest: 9423, mob: "Frost Giant",     items: [["Ice Shard", 10], ["Frost Core", 2]] }
+];
+
+function onStart() {
+    acceptAllDrops();
+    equipLoadout("farm");
+}
+
+function onTick() {
+    for (t in tasks) {
+        if (!isQuestComplete(t.quest)) {
+            ensureMap(t.map);
+            ensureQuest(t.quest);
+
+            // Gathers all items for this mob:
+            hunt(t.mob, t.items);
+
+            ensureComplete(t.quest);
+            return; // Stays on this task until complete!
+        }
+    }
+
+    // All 10 tasks completed:
+    stop();
+}
+
+function onStop() {
+    log("All tasks completed!");
     join("house");
 }
 ```
 
-### 3. Background Auto-Quest Leveling
+---
+
+### Pattern 4: Background Concurrent Farming (`autoQuest`)
+For infinite or long-running farming of multiple quests in the same map (leveling, reputation, gold):
 ```javascript
 function onStart() {
     log("Starting auto-leveling...");
     acceptAllDrops();
     equipLoadout("farm");
     join("shadowbattleon", "Enter", "Spawn");
-    autoQuest([9421, 9422, 9423]);
+    autoQuest([9421, 9422, 9423]); // Runs in background
 }
 
 function onTick() {
@@ -251,14 +303,38 @@ function onStop() {
 }
 ```
 
-### 4. Multi-Quest Saga / Complex Chain (10+ Quests & Mobs)
+---
+
+### Pattern 5: Multi-Item Hunt from a Single Monster
+When 1 monster drops 2, 3, or more required items:
 ```javascript
-// Data-driven task table: 10 quests, 10 maps, 10 mobs, multiple items
-var tasks = [
-    { map: "shadowbattleon", quest: 9421, mob: "Possessed Armor", items: [["Bone Scrap", 10], ["Dark Core", 5]] },
-    { map: "infernalarena",  quest: 9422, mob: "Infernal Knight", items: [["Fire Shard", 10], ["Ash Ore", 3]] },
-    { map: "iceplane",       quest: 9423, mob: "Frost Giant",     items: [["Ice Shard", 10]] }
-];
+function onStart() {
+    acceptAllDrops();
+    equipLoadout("farm");
+    join("shadowbattleon");
+}
+
+function onTick() {
+    ensureMap("shadowbattleon");
+    ensureQuest(9421);
+
+    // Tracks all 3 items simultaneously:
+    hunt("Possessed Armor", ["Bone Scrap:10", "Dark Core:5", "Broken Helm:1"]);
+
+    ensureComplete(9421, stop);
+}
+
+function onStop() {
+    join("house");
+}
+```
+
+---
+
+### Pattern 6: Finite State Machine (`switch (step)`)
+When you need explicit control with cutscenes, dialogs, or shop purchases between quests:
+```javascript
+var step = 1;
 
 function onStart() {
     acceptAllDrops();
@@ -266,28 +342,45 @@ function onStart() {
 }
 
 function onTick() {
-    for (t in tasks) {
-        if (!isQuestComplete(t.quest)) {
-            ensureMap(t.map);
-            ensureQuest(t.quest);
+    switch (step) {
+        case 1:
+            ensureMap("shadowbattleon");
+            if (huntQuest(9421, "Possessed Armor")) {
+                ensureComplete(9421);
+                step = 2;
+            }
+            break;
 
-            // Option A: Pass items array directly to hunt
-            hunt(t.mob, t.items);
+        case 2:
+            ensureMap("infernalarena");
+            if (huntQuest(9422, "Infernal Knight")) {
+                ensureComplete(9422);
+                step = 3;
+            }
+            break;
 
-            // Option B: Or use huntQuest to auto-track all quest items
-            // huntQuest(t.quest, t.mob);
-
-            ensureComplete(t.quest);
-            return; // Stay on current task until finished!
-        }
+        case 3:
+            stop();
+            break;
     }
-
-    // All quests completed
-    stop();
 }
 
 function onStop() {
-    log("All quests finished!");
     join("house");
 }
 ```
+
+---
+
+## AI Script Generation Prompting Guide
+
+When copying this document into an AI (ChatGPT, Claude, Gemini, etc.) to generate AQW scripts, provide this instruction:
+
+> **System Prompt for AI**:
+> You are generating an AQW `.hxs` script using the AQW Haxe Scripting API. Follow these mandatory rules:
+> 1. Always implement `function onStart()`, `function onTick()`, and `function onStop()`.
+> 2. NEVER use object prefixes (`bot.`, `map.`, `combat.`). Use direct top-level methods (`join`, `ensureMap`, `hunt`, `huntQuest`, `ensureQuest`, `ensureComplete`, `stop`).
+> 3. Use `acceptAcdrops()` or `acceptAllDrops()` inside `onStart()`.
+> 4. For sequential multi-map quests, always guard with `if (!hunt(...)) return;` or `if (!huntQuest(...)) return;` so `onTick()` does not evaluate downstream stages early.
+> 5. If the script turns in a quest before finishing, pass `stop` to `ensureComplete(questId, stop)`. Never pass `stop` to `hunt` if a quest turn-in is required.
+> 6. Always include `join("house");` inside `onStop()`.
