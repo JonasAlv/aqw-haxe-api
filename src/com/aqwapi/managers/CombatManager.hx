@@ -203,6 +203,7 @@ class CombatManager {
     }
 
     public function ensure(smart:Bool = true):Void {
+        if (Api.map != null && !Api.map.isLoaded) return;
         if (!isRunning()) start(smart);
     }
 
@@ -276,6 +277,14 @@ class CombatManager {
             var defaultPad = (targetCell.toLowerCase() == "enter") ? "Spawn" : "Left";
             Api.map.jump(targetCell, defaultPad);
             return false;
+        }
+
+        // If monster is not found across the map and not in current cell, wait
+        if (targetCell == "" && monsterName != null && monsterName != "" && monsterName != "*") {
+            var inCurCell = (Api.monster != null) ? (Api.monster.findByName(monsterName, false) != null) : false;
+            if (!inCurCell) {
+                return false;
+            }
         }
 
         // 6. Lock combat engine target to this specific monster & MMID

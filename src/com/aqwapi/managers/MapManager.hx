@@ -57,6 +57,7 @@ class MapManager {
                 if (inCombat) {
                     if (Api.combat != null) Api.combat.dropCombat();
                     else reload();
+                    _pauseScriptIfRunning(600);
                     return false;
                 }
                 join(mapName, cell, pad);

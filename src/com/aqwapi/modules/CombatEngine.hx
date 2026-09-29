@@ -199,6 +199,7 @@ class CombatEngine {
 
     private static function onTick(e:TimerEvent):Void {
         if (Api.game == null || Api.game.world == null || Api.game.world.myAvatar == null) return;
+        if (Api.map != null && !Api.map.isLoaded) return;
         var world:Dynamic = Api.game.world;
         var avatar:Dynamic = world.myAvatar;
 
