@@ -77,6 +77,9 @@ class TransportAdapter {
             case "getQuests", "getQuests2", "getQuest", "acceptQuest", "cc":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));
             case "equipItem", "unequipItem", "buyItem", "sellItem", "getDrop", "bankFromInv", "bankToInv", "loadBank":
+                if (cmd == "loadBank" && Api.inventory != null) {
+                    Api.inventory.onBankLoaded();
+                }
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.INVENTORY_CHANGED, dataObj));
             default:
         }

@@ -218,6 +218,9 @@ class HScriptEngine {
             Api.quest.stopAuto();
             Api.quest.clearQueue();
         }
+        if (Api.inventory != null) {
+            Api.inventory.clearBankQueue();
+        }
         if (Api.combat != null) {
             Api.combat.stopAuto();
             Api.combat.dropCombat();

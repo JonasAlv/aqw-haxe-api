@@ -327,6 +327,16 @@ class MapManager {
         return g.world.strMapName != null ? Std.string(g.world.strMapName) : "";
     }
 
+    public var currentMap(get, never):String;
+    @:getter(currentMap)
+    public function get_currentMap_prop():String { return get_name(); }
+    public inline function get_currentMap():String { return get_name(); }
+
+    public function isHouse():Bool {
+        var cur = get_name().toLowerCase();
+        return cur.indexOf("house") != -1;
+    }
+
     public var roomId(get, never):Int;
     @:getter(roomId)
     public function get_roomId_prop():Int {

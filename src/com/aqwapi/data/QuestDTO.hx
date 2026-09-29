@@ -124,17 +124,107 @@ class QuestDTO {
         }
 
         // Rewards
-        if (rawData.Rewards != null && Std.isOfType(rawData.Rewards, Array)) {
-            this.rewards = cast rawData.Rewards;
-        } else if (rawData.reward != null && Std.isOfType(rawData.reward, Array)) {
-            this.rewards = cast rawData.reward;
-        } else {
-            this.rewards = [];
+        this.rewards = [];
+        this.choiceRewards = [];
+
+        var seenRewardIds = new Map<Int, Bool>();
+
+        // 1. Parse oRewards object (Live AQW tree: itemsC = Choice, itemsS = Static, itemsR = Roll, itemsrand = Random)
+        if (rawData.oRewards != null) {
+            for (catKey in Reflect.fields(rawData.oRewards)) {
+                var isChoiceCat = (catKey == "itemsC" || catKey == "2");
+                var catObj:Dynamic = Reflect.field(rawData.oRewards, catKey);
+                if (catObj != null) {
+                    for (itemKey in Reflect.fields(catObj)) {
+                        var rItem:Dynamic = Reflect.field(catObj, itemKey);
+                        if (rItem != null) {
+                            var rId:Int = (rItem.ItemID != null) ? Std.int(rItem.ItemID) : ((rItem.id != null) ? Std.int(rItem.id) : 0);
+                            var rName:String = (rItem.sName != null) ? Std.string(rItem.sName) : ((rItem.name != null) ? Std.string(rItem.name) : "");
+                            var rQty:Int = (rItem.iQty != null) ? Std.int(rItem.iQty) : ((rItem.qty != null) ? Std.int(rItem.qty) : 1);
+                            var normItem = {
+                                ItemID: rId,
+                                id: rId,
+                                sName: rName,
+                                name: rName,
+                                iQty: rQty,
+                                qty: rQty,
+                                iType: isChoiceCat ? 2 : 0,
+                                bCoins: rItem.bCoins,
+                                iStk: rItem.iStk,
+                                bUpg: rItem.bUpg
+                            };
+                            if (rId > 0 && !seenRewardIds.exists(rId)) {
+                                seenRewardIds.set(rId, true);
+                                this.rewards.push(normItem);
+                            }
+                            if (isChoiceCat) {
+                                this.choiceRewards.push(normItem);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        // Simple Rewards
+        // 2. Parse rawData.Rewards (Skua format)
+        if (rawData.Rewards != null && Std.isOfType(rawData.Rewards, Array)) {
+            var rawList:Array<Dynamic> = cast rawData.Rewards;
+            for (r in rawList) {
+                if (r == null) continue;
+                var rId:Int = (r.ItemID != null) ? Std.int(r.ItemID) : ((r.id != null) ? Std.int(r.id) : 0);
+                if (rId > 0 && !seenRewardIds.exists(rId)) {
+                    seenRewardIds.set(rId, true);
+                    this.rewards.push(r);
+                }
+            }
+        }
+
+        // 3. Simple Rewards & iType == 2 choice identification
         if (rawData.SimpleRewards != null && Std.isOfType(rawData.SimpleRewards, Array)) {
             this.simpleRewards = cast rawData.SimpleRewards;
+            for (sr in this.simpleRewards) {
+                if (sr != null && (sr.iType == 2 || sr.iType == "2")) {
+                    var sId:Int = (sr.ItemID != null) ? Std.int(sr.ItemID) : ((sr.id != null) ? Std.int(sr.id) : 0);
+                    // Match to rewards list to populate choiceRewards
+                    var found = false;
+                    for (cr in this.choiceRewards) {
+                        var crId:Int = (cr.ItemID != null) ? Std.int(cr.ItemID) : ((cr.id != null) ? Std.int(cr.id) : 0);
+                        if (crId == sId) { found = true; break; }
+                    }
+                    if (!found) {
+                        for (r in this.rewards) {
+                            var rId:Int = (r.ItemID != null) ? Std.int(r.ItemID) : ((r.id != null) ? Std.int(r.id) : 0);
+                            if (rId == sId) {
+                                this.choiceRewards.push(r);
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (rawData.reward != null && Std.isOfType(rawData.reward, Array)) {
+            this.simpleRewards = cast rawData.reward;
+            for (sr in this.simpleRewards) {
+                if (sr != null && (sr.iType == 2 || sr.iType == "2")) {
+                    var sId:Int = (sr.ItemID != null) ? Std.int(sr.ItemID) : ((sr.id != null) ? Std.int(sr.id) : 0);
+                    var found = false;
+                    for (cr in this.choiceRewards) {
+                        var crId:Int = (cr.ItemID != null) ? Std.int(cr.ItemID) : ((cr.id != null) ? Std.int(cr.id) : 0);
+                        if (crId == sId) { found = true; break; }
+                    }
+                    if (!found) {
+                        for (r in this.rewards) {
+                            var rId:Int = (r.ItemID != null) ? Std.int(r.ItemID) : ((r.id != null) ? Std.int(r.id) : 0);
+                            if (rId == sId) {
+                                this.choiceRewards.push(r);
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         } else {
             this.simpleRewards = [];
         }
@@ -145,6 +235,14 @@ class QuestDTO {
         } else {
             this.acceptRequirements = [];
         }
+    }
+
+    public var choiceRewards:Array<Dynamic>;
+    public var isChoice(get, never):Bool;
+    @:getter(isChoice)
+    public function get_isChoice_prop():Bool { return get_isChoice(); }
+    public function get_isChoice():Bool {
+        return choiceRewards != null && choiceRewards.length > 0;
     }
 
     public var isComplete(get, never):Bool;

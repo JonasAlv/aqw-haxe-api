@@ -88,7 +88,12 @@ Every `.hxs` script defines these standard lifecycle functions:
 
 ### Quests
 - `ensureQuest(id)` / `ensureAccept(id)`: Accepts the quest if not already in your active quest log.
-- `ensureComplete(id, itemId?, callback?)`: Turns in the quest once all requirements are fulfilled. Accepts optional `stop` callback.
+- `ensureComplete(id, rewardChoice?, callback?)`: Turns in the quest once all requirements are fulfilled. `rewardChoice` can be an Item ID, reward name string (e.g. `"Blood Gem of the Archfiend"`), or `"unowned"` (auto-selects the first unowned reward).
+- `ensureCompleteChoose(id, preferredItems?)`: Automatically selects the next reward not owned in backpack or bank. Ideal for multi-reward quests farmed multiple times without duplicate errors.
+- `isChoiceQuest(id)` *(Bool)*: Returns `true` if the quest requires selecting a reward.
+- `getChoiceRewards(id)` *(Array)*: Returns selectable choice reward items for the quest.
+- `getUnownedRewards(id)` *(Array)*: Returns choice rewards that are not in your backpack and not in your bank.
+- `getNextUnownedReward(id, preferredItems?)`: Returns the next choice reward item object not owned in backpack or bank.
 - `autoQuest([ids])`: Runs quest acceptance, requirement checking, and turn-in automatically in the background (800ms timer, 1100ms safe server cooldown).
 - `stopAutoQuest()`: Stops background auto-questing.
 - `isQuestComplete(id)` *(Bool)*: Returns true if the quest has been completed and saved on the server (for story quests).
@@ -206,10 +211,11 @@ function onStart() {
 ```
 
 #### How `unbank([...])` works under the hood:
-1. **Auto Bank Loading**: If bank data has not been retrieved from the server in this login session, it automatically sends `loadBank()` and waits for the bank list.
-2. **Smart Filtering**: It checks which items from your array are actually in the bank. Items already in your inventory or not owned are safely ignored.
-3. **Paced Transfer Queue**: It transfers items one by one with a safe 650ms cooldown between packets to prevent server disconnects.
-4. **Combat Safety**: While unbanking is in flight (`isUnbanking == true`), `hunt()` automatically pauses combat so you never accidentally kill a monster while an unbank packet is in flight!
+1. **Private House Safety**: The engine checks if you are in your private house. If you are in a public room, it automatically joins `house` first before transferring items, ensuring you never bank or unbank in public.
+2. **Auto Bank Loading**: If bank data has not been retrieved from the server in this login session, it sends `sendLoadBankRequest(["All"])` and waits for the bank list.
+3. **Smart Filtering**: It checks which items from your array are actually in the bank. Items already in your inventory or not owned are safely ignored.
+4. **Paced Transfer Queue**: It transfers items one by one with a safe 1000ms server cooldown timer (including lag compensation) between packets to prevent kicks or bans.
+5. **Combat Safety**: While unbanking is in flight (`isUnbanking == true`), `hunt()` automatically pauses combat so you never accidentally kill a monster while an unbank packet is in flight.
 
 ### Depositing Items to Bank (`bankAll()` & `bank()`)
 To quickly empty your inventory before a big farm without accidentally banking what you're wearing:
@@ -229,15 +235,16 @@ function onTick() {
 }
 
 function onStop() {
-    join("house");
+    log("Bank all stopped");
 }
 ```
 
 #### How `bankAll()` protects your gear:
-1. **Equipped Armor & Weapons are Protected**: The engine strictly checks `bEquip == 1`. Classes, armors, weapons, helms, capes, and pets you are currently wearing are never banked.
-2. **Temporary Items Excluded**: Temporary quest drops (`bTemp == 1`) cannot be stored in the bank and are safely skipped.
-3. **Queue Pacing**: Items are deposited one by one using a safe 650ms queue timer (`isBanking == true`), preventing packet flooding and server disconnects.
-4. **Combat Safety**: Like unbanking, active combat routines automatically pause while banking is in flight to eliminate packet conflicts.
+1. **Private House Safety**: If you are not in your private house, `bankAll()` automatically moves you to `house` first before opening or depositing items.
+2. **Equipped Armor & Weapons are Protected**: The engine strictly checks `bEquip == 1`. Classes, armors, weapons, helms, capes, and pets you are currently wearing are never banked.
+3. **Temporary Items Excluded**: Temporary quest drops (`bTemp == 1`) cannot be stored in the bank and are safely skipped.
+4. **Queue Pacing**: Items are deposited one by one using a safe 1000ms server cooldown timer (`isBanking == true`), preventing packet flooding, server warnings, or disconnects.
+5. **Combat Safety**: Like unbanking, active combat routines automatically pause while banking is in flight to eliminate packet conflicts.
 
 ### Built-in Hardfarm Item Presets (`unbankPreset()` & `bankAllExcept()`)
 

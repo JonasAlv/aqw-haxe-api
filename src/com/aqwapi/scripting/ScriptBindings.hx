@@ -386,19 +386,26 @@ class ScriptBindings {
         });
         bind("ensureComplete", function(questId:Int, ?arg1:Dynamic, ?arg2:Dynamic):Bool {
             if (Api.quest == null) return false;
-            var itemId:Int = -1;
-            var cb:Dynamic = null;
-            if (Reflect.isFunction(arg1)) {
-                cb = arg1;
-            } else {
-                if (arg1 != null) itemId = ApiUtils.parseInt(arg1, -1);
-                if (Reflect.isFunction(arg2)) cb = arg2;
-            }
-            return Api.quest.ensureComplete(questId, itemId, cb);
+            return Api.quest.ensureComplete(questId, arg1, arg2);
+        });
+        bind("ensureCompleteChoose", function(questId:Int, ?preferredItems:Dynamic):Bool {
+            return Api.quest != null ? Api.quest.ensureCompleteChoose(questId, preferredItems) : false;
+        });
+        bind("isChoiceQuest", function(questId:Int):Bool {
+            return Api.quest != null ? Api.quest.isChoiceQuest(questId) : false;
+        });
+        bind("getChoiceRewards", function(questId:Int):Array<Dynamic> {
+            return Api.quest != null ? Api.quest.getChoiceRewards(questId) : [];
+        });
+        bind("getUnownedRewards", function(questId:Int):Array<Dynamic> {
+            return Api.quest != null ? Api.quest.getUnownedRewards(questId) : [];
+        });
+        bind("getNextUnownedReward", function(questId:Int, ?preferredItems:Dynamic):Dynamic {
+            return Api.quest != null ? Api.quest.getNextUnownedReward(questId, preferredItems) : null;
         });
 
-        bind("completeQuest", function(questId:Int, itemId:Int = -1):Void {
-            if (Api.quest != null) Api.quest.complete(questId, itemId);
+        bind("completeQuest", function(questId:Int, ?rewardChoice:Dynamic):Void {
+            if (Api.quest != null) Api.quest.complete(questId, rewardChoice);
         });
         bind("completeQuests", function(questIds:Dynamic):Void {
             if (Api.quest == null) return;

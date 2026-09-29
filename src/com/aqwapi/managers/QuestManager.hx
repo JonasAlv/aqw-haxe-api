@@ -60,6 +60,121 @@ class QuestManager {
         return q != null ? q.rewards : [];
     }
 
+    public function getChoiceRewards(questId:Int):Array<Dynamic> {
+        var q = get(questId);
+        return q != null ? q.choiceRewards : [];
+    }
+
+    public function isChoiceQuest(questId:Int):Bool {
+        var q = get(questId);
+        return q != null && q.isChoice;
+    }
+
+    public function getUnownedRewards(questId:Int):Array<Dynamic> {
+        var choices = getChoiceRewards(questId);
+        if (choices == null || choices.length == 0) return [];
+        var result:Array<Dynamic> = [];
+        for (r in choices) {
+            if (r == null) continue;
+            var rName:String = (r.sName != null) ? Std.string(r.sName) : ((r.name != null) ? Std.string(r.name) : "");
+            var rId:Int = (r.ItemID != null) ? Std.int(r.ItemID) : ((r.id != null) ? Std.int(r.id) : 0);
+            var owned:Bool = false;
+            if (Api.inventory != null) {
+                if (rName != "" && (Api.inventory.hasItem(rName) || Api.inventory.isInBank(rName))) {
+                    owned = true;
+                } else if (rId > 0 && (Api.inventory.hasItemById(rId) || Api.inventory.isInBank(Std.string(rId)))) {
+                    owned = true;
+                }
+            }
+            if (!owned) {
+                result.push(r);
+            }
+        }
+        return result;
+    }
+
+    public function getNextUnownedReward(questId:Int, ?preferredItems:Dynamic):Dynamic {
+        var unowned = getUnownedRewards(questId);
+        if (unowned.length == 0) return null;
+
+        if (preferredItems != null) {
+            var prefs:Array<String> = [];
+            if (Std.isOfType(preferredItems, Array)) {
+                for (p in (cast preferredItems:Array<Dynamic>)) {
+                    if (p != null) prefs.push(StringTools.trim(Std.string(p)).toLowerCase());
+                }
+            } else {
+                var s = Std.string(preferredItems);
+                for (p in s.split(",")) {
+                    var pt = StringTools.trim(p).toLowerCase();
+                    if (pt != "") prefs.push(pt);
+                }
+            }
+
+            for (pref in prefs) {
+                for (r in unowned) {
+                    var rName:String = (r.sName != null) ? Std.string(r.sName).toLowerCase() : ((r.name != null) ? Std.string(r.name).toLowerCase() : "");
+                    var rId:String = (r.ItemID != null) ? Std.string(r.ItemID) : ((r.id != null) ? Std.string(r.id) : "");
+                    if (rName == pref || rId == pref) {
+                        return r;
+                    }
+                }
+            }
+        }
+
+        return unowned[0];
+    }
+
+    public function resolveRewardId(questId:Int, rewardChoice:Dynamic):Int {
+        if (rewardChoice == null) {
+            if (isChoiceQuest(questId)) {
+                var next = getNextUnownedReward(questId);
+                if (next != null) {
+                    return (next.ItemID != null) ? Std.int(next.ItemID) : ((next.id != null) ? Std.int(next.id) : -1);
+                }
+            }
+            return -1;
+        }
+
+        if (Std.isOfType(rewardChoice, Int) || Std.isOfType(rewardChoice, Float)) {
+            var id = Std.int(rewardChoice);
+            if (id > 0) return id;
+            if (id == -1 && isChoiceQuest(questId)) {
+                var next = getNextUnownedReward(questId);
+                if (next != null) {
+                    return (next.ItemID != null) ? Std.int(next.ItemID) : ((next.id != null) ? Std.int(next.id) : -1);
+                }
+            }
+            return -1;
+        }
+
+        var sChoice = StringTools.trim(Std.string(rewardChoice));
+        var sLower = sChoice.toLowerCase();
+
+        if (sLower == "unowned" || sLower == "choose" || sLower == "next" || sLower == "any") {
+            var next = getNextUnownedReward(questId);
+            if (next != null) {
+                return (next.ItemID != null) ? Std.int(next.ItemID) : ((next.id != null) ? Std.int(next.id) : -1);
+            }
+            return -1;
+        }
+
+        var parsedId = ApiUtils.parseInt(sChoice, 0);
+        if (parsedId > 0) return parsedId;
+
+        var allRewards = getChoiceRewards(questId);
+        if (allRewards.length == 0) allRewards = getRewards(questId);
+        for (r in allRewards) {
+            if (r == null) continue;
+            var rName:String = (r.sName != null) ? Std.string(r.sName) : ((r.name != null) ? Std.string(r.name) : "");
+            if (rName.toLowerCase() == sLower) {
+                return (r.ItemID != null) ? Std.int(r.ItemID) : ((r.id != null) ? Std.int(r.id) : -1);
+            }
+        }
+
+        return -1;
+    }
+
     public function getAcceptRequirements(questId:Int):Array<Dynamic> {
         var q = get(questId);
         return q != null ? q.acceptRequirements : [];
@@ -237,26 +352,38 @@ class QuestManager {
         }
     }
 
-    public function complete(questId:Int, itemId:Int = -1):Void {
+    public function complete(questId:Int, itemId:Dynamic = -1):Void {
         if (_game == null || _game.world == null || questId <= 0) return;
         if (!isInProgress(questId)) return;
+
+        var resolvedItemId:Int = resolveRewardId(questId, itemId);
 
         for (task in _actionQueue) {
             if (task.type == "complete" && task.questId == questId) return;
         }
 
-        _actionQueue.push({type: "complete", questId: questId, itemId: itemId});
+        _actionQueue.push({type: "complete", questId: questId, itemId: resolvedItemId});
         _pauseScriptIfRunning();
         processQueue();
     }
 
-    public function ensureComplete(questId:Int, itemId:Int = -1, ?callback:Dynamic):Bool {
+    public function ensureComplete(questId:Int, itemIdOrCallback:Dynamic = -1, ?callback:Dynamic):Bool {
         if (!isInProgress(questId)) return true;
         if (canComplete(questId)) {
-            complete(questId, itemId);
-            if (callback != null && Reflect.isFunction(callback)) {
+            var actualItemId:Dynamic = -1;
+            var actualCallback:Dynamic = null;
+
+            if (Reflect.isFunction(itemIdOrCallback)) {
+                actualCallback = itemIdOrCallback;
+            } else {
+                actualItemId = itemIdOrCallback;
+                actualCallback = callback;
+            }
+
+            complete(questId, actualItemId);
+            if (actualCallback != null && Reflect.isFunction(actualCallback)) {
                 haxe.Timer.delay(function() {
-                    try { callback(); } catch (e:Dynamic) {}
+                    try { actualCallback(); } catch (e:Dynamic) {}
                 }, 300);
             }
             return true;
@@ -264,7 +391,20 @@ class QuestManager {
         return false;
     }
 
-    public inline function turnIn(questId:Int, itemId:Int = -1):Void {
+    public function ensureCompleteChoose(questId:Int, ?preferredItems:Dynamic):Bool {
+        if (!isInProgress(questId)) return true;
+        var next = getNextUnownedReward(questId, preferredItems);
+        if (next == null) {
+            ApiLogger.warn("Quest", "All choice rewards already owned for quest: " + questId);
+            return false;
+        }
+        var nextId:Int = (next.ItemID != null) ? Std.int(next.ItemID) : ((next.id != null) ? Std.int(next.id) : -1);
+        var nextName:String = (next.sName != null) ? Std.string(next.sName) : ((next.name != null) ? Std.string(next.name) : Std.string(nextId));
+        ApiLogger.info("Quest", "Selected reward: " + nextName);
+        return ensureComplete(questId, nextId);
+    }
+
+    public inline function turnIn(questId:Int, itemId:Dynamic = -1):Void {
         complete(questId, itemId);
     }
 
