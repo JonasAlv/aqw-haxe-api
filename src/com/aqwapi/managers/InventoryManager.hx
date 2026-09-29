@@ -200,44 +200,146 @@ class InventoryManager {
         }
     }
 
-    public function bank(itemName:String):Promise<Dynamic> {
-        return new Promise<Dynamic>(function(resolve:Dynamic->Void) {
-            if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) { resolve(null); return; }
-            var targetName:String = itemName.toLowerCase();
-            var bItem:Dynamic = null;
-            var items:Array<Dynamic> = cast _game.world.myAvatar.items;
-            for (i in items) { if (i != null && i.sName != null && Std.string(i.sName).toLowerCase() == targetName) { bItem = i; break; } }
-            if (bItem == null) { resolve(null); return; }
+    public var isBanking:Bool = false;
+    private var _bankQueue:Array<String> = [];
+    private var _bankTimer:Timer = null;
 
-            var listener:Dynamic->Void = null;
-            var timeoutTimer:Timer = null;
-
-            var cleanup = function() {
-                if (timeoutTimer != null) { timeoutTimer.stop(); timeoutTimer = null; }
-                Api.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
-            };
-
-            listener = function(e:Dynamic) {
-                cleanup();
-                resolve(e);
-            };
-
-            Api.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
-            timeoutTimer = Timer.delay(function() {
-                cleanup();
-                resolve(null);
-            }, 2500);
-
-            if (_game.world.sendBankFromInvRequest != null) {
-                _game.world.sendBankFromInvRequest(bItem);
-            } else if (_game.sfc != null) {
-                var reqId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.sfc.myUserId;
-                _game.sfc.sendString("%xt%zm%bankFromInv%" + reqId + "%" + bItem.ItemID + "%" + bItem.CharItemID + "%");
-            } else {
-                cleanup();
-                resolve(null);
+    public function bank(items:Dynamic):Void {
+        if (items == null) return;
+        var toAdd:Array<String> = [];
+        if (Std.isOfType(items, Array)) {
+            var arr:Array<Dynamic> = cast items;
+            for (it in arr) {
+                if (it != null) {
+                    var s = StringTools.trim(Std.string(it));
+                    if (s != "") toAdd.push(s);
+                }
             }
-        });
+        } else {
+            var s = Std.string(items);
+            if (s.indexOf(",") != -1) {
+                for (p in s.split(",")) {
+                    var pt = StringTools.trim(p);
+                    if (pt != "") toAdd.push(pt);
+                }
+            } else if (s != "") {
+                toAdd.push(s);
+            }
+        }
+
+        if (toAdd.length == 0) return;
+
+        for (item in toAdd) {
+            var lower = item.toLowerCase();
+            var exists = false;
+            for (q in _bankQueue) {
+                if (q.toLowerCase() == lower) { exists = true; break; }
+            }
+            if (!exists) _bankQueue.push(item);
+        }
+
+        isBanking = true;
+        _startBankProcess();
+    }
+
+    public function bankAll(?excludeItems:Dynamic):Void {
+        if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return;
+        var toBank = getBankableItems(excludeItems);
+        if (toBank.length > 0) {
+            ApiLogger.info("Bank", "Banking " + toBank.length + " unequipped items to bank...");
+            bank(toBank);
+        } else {
+            ApiLogger.info("Bank", "No unequipped items to bank.");
+        }
+    }
+
+    public function getBankableItems(?excludeItems:Dynamic):Array<String> {
+        if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return [];
+        var exMap = new Map<String, Bool>();
+        if (excludeItems != null) {
+            if (Std.isOfType(excludeItems, Array)) {
+                for (ex in (cast excludeItems : Array<Dynamic>)) if (ex != null) exMap.set(Std.string(ex).toLowerCase(), true);
+            } else {
+                var sEx = Std.string(excludeItems);
+                if (sEx.indexOf(",") != -1) for (p in sEx.split(",")) exMap.set(StringTools.trim(p).toLowerCase(), true);
+                else exMap.set(sEx.toLowerCase(), true);
+            }
+        }
+        var items:Array<Dynamic> = cast _game.world.myAvatar.items;
+        var result:Array<String> = [];
+        for (item in items) {
+            if (item == null || item.sName == null) continue;
+            var isEquipped:Bool = (item.bEquip == 1 || item.bEquip == "1" || item.bEquip == true);
+            var isTemp:Bool = (item.bTemp == 1 || item.bTemp == "1" || item.bTemp == true);
+            var itemName:String = Std.string(item.sName);
+            if (!isEquipped && !isTemp && !exMap.exists(itemName.toLowerCase())) {
+                result.push(itemName);
+            }
+        }
+        return result;
+    }
+
+    private function _startBankProcess():Void {
+        if (!isBankLoaded) {
+            loadBank();
+            if (_bankLoadPollTimer != null) return;
+            _bankLoadPollTimer = new Timer(300);
+            _bankLoadPollTimer.run = function() {
+                if (isBankLoaded) {
+                    if (_bankLoadPollTimer != null) {
+                        _bankLoadPollTimer.stop();
+                        _bankLoadPollTimer = null;
+                    }
+                    if (_bankQueue.length > 0) _processBankQueue();
+                    if (_unbankQueue.length > 0) _processUnbankQueue();
+                }
+            };
+            return;
+        }
+        _processBankQueue();
+    }
+
+    private function _processBankQueue():Void {
+        if (_bankTimer != null) return;
+        _bankTimer = new Timer(650);
+        _bankTimer.run = function() {
+            if (_bankQueue.length == 0) {
+                if (_bankTimer != null) {
+                    _bankTimer.stop();
+                    _bankTimer = null;
+                }
+                isBanking = false;
+                return;
+            }
+
+            var nextItem = _bankQueue.shift();
+            if (nextItem == null) return;
+
+            var targetName = nextItem.toLowerCase();
+            var bItem:Dynamic = null;
+            if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.items != null) {
+                var items:Array<Dynamic> = cast _game.world.myAvatar.items;
+                for (i in items) {
+                    if (i != null && i.sName != null && Std.string(i.sName).toLowerCase() == targetName) {
+                        var isEquipped:Bool = (i.bEquip == 1 || i.bEquip == "1" || i.bEquip == true);
+                        if (!isEquipped) {
+                            bItem = i;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (bItem != null) {
+                ApiLogger.info("Bank", "Depositing " + nextItem + " to bank...");
+                if (_game.world.sendBankFromInvRequest != null) {
+                    _game.world.sendBankFromInvRequest(bItem);
+                } else if (_game.sfc != null) {
+                    var reqId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.sfc.myUserId;
+                    _game.sfc.sendString("%xt%zm%bankFromInv%" + reqId + "%" + bItem.ItemID + "%" + bItem.CharItemID + "%");
+                }
+            }
+        };
     }
 
     public var isUnbanking:Bool = false;
@@ -329,7 +431,8 @@ class InventoryManager {
                         _bankLoadPollTimer.stop();
                         _bankLoadPollTimer = null;
                     }
-                    _processUnbankQueue();
+                    if (_bankQueue.length > 0) _processBankQueue();
+                    if (_unbankQueue.length > 0) _processUnbankQueue();
                 }
             };
             return;

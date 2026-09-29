@@ -97,7 +97,12 @@ Every `.hxs` script defines these standard lifecycle functions:
 ### Drops, Inventory & Bank
 - `acceptAcdrops(enabled? = true)`: Enables auto-accepting AdventureCoins drops for the session and sweeps current screen drops.
 - `acceptAllDrops(enabled? = true)`: Enables auto-accepting all item drops for the session and sweeps current screen drops.
+- `bank(items)`: Deposits an item or array of items (`["Item 1", "Item 2"]`) into your Bank with automatic 650ms queue pacing.
+- `bankAll(excludeItems?)`: Deposits **all unequipped, non-temporary** items from backpack into your Bank, optionally skipping any items in `excludeItems`.
+- `isBanking()` *(Bool)*: Returns `true` while the bank deposit queue is actively processing.
+- `getBankableItems(excludeItems?)` *(Array<String>)*: Returns the list of unequipped, non-temporary backpack item names eligible for banking.
 - `unbank(items)`: Retrieves an item or array of items (`["Item 1", "Item 2"]`) from your Bank into your backpack with automatic queue pacing.
+- `isUnbanking()` *(Bool)*: Returns `true` while the unbank queue is actively processing.
 - `ensureUnbanked(items)` *(Bool)*: Ensures items are out of the bank. Returns `true` once items are confirmed in inventory.
 - `isInBank(itemName)` *(Bool)*: Returns `true` if the item is currently in your bank.
 - `getDrop(itemName)`: Picks up a specific drop.
@@ -199,6 +204,34 @@ function onStart() {
 2. **Smart Filtering**: It checks which items from your array are actually in the bank. Items already in your inventory or not owned are safely ignored.
 3. **Paced Transfer Queue**: It transfers items one by one with a safe 650ms cooldown between packets to prevent server disconnects.
 4. **Combat Safety**: While unbanking is in flight (`isUnbanking == true`), `hunt()` automatically pauses combat so you never accidentally kill a monster while an unbank packet is in flight!
+
+### 🏦 Depositing Items to Bank (`bankAll()` & `bank()`)
+To quickly empty your inventory before a big farm without accidentally banking what you're wearing:
+
+```javascript
+// Test Script: Bank All Unequipped Items
+function onStart() {
+    log("starting bank routine");
+    bankAll(); // or bankAll(["Gold Voucher 25k", "Item To Keep"]);
+}
+
+function onTick() {
+    if (isBanking()) return; // Wait for paced deposit queue to finish
+
+    log("Banking complete!");
+    stop();
+}
+
+function onStop() {
+    join("house");
+}
+```
+
+#### How `bankAll()` protects your gear:
+1. **Equipped Armor & Weapons are Protected**: The engine strictly checks `bEquip == 1`. Classes, armors, weapons, helms, capes, and pets you are currently wearing are never banked.
+2. **Temporary Items Excluded**: Temporary quest drops (`bTemp == 1`) cannot be stored in the bank and are safely skipped.
+3. **Queue Pacing**: Items are deposited one by one using a safe 650ms queue timer (`isBanking == true`), preventing packet flooding and server disconnects.
+4. **Combat Safety**: Like unbanking, active combat routines automatically pause while banking is in flight to eliminate packet conflicts.
 
 ---
 
