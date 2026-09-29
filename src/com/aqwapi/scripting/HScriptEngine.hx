@@ -215,6 +215,21 @@ class HScriptEngine {
         _timer.stop();
         statusText = "Stopped.";
 
+        if (Api.combat != null) {
+            Api.combat.stopAuto();
+            Api.combat.dropCombat();
+            Api.combat.resetHunt();
+        } else {
+            CombatEngine.stop();
+        }
+        if (Api.quest != null) {
+            Api.quest.stopAuto();
+            Api.quest.clearQueue();
+        }
+        if (Api.inventory != null) {
+            Api.inventory.clearBankQueue();
+        }
+
         if (_hasOnStop) {
             try {
                 var fn = _interp.variables.get("onStop");
@@ -232,21 +247,6 @@ class HScriptEngine {
         if (Api.map != null) {
             Api.map.autoDeathSpawn = _savedDeathSpawn;
             Api.map.skipCutscenes  = _savedSkipCutscenes;
-        }
-
-        if (Api.quest != null) {
-            Api.quest.stopAuto();
-            Api.quest.clearQueue();
-        }
-        if (Api.inventory != null) {
-            Api.inventory.clearBankQueue();
-        }
-        if (Api.combat != null) {
-            Api.combat.stopAuto();
-            Api.combat.dropCombat();
-            Api.combat.resetHunt();
-        } else {
-            CombatEngine.stop();
         }
     }
 

@@ -14,6 +14,7 @@ class CombatManager {
     }
 
     private var _infiniteRange:Bool = true;
+    public var lastCombatExitTime:Float = 0;
 
     public function applyInfiniteRange():Void {
         if (!_infiniteRange || _game == null || _game.world == null || _game.world.actions == null) return;
@@ -156,6 +157,7 @@ class CombatManager {
     }
 
     public function dropCombat():Void {
+        lastCombatExitTime = com.aqwapi.utils.ApiTime.now();
         cancelAutoAttack();
         cancelTarget();
         if (Api.map != null) {
@@ -188,6 +190,7 @@ class CombatManager {
     public function stopCombat():Void {
         stopAuto();
         dropCombat();
+        lastCombatExitTime = com.aqwapi.utils.ApiTime.now();
     }
 
     public inline function endCombat():Void {

@@ -3,6 +3,7 @@ package com.aqwapi.managers;
 import com.aqwapi.Api;
 import com.aqwapi.Game;
 import com.aqwapi.utils.ApiTime;
+import com.aqwapi.utils.ApiLogger;
 
 class MapManager {
     private var _game:Game;
@@ -104,12 +105,15 @@ class MapManager {
             return;
         }
 
-        // If in combat, drop combat at exact coordinates first before sending map transfer
+        // If in combat or combat recently ended (< 2000ms), drop combat and safely wait for server combat cooldown
         var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
-        if (inCombat) {
+        var timeSinceCombat:Float = (Api.combat != null && Api.combat.lastCombatExitTime > 0) ? (ApiTime.now() - Api.combat.lastCombatExitTime) : 999999.0;
+        if (inCombat || timeSinceCombat < 2000) {
             if (Api.combat != null) Api.combat.dropCombat();
             else reload();
-            ApiTime.delay(600, function() {
+            var remainingMs:Int = inCombat ? 2000 : Std.int(Math.max(200, 2000 - timeSinceCombat));
+            ApiLogger.info("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining " + mapName + "...");
+            ApiTime.delay(remainingMs, function() {
                 join(mapName, cell, pad, force);
             });
             return;
@@ -157,6 +161,20 @@ class MapManager {
     public function joinHouse(username:String = ""):Void {
         var g = _g();
         if (g == null || g.world == null) return;
+
+        // If in combat or combat recently ended (< 2000ms), drop combat and safely wait for server combat cooldown
+        var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
+        var timeSinceCombat:Float = (Api.combat != null && Api.combat.lastCombatExitTime > 0) ? (ApiTime.now() - Api.combat.lastCombatExitTime) : 999999.0;
+        if (inCombat || timeSinceCombat < 2000) {
+            if (Api.combat != null) Api.combat.dropCombat();
+            var remainingMs:Int = inCombat ? 2000 : Std.int(Math.max(200, 2000 - timeSinceCombat));
+            ApiLogger.info("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining house...");
+            ApiTime.delay(remainingMs, function() {
+                joinHouse(username);
+            });
+            return;
+        }
+
         var un:String = username != null ? StringTools.trim(username) : "";
         if (un == "" && Api.player != null) un = Api.player.username;
         if (un == "" && g.world.myAvatar != null && g.world.myAvatar.objData != null && g.world.myAvatar.objData.strUsername != null) {
