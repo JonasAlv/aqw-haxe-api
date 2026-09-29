@@ -202,6 +202,9 @@ class ScriptBindings {
         bind("resetHunt", function():Void {
             if (Api.combat != null) Api.combat.resetHunt();
         });
+        bind("huntQuest", function(questId:Int, monsterName:String = null, ?callback:Dynamic):Bool {
+            return Api.combat != null ? Api.combat.huntQuest(questId, monsterName, callback) : false;
+        });
 
         // Targeting & Direct Attack
         bind("attack", function(monster:Dynamic):Void {

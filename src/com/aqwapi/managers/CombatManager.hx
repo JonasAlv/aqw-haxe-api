@@ -249,6 +249,9 @@ class CombatManager {
             callback = onComplete;
         }
 
+        var isArrayItems:Bool = false;
+        var itemList:Array<{item:String, qty:Int}> = [];
+
         if (itemOrCount != null) {
             if (Std.isOfType(itemOrCount, Int) || Std.isOfType(itemOrCount, Float)) {
                 isKillCount = true;
@@ -256,13 +259,68 @@ class CombatManager {
                 if (targetMMID == null && targetQuantity > 1 && !Reflect.isFunction(quantityOrCallback)) {
                     targetMMID = targetQuantity;
                 }
+            } else if (Std.isOfType(itemOrCount, Array)) {
+                isArrayItems = true;
+                var rawArr:Array<Dynamic> = cast itemOrCount;
+                for (elem in rawArr) {
+                    if (elem == null) continue;
+                    if (Std.isOfType(elem, Array)) {
+                        var sub:Array<Dynamic> = cast elem;
+                        var sName:String = Std.string(sub[0]);
+                        var qVal:Int = (sub.length > 1) ? ApiUtils.parseInt(sub[1], 1) : targetQuantity;
+                        itemList.push({item: sName, qty: qVal});
+                    } else {
+                        var sElem:String = Std.string(elem);
+                        if (sElem.indexOf(":") != -1) {
+                            var p = sElem.split(":");
+                            itemList.push({item: StringTools.trim(p[0]), qty: ApiUtils.parseInt(p[1], 1)});
+                        } else {
+                            itemList.push({item: sElem, qty: targetQuantity});
+                        }
+                    }
+                }
             }
         }
 
-        var huntKey = monsterName + (isKillCount ? (":k" + targetKills) : (":i" + Std.string(itemOrCount) + "x" + targetQuantity)) + (targetMMID != null ? ("#" + targetMMID) : "");
+        var huntKey:String = "";
+        if (isKillCount) {
+            huntKey = monsterName + ":k" + targetKills + (targetMMID != null ? ("#" + targetMMID) : "");
+        } else if (isArrayItems) {
+            var kParts:Array<String> = [];
+            for (it in itemList) kParts.push(it.item + "x" + it.qty);
+            huntKey = monsterName + ":items[" + kParts.join(",") + "]" + (targetMMID != null ? ("#" + targetMMID) : "");
+        } else {
+            huntKey = monsterName + ":i" + Std.string(itemOrCount) + "x" + targetQuantity + (targetMMID != null ? ("#" + targetMMID) : "");
+        }
 
-        // 1. If tracking an item drop, check if the required quantity is already collected
-        if (!isKillCount && itemOrCount != null && Std.string(itemOrCount) != "") {
+        // 1a. If tracking multiple items in an array
+        if (isArrayItems && itemList.length > 0) {
+            var allCollected:Bool = true;
+            for (it in itemList) {
+                if (Api.inventory == null || !Api.inventory.hasItem(it.item, it.qty)) {
+                    allCollected = false;
+                    break;
+                }
+            }
+            if (allCollected) {
+                if (CombatEngine.targetName != null && monsterName != null
+                    && CombatEngine.targetName.toLowerCase() == monsterName.toLowerCase()) {
+                    CombatEngine.targetName = null;
+                }
+                CombatEngine.lockedMMID = null;
+                if (_activeHuntKey == huntKey) {
+                    _activeHuntKey = null;
+                    stopCombat();
+                    if (callback != null) {
+                        try { callback(); } catch (e:Dynamic) {}
+                    }
+                }
+                return true;
+            }
+        }
+
+        // 1b. If tracking an individual item drop
+        if (!isKillCount && !isArrayItems && itemOrCount != null && Std.string(itemOrCount) != "") {
             var itemName:String = Std.string(itemOrCount);
             if (Api.inventory != null && Api.inventory.hasItem(itemName, targetQuantity)) {
                 if (CombatEngine.targetName != null && monsterName != null
@@ -444,6 +502,37 @@ class CombatManager {
 
     public function kill(monsterName:String, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
         return hunt(monsterName, itemOrCount, quantity, mmid);
+    }
+
+    public function huntQuest(questId:Int, monsterName:String = null, ?callback:Dynamic):Bool {
+        if (Api.quest == null) return false;
+        if (!Api.quest.isLoaded(questId)) {
+            Api.quest.load(questId);
+            return false;
+        }
+        if (!Api.quest.isAccepted(questId)) {
+            Api.quest.accept(questId);
+            return false;
+        }
+        if (Api.quest.canComplete(questId)) {
+            if (CombatEngine.targetName != null && monsterName != null
+                && CombatEngine.targetName.toLowerCase() == monsterName.toLowerCase()) {
+                CombatEngine.targetName = null;
+            }
+            CombatEngine.lockedMMID = null;
+            stopCombat();
+            if (callback != null && Reflect.isFunction(callback)) {
+                try { callback(); } catch (e:Dynamic) {}
+            }
+            return true;
+        }
+
+        if (monsterName != null && monsterName != "") {
+            hunt(monsterName);
+        } else {
+            ensure(true);
+        }
+        return false;
     }
 
     public function startCustom(rotation:String, mode:String = "auto"):Void {
