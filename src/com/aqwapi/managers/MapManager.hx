@@ -53,6 +53,12 @@ class MapManager {
 
         if (mapName != null && mapName != "") {
             if (!isMap(mapName)) {
+                var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
+                if (inCombat) {
+                    if (Api.combat != null) Api.combat.dropCombat();
+                    else reload();
+                    return false;
+                }
                 join(mapName, cell, pad);
                 return false;
             }
@@ -81,6 +87,17 @@ class MapManager {
             if (cell != null && cell != "" && !isCell(cell)) {
                 jump(cell, pad);
             }
+            return;
+        }
+
+        // If in combat, drop combat at exact coordinates first before sending map transfer
+        var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
+        if (inCombat) {
+            if (Api.combat != null) Api.combat.dropCombat();
+            else reload();
+            ApiTime.delay(600, function() {
+                join(mapName, cell, pad, force);
+            });
             return;
         }
 
@@ -185,7 +202,7 @@ class MapManager {
         if (g.world.moveToCell != null) {
             if (cell != null && (force || !isCell(cell))) {
                 var now = ApiTime.now();
-                if (now - _lastJumpTime < 500) return;
+                if (!force && (now - _lastJumpTime < 500)) return;
                 _lastJumpTime = now;
                 _pauseScriptIfRunning(500);
                 g.world.moveToCell(cell, p);
@@ -198,8 +215,46 @@ class MapManager {
     }
 
     public function reload(pad:String = null):Void {
-        var curCell = (Api.player != null && Api.player.cell != null) ? Api.player.cell : "";
-        if (curCell != "") jump(curCell, pad, true);
+        var g = _g();
+        var curCell = (Api.player != null && Api.player.cell != null && Api.player.cell != "") ? Api.player.cell : "";
+        if (curCell == "" && g != null && g.world != null && g.world.strFrame != null) {
+            curCell = Std.string(g.world.strFrame);
+        }
+        if (curCell == "") return;
+
+        var curPad = pad;
+        if (curPad == null || curPad == "") {
+            curPad = (g != null && g.world != null && g.world.strPad != null) ? Std.string(g.world.strPad) : "";
+        }
+
+        var curX:Float = 0;
+        var curY:Float = 0;
+        var hasCoords:Bool = false;
+        if (g != null && g.world != null && g.world.myAvatar != null && g.world.myAvatar.pMC != null) {
+            curX = g.world.myAvatar.pMC.x;
+            curY = g.world.myAvatar.pMC.y;
+            hasCoords = (curX != 0 || curY != 0);
+        }
+
+        jump(curCell, curPad, true);
+
+        if (hasCoords) {
+            var restoreCoords = function() {
+                try {
+                    var curG = _g();
+                    if (curG != null && curG.world != null && curG.world.myAvatar != null && curG.world.myAvatar.pMC != null) {
+                        var myMC:Dynamic = curG.world.myAvatar.pMC;
+                        myMC.x = curX;
+                        myMC.y = curY;
+                        if (curG.world.pushMove != null) {
+                            curG.world.pushMove(myMC, curX, curY, 16);
+                        }
+                    }
+                } catch (e:Dynamic) {}
+            };
+            restoreCoords();
+            ApiTime.delay(50, restoreCoords);
+        }
     }
 
     public function getMapItem(itemId:Int):Bool {

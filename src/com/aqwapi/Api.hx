@@ -25,7 +25,7 @@ class Api {
     public static var enhancement(default, null):EnhancementManager = new EnhancementManager(null);
     public static var script(default, null):com.aqwapi.modules.ScriptManager = com.aqwapi.modules.ScriptManager.SINGLETON;
 
-    // Plural aliases (Skua / RBot convention)
+    // Plural aliases
     public static var quests(get, never):QuestManager;
     @:getter(quests)
     public static function get_quests_prop():QuestManager { return quest; }
