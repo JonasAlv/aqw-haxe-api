@@ -602,7 +602,8 @@ class CombatManager {
         else if (type == "dodge") { c = CombatEngine.dodgeClass; m = CombatEngine.dodgeMode; }
         else return false;
         if (c != null && c != "" && c != "Current" && Api.inventory != null) Api.inventory.equip(c);
-        if (m != null && m != "") CombatEngine.skillMode = m;
+        com.aqwapi.modules.CombatEngine.smartClass = (c != null && c != "") ? c : "Current";
+        if (m != null && m != "") com.aqwapi.modules.CombatEngine.skillMode = m;
         return true;
     }
 

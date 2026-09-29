@@ -165,6 +165,8 @@ class HScriptEngine {
     private var _savedInfiniteRange:Bool = false;
     private var _savedDeathSpawn:Bool = false;
     private var _savedSkipCutscenes:Bool = false;
+    private var _savedSmartClass:String = "Current";
+    private var _savedSkillMode:String = "Auto";
 
     public function start():Void {
         if ((Api.game == null || Api.game.world == null) && Api.game != null) {
@@ -185,6 +187,12 @@ class HScriptEngine {
         _savedInfiniteRange = (Api.combat != null) ? Api.combat.infiniteRange : false;
         _savedDeathSpawn    = (Api.map != null)    ? Api.map.autoDeathSpawn   : false;
         _savedSkipCutscenes = (Api.map != null)    ? Api.map.skipCutscenes    : false;
+        _savedSmartClass    = com.aqwapi.modules.CombatEngine.smartClass;
+        _savedSkillMode     = com.aqwapi.modules.CombatEngine.skillMode;
+
+        // Reset to clean state for script execution so scripts detect their own equipped class
+        com.aqwapi.modules.CombatEngine.smartClass = "Current";
+        com.aqwapi.modules.CombatEngine.skillMode  = "Auto";
 
         // Force scripting ergonomics: Infinite Range, Death Spawn, Skip Cutscenes always ON
         if (Api.combat != null) Api.combat.setInfiniteRange(true);
@@ -248,6 +256,8 @@ class HScriptEngine {
             Api.map.autoDeathSpawn = _savedDeathSpawn;
             Api.map.skipCutscenes  = _savedSkipCutscenes;
         }
+        com.aqwapi.modules.CombatEngine.smartClass = _savedSmartClass;
+        com.aqwapi.modules.CombatEngine.skillMode  = _savedSkillMode;
     }
 
     private function onTimerTick(e:TimerEvent):Void {
