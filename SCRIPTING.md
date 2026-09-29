@@ -4,7 +4,7 @@ Welcome to the official scripting guide for the AQW Haxe API. Scripts are writte
 
 ---
 
-## 🌟 The Default Scripting Style (Top-Level & Zero-Boilerplate)
+## The Default Scripting Style (Top-Level & Zero-Boilerplate)
 
 The official standard for all `.hxs` scripts is **clean, top-level natural language**. Redundant object prefixes like `bot.`, `map.`, or `combat.` are completely unnecessary — every primary game action is available directly at the top level.
 
@@ -166,11 +166,11 @@ There are two primary paradigms for quests:
 ### 2. Passing `stop` on Completion
 When a quest must turn in before stopping, pass `stop` to `ensureComplete`, **never** `hunt`:
 ```javascript
-// ✅ CORRECT:
+// [CORRECT]:
 hunt("Possessed Armor", "Armor Scrap", 10);
 ensureComplete(1234, stop); // Turns in the quest, THEN halts!
 
-// ❌ WRONG:
+// [WRONG]:
 hunt("Possessed Armor", "Armor Scrap", 10, stop); // Exits before turning in!
 ensureComplete(1234);                             // Never reached!
 ```
@@ -189,7 +189,7 @@ function onStart() {
 }
 ```
 
-### 🏦 The Bank Trap & Unbanking Routine (Crucial)
+### The Bank Trap & Unbanking Routine (Crucial)
 In AQW, if an item exists in your **Bank**, any new drops of that item will automatically be routed directly into your Bank instead of your backpack. Because quest turn-ins only check your backpack inventory, this causes the bot to farm forever!
 
 To eliminate this problem, **always unbank your quest items in `onStart()`**:
@@ -211,7 +211,7 @@ function onStart() {
 3. **Paced Transfer Queue**: It transfers items one by one with a safe 650ms cooldown between packets to prevent server disconnects.
 4. **Combat Safety**: While unbanking is in flight (`isUnbanking == true`), `hunt()` automatically pauses combat so you never accidentally kill a monster while an unbank packet is in flight!
 
-### 🏦 Depositing Items to Bank (`bankAll()` & `bank()`)
+### Depositing Items to Bank (`bankAll()` & `bank()`)
 To quickly empty your inventory before a big farm without accidentally banking what you're wearing:
 
 ```javascript
@@ -239,7 +239,7 @@ function onStop() {
 3. **Queue Pacing**: Items are deposited one by one using a safe 650ms queue timer (`isBanking == true`), preventing packet flooding and server disconnects.
 4. **Combat Safety**: Like unbanking, active combat routines automatically pause while banking is in flight to eliminate packet conflicts.
 
-### 🎒 Built-in Hardfarm Item Presets (`unbankPreset()` & `bankAllExcept()`)
+### Built-in Hardfarm Item Presets (`unbankPreset()` & `bankAllExcept()`)
 
 AQW hardfarms involve dozens of reagents, quest items, and temporary boss drops. If any reagent exists in your Bank when a mob drops it, AQW routes the drop straight into your Bank instead of your backpack, stalling your farm.
 
