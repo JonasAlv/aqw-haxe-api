@@ -91,6 +91,11 @@ class MapManager {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return;
 
+        if (mapName != null && StringTools.trim(mapName).toLowerCase() == "house") {
+            joinHouse();
+            return;
+        }
+
         // If already on this map, simply jump to cell if specified and not already there
         if (!force && isMap(mapName)) {
             if (cell != null && cell != "" && !isCell(cell)) {

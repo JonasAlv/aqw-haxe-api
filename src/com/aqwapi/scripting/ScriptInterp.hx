@@ -28,6 +28,7 @@ class ScriptInterp extends Interp {
             case "ApiUtils": return com.aqwapi.utils.ApiUtils;
             case "ApiJson": return com.aqwapi.utils.ApiJson;
             case "ApiStorage": return com.aqwapi.utils.ApiStorage;
+            case "acceptACs", "acceptACDrops": return (Api.drop != null) ? Api.drop.acceptACs : false;
         }
         if (ScriptBindings.hasShortcut(id)) {
             return ScriptBindings.getShortcut(id);
@@ -62,5 +63,33 @@ class ScriptInterp extends Interp {
     override function call(o:Dynamic, f:Dynamic, args:Array<Dynamic>):Dynamic {
         if (f == null) return null;
         return super.call(o, f, args);
+    }
+
+    override function expr(e:hscript.Expr):Dynamic {
+        #if hscriptPos
+        var exprDef = e.e;
+        #else
+        var exprDef = e;
+        #end
+        switch (exprDef) {
+            case EBinop("=", e1, e2):
+                #if hscriptPos
+                var ed1 = e1.e;
+                #else
+                var ed1 = e1;
+                #end
+                switch (ed1) {
+                    case EIdent(id):
+                        if (id == "acceptACs" || id == "acceptACDrops") {
+                            var v:Dynamic = expr(e2);
+                            if (Api.drop != null) Api.drop.acceptACs = (v == true);
+                            variables.set(id, v);
+                            return v;
+                        }
+                    default:
+                }
+            default:
+        }
+        return super.expr(e);
     }
 }

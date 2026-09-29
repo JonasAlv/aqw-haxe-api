@@ -529,6 +529,12 @@ class ScriptBindings {
      * Drops
      */
     private static function registerDropShortcuts():Void {
+        bind("acceptACs", function(enabled:Bool = true):Void {
+            if (Api.drop != null) Api.drop.acceptACs = enabled;
+        });
+        bind("acceptACDrops", function(enabled:Bool = true):Void {
+            if (Api.drop != null) Api.drop.acceptACs = enabled;
+        });
         bind("getDrop", function(drops:Dynamic):Void {
             if (Api.drop == null) return;
             if (Std.isOfType(drops, Array)) {
