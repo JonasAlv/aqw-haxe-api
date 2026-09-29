@@ -652,6 +652,27 @@ class ScriptBindings {
         bind("bankAllExcept", function(exclude:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.bankAllExcept(exclude);
         });
+        bind("bankAllAc", function(?exclude:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.bankAllAc(exclude);
+        });
+        bind("bankAllAcItems", function(?exclude:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.bankAllAc(exclude);
+        });
+        bind("getBankableAcItems", function(?exclude:Dynamic):Array<String> {
+            return Api.inventory != null ? Api.inventory.getBankableAcItems(exclude) : [];
+        });
+        bind("unbankAllNonAc", function(?exclude:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.unbankAllNonAc(exclude);
+        });
+        bind("unbankAllNonAcItems", function(?exclude:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.unbankAllNonAc(exclude);
+        });
+        bind("getBankNonAcItems", function(?exclude:Dynamic):Array<String> {
+            return Api.inventory != null ? Api.inventory.getBankNonAcItems(exclude) : [];
+        });
+        bind("bankAcAndUnbankNonAc", function(?exclude:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.bankAcAndUnbankNonAc(exclude);
+        });
         bind("isBanking", function():Bool {
             return Api.inventory != null && Api.inventory.isBanking;
         });

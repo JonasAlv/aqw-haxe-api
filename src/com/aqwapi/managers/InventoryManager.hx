@@ -284,6 +284,44 @@ class InventoryManager {
         return result;
     }
 
+    public function bankAllAc(?excludeItems:Dynamic):Void {
+        if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return;
+        var toBank = getBankableAcItems(excludeItems);
+        if (toBank.length > 0) {
+            ApiLogger.info("Bank", "Banking " + toBank.length + " unequipped AC items to bank...");
+            bank(toBank);
+        } else {
+            ApiLogger.info("Bank", "No unequipped AC items to bank.");
+            isBanking = false;
+        }
+    }
+
+    public inline function bankAllAcItems(?excludeItems:Dynamic):Void {
+        bankAllAc(excludeItems);
+    }
+
+    public function getBankableAcItems(?excludeItems:Dynamic):Array<String> {
+        if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return [];
+        var exMap = new Map<String, Bool>();
+        if (excludeItems != null) {
+            var resolved = PresetManager.instance.resolveItems(excludeItems);
+            for (ex in resolved) exMap.set(ex.toLowerCase(), true);
+        }
+        var items:Array<Dynamic> = cast _game.world.myAvatar.items;
+        var result:Array<String> = [];
+        for (item in items) {
+            if (item == null || item.sName == null) continue;
+            var isEquipped:Bool = (item.bEquip == 1 || item.bEquip == "1" || item.bEquip == true);
+            var isTemp:Bool = (item.bTemp == 1 || item.bTemp == "1" || item.bTemp == true);
+            var isAC:Bool = (item.bCoins == 1 || item.bCoins == "1" || item.bCoins == true);
+            var itemName:String = Std.string(item.sName);
+            if (!isEquipped && !isTemp && isAC && !exMap.exists(itemName.toLowerCase())) {
+                result.push(itemName);
+            }
+        }
+        return result;
+    }
+
     public function unbankPreset(presetName:String):Void {
         var items = PresetManager.instance.getPresetItems(presetName);
         if (items.length > 0) {
@@ -502,6 +540,122 @@ class InventoryManager {
         return true;
     }
 
+    public function getBankNonAcItems(?excludeItems:Dynamic):Array<String> {
+        if (_game == null || _game.world == null || _game.world.bankinfo == null) return [];
+        var exMap = new Map<String, Bool>();
+        if (excludeItems != null) {
+            var resolved = PresetManager.instance.resolveItems(excludeItems);
+            for (ex in resolved) exMap.set(ex.toLowerCase(), true);
+        }
+
+        var result:Array<String> = [];
+        var seen = new Map<String, Bool>();
+
+        try {
+            var bItems:Array<Dynamic> = null;
+            if (_game.world.bankinfo.items != null) {
+                bItems = cast _game.world.bankinfo.items;
+            } else if (_game.world.bankinfo.BankArray != null) {
+                bItems = cast _game.world.bankinfo.BankArray;
+            }
+
+            if (bItems != null) {
+                for (it in bItems) {
+                    if (it == null || it.sName == null) continue;
+                    var isAC:Bool = (it.bCoins == 1 || it.bCoins == "1" || it.bCoins == true);
+                    if (!isAC) {
+                        var name:String = Std.string(it.sName);
+                        var lower = name.toLowerCase();
+                        if (!exMap.exists(lower) && !seen.exists(lower)) {
+                            seen.set(lower, true);
+                            result.push(name);
+                        }
+                    }
+                }
+            } else if (_game.world.bankinfo.bankItems != null) {
+                for (k in Reflect.fields(_game.world.bankinfo.bankItems)) {
+                    var it:Dynamic = Reflect.field(_game.world.bankinfo.bankItems, k);
+                    if (it == null || it.sName == null) continue;
+                    var isAC:Bool = (it.bCoins == 1 || it.bCoins == "1" || it.bCoins == true);
+                    if (!isAC) {
+                        var name:String = Std.string(it.sName);
+                        var lower = name.toLowerCase();
+                        if (!exMap.exists(lower) && !seen.exists(lower)) {
+                            seen.set(lower, true);
+                            result.push(name);
+                        }
+                    }
+                }
+            }
+        } catch (e:Dynamic) {}
+
+        return result;
+    }
+
+    public function unbankAllNonAc(?excludeItems:Dynamic):Void {
+        isUnbanking = true;
+        _ensureInHouse(function() {
+            if (!isBankLoaded) {
+                ApiLogger.info("Bank", "Loading bank items...");
+                loadBank();
+                if (_bankLoadPollTimer != null) return;
+                var pollElapsed:Int = 0;
+                _bankLoadPollTimer = new Timer(300);
+                _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
+                    pollElapsed += 300;
+                    if (isBankLoaded || pollElapsed >= 8000) {
+                        if (_bankLoadPollTimer != null) {
+                            _bankLoadPollTimer.stop();
+                            _bankLoadPollTimer = null;
+                        }
+                        var nonAc = getBankNonAcItems(excludeItems);
+                        if (nonAc.length > 0) {
+                            ApiLogger.info("Bank", "Unbanking " + nonAc.length + " Non-AC items from bank...");
+                            unbank(nonAc);
+                        } else {
+                            ApiLogger.info("Bank", "No Non-AC items found in bank.");
+                            isUnbanking = false;
+                        }
+                    }
+                });
+                _bankLoadPollTimer.start();
+                return;
+            }
+
+            var nonAc = getBankNonAcItems(excludeItems);
+            if (nonAc.length > 0) {
+                ApiLogger.info("Bank", "Unbanking " + nonAc.length + " Non-AC items from bank...");
+                unbank(nonAc);
+            } else {
+                ApiLogger.info("Bank", "No Non-AC items found in bank.");
+                isUnbanking = false;
+            }
+        });
+    }
+
+    public inline function unbankAllNonAcItems(?excludeItems:Dynamic):Void {
+        unbankAllNonAc(excludeItems);
+    }
+
+    public function bankAcAndUnbankNonAc(?excludeItems:Dynamic):Void {
+        var toBank = getBankableAcItems(excludeItems);
+        if (toBank.length > 0) {
+            ApiLogger.info("Bank", "Depositing " + toBank.length + " AC items first...");
+            bank(toBank);
+            var pollTimer:Timer = new Timer(500);
+            pollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
+                if (!isBanking) {
+                    pollTimer.stop();
+                    unbankAllNonAc(excludeItems);
+                }
+            });
+            pollTimer.start();
+        } else {
+            ApiLogger.info("Bank", "No AC items to bank. Unbanking Non-AC items...");
+            unbankAllNonAc(excludeItems);
+        }
+    }
+
     private function _startUnbankProcess():Void {
         if (!isBankLoaded) {
             ApiLogger.info("Bank", "Loading bank items...");
@@ -538,6 +692,18 @@ class InventoryManager {
                 isUnbanking = false;
                 closeBank();
                 ApiLogger.info("Bank", "Unbanking complete.");
+                return;
+            }
+
+            if (isFull) {
+                _unbankQueue = [];
+                if (_unbankTimer != null) {
+                    _unbankTimer.stop();
+                    _unbankTimer = null;
+                }
+                isUnbanking = false;
+                closeBank();
+                ApiLogger.warn("Bank", "Inventory full, unbanking halted.");
                 return;
             }
 

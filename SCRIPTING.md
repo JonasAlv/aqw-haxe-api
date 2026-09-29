@@ -230,7 +230,7 @@ function onStart() {
 function onTick() {
     if (isBanking()) return; // Wait for paced deposit queue to finish
 
-    log("Banking complete!");
+    log("Banking complete");
     stop();
 }
 
@@ -239,12 +239,34 @@ function onStop() {
 }
 ```
 
-#### How `bankAll()` protects your gear:
-1. **Private House Safety**: If you are not in your private house, `bankAll()` automatically moves you to `house` first before opening or depositing items.
-2. **Equipped Armor & Weapons are Protected**: The engine strictly checks `bEquip == 1`. Classes, armors, weapons, helms, capes, and pets you are currently wearing are never banked.
+### AC & Non-AC Optimization (`bankAllAc()` & `unbankAllNonAc()`)
+In AQW, AC-tagged items have free unlimited bank storage, whereas non-AC items consume limited bank slots. To optimize your storage and avoid wasting bank slots:
+
+- `bankAllAc(?exclude)`: Banks all unequipped AC items into free bank storage.
+- `unbankAllNonAc(?exclude)`: Loads your bank and withdraws all non-AC items back into inventory (automatically halting if inventory fills up).
+- `bankAcAndUnbankNonAc(?exclude)`: Sequentially banks all AC items first, then withdraws all Non-AC items.
+
+```javascript
+function onStart() {
+    log("Starting AC inventory optimization");
+    bankAcAndUnbankNonAc();
+}
+
+function onTick() {
+    if (isBanking() || isUnbanking()) return;
+
+    log("AC inventory optimization complete");
+    stop();
+}
+```
+
+#### How banking and unbanking protects your account:
+1. **Private House Safety**: If you are not in your private house, the engine automatically moves you to `house` first before opening or transferring items.
+2. **Equipped Armor & Weapons Protected**: The engine strictly checks `bEquip == 1`. Classes, armors, weapons, helms, capes, and pets you are currently wearing are never banked.
 3. **Temporary Items Excluded**: Temporary quest drops (`bTemp == 1`) cannot be stored in the bank and are safely skipped.
-4. **Queue Pacing**: Items are deposited one by one using a safe 1000ms server cooldown timer (`isBanking == true`), preventing packet flooding, server warnings, or disconnects.
-5. **Combat Safety**: Like unbanking, active combat routines automatically pause while banking is in flight to eliminate packet conflicts.
+4. **Queue Pacing & Lag Compensation**: Items are transferred one by one using an 1100ms server cooldown timer (`isBanking == true` / `isUnbanking == true`), preventing packet flooding, server warnings, or disconnects.
+5. **Inventory Overflow Protection**: When unbanking Non-AC items, the queue checks `isFull` and safely halts if your bag fills up, preventing exceeded storage server modals.
+6. **Auto Popup Closing**: Closes the bank popup (`ui.mcPopup.fClose()`) once transfers complete.
 
 ### Built-in Hardfarm Item Presets (`unbankPreset()` & `bankAllExcept()`)
 
