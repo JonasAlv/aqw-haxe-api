@@ -387,6 +387,37 @@ class MapManager {
     public function get_autoDeathSpawn():Bool { return _autoDeathSpawn; }
     public function set_autoDeathSpawn(v:Bool):Bool { _autoDeathSpawn = v; if (v) checkAutoDeathSpawn(); return v; }
 
+    // -------------------------------------------------------------------------
+    // Skip Cutscenes
+    // -------------------------------------------------------------------------
+
+    private var _skipCutscenes:Bool = false;
+
+    /**
+     * When enabled, cancels any pending cutscene handler every tick.
+     * Call this from the script engine tick and on map zone-entered events.
+     * Mirrors the technique used by Skua's skipCutscenes binding.
+     */
+    public function checkSkipCutscenes():Void {
+        if (!_skipCutscenes) return;
+        var g = _g();
+        if (g == null || g.world == null) return;
+        try {
+            var w:Dynamic = g.world;
+            if (w.cHandle != null) {
+                try { w.cHandle.cancel(); } catch (e:Dynamic) {}
+            }
+        } catch (e:Dynamic) {}
+    }
+
+    public var skipCutscenes(get, set):Bool;
+    @:getter(skipCutscenes)
+    public function get_skipCutscenes_prop():Bool { return _skipCutscenes; }
+    @:setter(skipCutscenes)
+    public function set_skipCutscenes_prop(v:Bool):Void { _skipCutscenes = v; if (v) checkSkipCutscenes(); }
+    public function get_skipCutscenes():Bool { return _skipCutscenes; }
+    public function set_skipCutscenes(v:Bool):Bool { _skipCutscenes = v; if (v) checkSkipCutscenes(); return v; }
+
     public function getMapCells():Array<String> {
         var cells:Array<String> = [];
         var g = _g();

@@ -161,6 +161,11 @@ class HScriptEngine {
         return true;
     }
 
+    // Values saved before script forces globals on, restored when script stops.
+    private var _savedInfiniteRange:Bool = false;
+    private var _savedDeathSpawn:Bool = false;
+    private var _savedSkipCutscenes:Bool = false;
+
     public function start():Void {
         if ((Api.game == null || Api.game.world == null) && Api.game != null) {
             Api.init(Api.game);
@@ -176,9 +181,17 @@ class HScriptEngine {
         isRunning = true;
         waitTimer = 0;
 
-        // Scripting ergonomics: Infinite Range and Death Spawn are always ON by default during scripts
+        // Save current user settings before overriding
+        _savedInfiniteRange = (Api.combat != null) ? Api.combat.infiniteRange : false;
+        _savedDeathSpawn    = (Api.map != null)    ? Api.map.autoDeathSpawn   : false;
+        _savedSkipCutscenes = (Api.map != null)    ? Api.map.skipCutscenes    : false;
+
+        // Force scripting ergonomics: Infinite Range, Death Spawn, Skip Cutscenes always ON
         if (Api.combat != null) Api.combat.setInfiniteRange(true);
-        if (Api.map != null) Api.map.autoDeathSpawn = true;
+        if (Api.map != null) {
+            Api.map.autoDeathSpawn = true;
+            Api.map.skipCutscenes  = true;
+        }
 
         _timer.delay = tickInterval;
         _timer.start();
@@ -214,6 +227,13 @@ class HScriptEngine {
         Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STOPPED, "HScript Stopped!"));
         ApiLogger.info("HScript", "HScript Stopped!");
 
+        // Restore user settings to what they were before the script ran
+        if (Api.combat != null) Api.combat.setInfiniteRange(_savedInfiniteRange);
+        if (Api.map != null) {
+            Api.map.autoDeathSpawn = _savedDeathSpawn;
+            Api.map.skipCutscenes  = _savedSkipCutscenes;
+        }
+
         if (Api.quest != null) {
             Api.quest.stopAuto();
             Api.quest.clearQueue();
@@ -233,6 +253,9 @@ class HScriptEngine {
     private function onTimerTick(e:TimerEvent):Void {
         if (!isRunning) return;
         if (Api.game == null || Api.game.world == null) return;
+
+        // Always run skip-cutscenes check first when enabled
+        if (Api.map != null) Api.map.checkSkipCutscenes();
 
         var world = Api.game.world;
         if (world.myAvatar != null && world.myAvatar.dataLeaf != null && world.myAvatar.dataLeaf.intState == 0) {
@@ -270,6 +293,8 @@ class HScriptEngine {
     }
 
     private function onGameZoneEntered(e:GameEvent):Void {
+        // Always cancel cutscenes on zone entry when enabled (script running or not)
+        if (Api.map != null) Api.map.checkSkipCutscenes();
         if (isRunning && _hasOnZoneEntered) {
             try { _interp.variables.get("onZoneEntered")(e.data); } catch(err:Dynamic) { _handleScriptError("onZoneEntered: " + err, err); }
         }

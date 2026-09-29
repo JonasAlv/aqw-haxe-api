@@ -193,6 +193,12 @@ class ScriptBindings {
         bind("dungeonQueue", function(mapName:String, roomNum:Int = -1):Void {
             if (Api.map != null) Api.map.dungeonQueue(mapName, roomNum);
         });
+        bind("setSkipCutscenes", function(enabled:Bool = true):Void {
+            if (Api.map != null) Api.map.skipCutscenes = enabled;
+        });
+        bind("isSkipCutscenes", function():Bool {
+            return Api.map != null && Api.map.skipCutscenes;
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -834,22 +840,9 @@ class ScriptBindings {
             HScriptEngine.SINGLETON.stop();
         });
         bind("skipCutscene", function():Void {
-            if (Api.game != null) {
-                try {
-                    var w:Dynamic = Api.game.world;
-                    if (w != null) {
-                        if (Reflect.hasField(w, "cHandle") && w.cHandle != null) {
-                            try { w.cHandle.cancel(); } catch (e:Dynamic) {}
-                        }
-                        if (Reflect.hasField(w, "objSession") && w.objSession != null && w.strMapName != null) {
-                            try {
-                                var sName:String = Std.string(w.strMapName);
-                                var sess:Dynamic = Reflect.field(w.objSession, sName);
-                                if (sess != null) Reflect.setField(sess, "seenIt0", true);
-                            } catch (e:Dynamic) {}
-                        }
-                    }
-                } catch (e:Dynamic) {}
+            if (Api.map != null) {
+                Api.map.skipCutscenes = true;
+                Api.map.checkSkipCutscenes();
             }
         });
     }
