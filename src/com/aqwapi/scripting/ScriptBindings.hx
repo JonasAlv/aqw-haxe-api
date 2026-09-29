@@ -380,6 +380,9 @@ class ScriptBindings {
                 Api.quest.accept(questId);
             }
         });
+        bind("ensureComplete", function(questId:Int, itemId:Int = -1):Bool {
+            return Api.quest != null ? Api.quest.ensureComplete(questId, itemId) : false;
+        });
 
         bind("completeQuest", function(questId:Int, itemId:Int = -1):Void {
             if (Api.quest != null) Api.quest.complete(questId, itemId);
@@ -462,6 +465,18 @@ class ScriptBindings {
         });
         bind("equip", function(itemName:String):Void {
             if (Api.inventory != null) Api.inventory.equip(itemName);
+        });
+        bind("ensureEquipped", function(itemName:String):Bool {
+            if (Api.inventory == null) return false;
+            if (Api.inventory.isEquipped(itemName)) return true;
+            Api.inventory.equip(itemName);
+            return false;
+        });
+        bind("ensureEquip", function(itemName:String):Bool {
+            if (Api.inventory == null) return false;
+            if (Api.inventory.isEquipped(itemName)) return true;
+            Api.inventory.equip(itemName);
+            return false;
         });
         bind("equipPotion", function(itemName:String):Void {
             if (Api.inventory != null) Api.inventory.equipUsable(itemName);

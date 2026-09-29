@@ -250,6 +250,15 @@ class QuestManager {
         processQueue();
     }
 
+    public function ensureComplete(questId:Int, itemId:Int = -1):Bool {
+        if (!isInProgress(questId)) return true;
+        if (canComplete(questId)) {
+            complete(questId, itemId);
+            return true;
+        }
+        return false;
+    }
+
     public inline function turnIn(questId:Int, itemId:Int = -1):Void {
         complete(questId, itemId);
     }
