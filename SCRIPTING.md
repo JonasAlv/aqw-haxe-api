@@ -73,7 +73,8 @@ Every `.hxs` script can define these standard lifecycle functions:
 - `reload()`: Drops combat in-place with **stealth coordinate retention** (breaks aggro without character warping).
 
 ### Combat
-- `hunt(monster, count?, callback?)`: High-level full-map hunter. Discovers the cell, jumps there, locks target, tracks kills/drops, and auto-drops combat when done.
+- `hunt(monster, itemOrCount?, qty?, callback?)`: High-level full-map hunter. Discovers the cell, jumps there, locks target, tracks kills or item drops (single item or array of items: `[["Item A", 10], ["Item B", 5]]`), and auto-drops combat when done.
+- `huntQuest(questId, monster?, callback?)`: Automatically tracks all requirements of a quest from a monster without needing to list item names.
 - `ensureCombat()`: Ensures smart combat rotations and auto-attack are active (safely idles while loading).
 - `equipLoadout("farm" | "solo" | "support")`: Equips predefined class and skill rotations.
 - `stopCombat()` / `endCombat()`: Stops attacking and breaks combat aggro in-place.
@@ -191,7 +192,7 @@ Both top-level shortcuts and namespaced methods execute the exact same underlyin
 ```javascript
 function onStart() {
     log("starting routine");
-    acceptACs = true;
+    acceptAcdrops();
     equipLoadout("farm");
     join("shadowbattleon");
 }
@@ -210,7 +211,7 @@ function onStop() {
 ### 2. Multi-Monster Sequential Hunter
 ```javascript
 function onStart() {
-    acceptACs = true;
+    acceptAcdrops();
     equipLoadout("farm");
     join("shadowbattleon");
 }
@@ -231,7 +232,7 @@ function onStop() {
 ```javascript
 function onStart() {
     log("Starting auto-leveling...");
-    acceptAll = true;
+    acceptAllDrops();
     equipLoadout("farm");
     join("shadowbattleon", "Enter", "Spawn");
     autoQuest([9421, 9422, 9423]);
@@ -246,6 +247,47 @@ function onStop() {
     log("Stopped leveling.");
     stopAutoQuest();
     stopCombat();
+    join("house");
+}
+```
+
+### 4. Multi-Quest Saga / Complex Chain (10+ Quests & Mobs)
+```javascript
+// Data-driven task table: 10 quests, 10 maps, 10 mobs, multiple items
+var tasks = [
+    { map: "shadowbattleon", quest: 9421, mob: "Possessed Armor", items: [["Bone Scrap", 10], ["Dark Core", 5]] },
+    { map: "infernalarena",  quest: 9422, mob: "Infernal Knight", items: [["Fire Shard", 10], ["Ash Ore", 3]] },
+    { map: "iceplane",       quest: 9423, mob: "Frost Giant",     items: [["Ice Shard", 10]] }
+];
+
+function onStart() {
+    acceptAllDrops();
+    equipLoadout("farm");
+}
+
+function onTick() {
+    for (t in tasks) {
+        if (!isQuestComplete(t.quest)) {
+            ensureMap(t.map);
+            ensureQuest(t.quest);
+
+            // Option A: Pass items array directly to hunt
+            hunt(t.mob, t.items);
+
+            // Option B: Or use huntQuest to auto-track all quest items
+            // huntQuest(t.quest, t.mob);
+
+            ensureComplete(t.quest);
+            return; // Stay on current task until finished!
+        }
+    }
+
+    // All quests completed
+    stop();
+}
+
+function onStop() {
+    log("All quests finished!");
     join("house");
 }
 ```
