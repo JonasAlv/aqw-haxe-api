@@ -845,6 +845,26 @@ class ScriptBindings {
                 Api.map.checkSkipCutscenes();
             }
         });
+
+        // Blacklist
+        bind("addBlacklist", function(name:String):Void {
+            Api.blacklist.add(name);
+        });
+        bind("removeBlacklist", function(name:String):Void {
+            Api.blacklist.remove(name);
+        });
+        bind("isBlacklisted", function(name:String):Bool {
+            return Api.blacklist.isBlacklisted(name);
+        });
+        bind("getBlacklist", function():Array<String> {
+            return Api.blacklist.getList();
+        });
+        bind("clearBlacklist", function():Void {
+            Api.blacklist.clear();
+        });
+        bind("sellBlacklist", function():Void {
+            Api.blacklist.sellBlacklist();
+        });
     }
 
     // -------------------------------------------------------------------------

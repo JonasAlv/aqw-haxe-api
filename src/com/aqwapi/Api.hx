@@ -24,6 +24,7 @@ class Api {
     public static var monster(default, null):MonsterManager = new MonsterManager(null);
     public static var enhancement(default, null):EnhancementManager = new EnhancementManager(null);
     public static var presets(default, null):PresetManager = PresetManager.instance;
+    public static var blacklist(default, null):BlacklistManager = BlacklistManager.instance;
     public static var script(default, null):com.aqwapi.modules.ScriptManager = com.aqwapi.modules.ScriptManager.SINGLETON;
 
     // Plural aliases

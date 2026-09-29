@@ -72,6 +72,10 @@ class DropManager {
                                 var isAC:Bool = (item.bCoins == 1 || item.bCoins == "1" || item.bCoins == true);
                                 var matchesTarget:Bool = isTargetDrop(item);
 
+                                // Never pick up blacklisted items
+                                var itemName:String = item.sName != null ? Std.string(item.sName) : "";
+                                if (BlacklistManager.instance.isBlacklisted(itemName)) continue;
+
                                 if (acceptAll || matchesTarget || (acceptACs && isAC)) {
                                     sendGetDrop(item.ItemID);
                                 } else if (rejectAll) {
@@ -242,9 +246,13 @@ class DropManager {
                 }
 
                 if (matches) {
-                    sendGetDrop(pending.ItemID);
-                    pendingDrops.splice(i, 1);
-                    accepted++;
+                    // Never pick up blacklisted items, even if explicitly requested
+                    var pName:String = pending.sName != null ? Std.string(pending.sName) : "";
+                    if (!BlacklistManager.instance.isBlacklisted(pName)) {
+                        sendGetDrop(pending.ItemID);
+                        pendingDrops.splice(i, 1);
+                        accepted++;
+                    }
                 }
             }
             i--;
