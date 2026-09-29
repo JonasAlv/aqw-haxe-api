@@ -79,53 +79,171 @@ class MonsterManager {
         return cells;
     }
 
-    public function getMonsterCells(nameOrId:String):Array<String> {
+    public function getMonsterCells(nameOrId:String, mmid:Dynamic = null):Array<String> {
         var cells:Array<String> = [];
-        if (nameOrId == null || nameOrId == "") return cells;
-        var search:String = StringTools.trim(nameOrId).toLowerCase();
-        var idInt:Int = ApiUtils.parseInt(nameOrId, 0);
+        if ((nameOrId == null || nameOrId == "") && mmid == null) return cells;
+        var search:String = (nameOrId != null) ? StringTools.trim(nameOrId).toLowerCase() : "";
+        var idInt:Int = (nameOrId != null) ? ApiUtils.parseInt(nameOrId, 0) : 0;
+        var mmidStr:String = (mmid != null) ? Std.string(mmid) : null;
+        var mmidInt:Int = (mmid != null) ? ApiUtils.parseInt(mmid, 0) : 0;
 
         // 1. Check live monsters in world.monsters
         for (monster in _getRawMonsters()) {
             if (monster == null) continue;
             var target = new EntityDTO(monster);
             if (target.cell == "") continue;
+
+            if (mmidStr != null) {
+                if (target.mapId == mmidStr || (mmidInt > 0 && (target.id == mmidStr || target.monsterId == mmidStr))) {
+                    if (cells.indexOf(target.cell) == -1) cells.push(target.cell);
+                }
+                continue;
+            }
+
             var match:Bool = (idInt > 0 && (target.id == nameOrId || target.mapId == nameOrId || target.monsterId == nameOrId))
-                || (search == "*" || target.name.toLowerCase().indexOf(search) != -1);
+                || (search == "*" || (target.name != "" && target.name.toLowerCase().indexOf(search) != -1));
             if (match && cells.indexOf(target.cell) == -1) {
                 cells.push(target.cell);
             }
         }
 
-        // 2. Check world.monTree (directory of all monster spawns on the map)
-        if (_game != null && _game.world != null && _game.world.monTree != null) {
-            try {
-                var rawTree:Dynamic = _game.world.monTree;
-                for (k in Reflect.fields(rawTree)) {
-                    var leaf:Dynamic = Reflect.field(rawTree, k);
-                    if (leaf == null) continue;
-                    var sFrame:String = (leaf.sFrame != null) ? Std.string(leaf.sFrame) : "";
-                    if (sFrame == "") continue;
-                    var monName:String = (leaf.strMonName != null) ? Std.string(leaf.strMonName).toLowerCase() : "";
-                    var mId:Int = (leaf.MonID != null) ? Std.int(leaf.MonID) : 0;
-                    var mmapId:Int = (leaf.MonMapID != null) ? Std.int(leaf.MonMapID) : 0;
+        // 2. Check world.monTree and world.mondef (directory of all monster spawns on the map)
+        if (_game != null && _game.world != null) {
+            var w:Dynamic = _game.world;
+            var sources:Array<Dynamic> = [];
+            if (w.monTree != null) sources.push(w.monTree);
+            if (w.mondef != null) sources.push(w.mondef);
 
-                    var match:Bool = (idInt > 0 && (idInt == mId || idInt == mmapId || Std.string(idInt) == k))
-                        || (search == "*" || monName.indexOf(search) != -1);
-
-                    if (match && cells.indexOf(sFrame) == -1) {
-                        cells.push(sFrame);
+            for (src in sources) {
+                if (src == null) continue;
+                try {
+                    var leaves:Array<Dynamic> = [];
+                    if (Std.isOfType(src, Array)) {
+                        var arr:Array<Dynamic> = cast src;
+                        for (item in arr) if (item != null) leaves.push(item);
+                    } else {
+                        for (k in Reflect.fields(src)) {
+                            var item:Dynamic = Reflect.field(src, k);
+                            if (item != null) leaves.push(item);
+                        }
                     }
-                }
-            } catch (e:Dynamic) {}
+
+                    for (leaf in leaves) {
+                        if (leaf == null) continue;
+                        var sFrame:String = "";
+                        if (leaf.sFrame != null) sFrame = Std.string(leaf.sFrame);
+                        else if (leaf.frame != null) sFrame = Std.string(leaf.frame);
+                        else if (leaf.cell != null) sFrame = Std.string(leaf.cell);
+                        else if (leaf.strFrame != null) sFrame = Std.string(leaf.strFrame);
+                        if (sFrame == "") continue;
+
+                        var mId:Int = (leaf.MonID != null) ? Std.int(leaf.MonID) : 0;
+                        var mmapId:Int = (leaf.MonMapID != null) ? Std.int(leaf.MonMapID) : 0;
+
+                        if (mmidInt > 0 || mmidStr != null) {
+                            if (mmapId == mmidInt || Std.string(mmapId) == mmidStr) {
+                                if (cells.indexOf(sFrame) == -1) cells.push(sFrame);
+                            }
+                            continue;
+                        }
+
+                        var monName:String = "";
+                        if (leaf.strMonName != null) monName = Std.string(leaf.strMonName).toLowerCase();
+                        else if (leaf.sName != null) monName = Std.string(leaf.sName).toLowerCase();
+                        else if (leaf.monName != null) monName = Std.string(leaf.monName).toLowerCase();
+                        else if (leaf.objData != null) {
+                            if (leaf.objData.strMonName != null) monName = Std.string(leaf.objData.strMonName).toLowerCase();
+                            else if (leaf.objData.sName != null) monName = Std.string(leaf.objData.sName).toLowerCase();
+                        }
+
+                        var match:Bool = (idInt > 0 && (idInt == mId || idInt == mmapId))
+                            || (search == "*" || (monName != "" && monName.indexOf(search) != -1));
+
+                        if (match && cells.indexOf(sFrame) == -1) {
+                            cells.push(sFrame);
+                        }
+                    }
+                } catch (e:Dynamic) {}
+            }
         }
 
         return cells;
     }
 
-    public function getMonsterCell(nameOrId:String):String {
-        var list = getMonsterCells(nameOrId);
-        return list.length > 0 ? list[0] : "";
+    public function getMonsterCell(nameOrId:String, mmid:Dynamic = null):String {
+        var list = getMonsterCells(nameOrId, mmid);
+        if (list.length == 0) return "";
+        var curCell = (Api.player != null && Api.player.cell != null) ? Api.player.cell.toLowerCase() : "";
+        for (c in list) {
+            if (c.toLowerCase() == curCell) return c;
+        }
+        return list[0];
+    }
+
+    public function getMapMonsters():Array<Dynamic> {
+        var list:Array<Dynamic> = [];
+        if (_game == null || _game.world == null) return list;
+        var w:Dynamic = _game.world;
+
+        var sources:Array<Dynamic> = [];
+        if (w.monTree != null) sources.push(w.monTree);
+        if (w.mondef != null) sources.push(w.mondef);
+
+        for (src in sources) {
+            if (src == null) continue;
+            try {
+                var leaves:Array<Dynamic> = [];
+                if (Std.isOfType(src, Array)) {
+                    var arr:Array<Dynamic> = cast src;
+                    for (item in arr) if (item != null) leaves.push(item);
+                } else {
+                    for (k in Reflect.fields(src)) {
+                        var item:Dynamic = Reflect.field(src, k);
+                        if (item != null) leaves.push(item);
+                    }
+                }
+
+                for (leaf in leaves) {
+                    if (leaf == null) continue;
+                    var sFrame:String = "";
+                    if (leaf.sFrame != null) sFrame = Std.string(leaf.sFrame);
+                    else if (leaf.frame != null) sFrame = Std.string(leaf.frame);
+                    else if (leaf.cell != null) sFrame = Std.string(leaf.cell);
+                    else if (leaf.strFrame != null) sFrame = Std.string(leaf.strFrame);
+
+                    var monName:String = "";
+                    if (leaf.strMonName != null) monName = Std.string(leaf.strMonName);
+                    else if (leaf.sName != null) monName = Std.string(leaf.sName);
+                    else if (leaf.monName != null) monName = Std.string(leaf.monName);
+                    else if (leaf.objData != null) {
+                        if (leaf.objData.strMonName != null) monName = Std.string(leaf.objData.strMonName);
+                        else if (leaf.objData.sName != null) monName = Std.string(leaf.objData.sName);
+                    }
+
+                    if (monName != "") {
+                        list.push({
+                            name: monName,
+                            cell: sFrame,
+                            monId: leaf.MonID != null ? Std.int(leaf.MonID) : 0,
+                            monMapId: leaf.MonMapID != null ? Std.int(leaf.MonMapID) : 0
+                        });
+                    }
+                }
+            } catch (e:Dynamic) {}
+        }
+
+        return list;
+    }
+
+    public function getMapMonsterNames():Array<String> {
+        var names:Array<String> = [];
+        for (m in getMapMonsters()) {
+            if (m.name != null) {
+                var n:String = Std.string(m.name);
+                if (names.indexOf(n) == -1) names.push(n);
+            }
+        }
+        return names;
     }
 
     public function getByCell(cell:String):Array<EntityDTO> {

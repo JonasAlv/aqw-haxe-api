@@ -287,4 +287,25 @@ class MapManager {
     public function set_autoDeathSpawn_prop(v:Bool):Void { _autoDeathSpawn = v; if (v) checkAutoDeathSpawn(); }
     public function get_autoDeathSpawn():Bool { return _autoDeathSpawn; }
     public function set_autoDeathSpawn(v:Bool):Bool { _autoDeathSpawn = v; if (v) checkAutoDeathSpawn(); return v; }
+
+    public function getMapCells():Array<String> {
+        var cells:Array<String> = [];
+        var g = _g();
+        if (g != null && g.world != null && g.world.map != null) {
+            try {
+                var mapObj:Dynamic = g.world.map;
+                var mc:Dynamic = (mapObj.mc != null) ? mapObj.mc : ((mapObj.mC != null) ? mapObj.mC : mapObj);
+                if (mc != null && mc.currentLabels != null) {
+                    var labels:Array<Dynamic> = cast mc.currentLabels;
+                    for (lbl in labels) {
+                        if (lbl != null && lbl.name != null) {
+                            var n = Std.string(lbl.name);
+                            if (cells.indexOf(n) == -1) cells.push(n);
+                        }
+                    }
+                }
+            } catch (e:Dynamic) {}
+        }
+        return cells;
+    }
 }

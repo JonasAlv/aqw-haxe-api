@@ -170,12 +170,15 @@ class ScriptBindings {
             if (Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null) {
                 try {
                     var avt:Dynamic = Api.game.world.myAvatar;
-                    if (avt.pMC != null) {
+                    if (avt != null && avt.pMC != null) {
                         if (avt.pMC.walkTo != null) avt.pMC.walkTo(x, y, speed);
                         if (Api.game.world.pushMove != null) Api.game.world.pushMove(avt.pMC, x, y, speed);
                     }
                 } catch (e:Dynamic) {}
             }
+        });
+        bind("getMapCells", function():Array<String> {
+            return Api.map != null ? Api.map.getMapCells() : [];
         });
     }
 
@@ -184,11 +187,11 @@ class ScriptBindings {
      */
     private static function registerCombatShortcuts():Void {
         // High-level cross-map hunt & kill
-        bind("hunt", function(monster:String, item:String = null, qty:Int = 1):Bool {
-            return Api.combat != null ? Api.combat.hunt(monster, item, qty) : false;
+        bind("hunt", function(monster:String, itemOrCount:Dynamic = null, qty:Int = 1, mmid:Dynamic = null):Bool {
+            return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qty, mmid) : false;
         });
-        bind("kill", function(monster:String, item:String = null, qty:Int = 1):Bool {
-            return Api.combat != null ? Api.combat.hunt(monster, item, qty) : false;
+        bind("kill", function(monster:String, itemOrCount:Dynamic = null, qty:Int = 1, mmid:Dynamic = null):Bool {
+            return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qty, mmid) : false;
         });
 
         // Targeting & Direct Attack
@@ -730,6 +733,12 @@ class ScriptBindings {
                 }
             }
             return null;
+        });
+        bind("getMapMonsters", function():Array<Dynamic> {
+            return Api.monster != null ? Api.monster.getMapMonsters() : [];
+        });
+        bind("getMapMonsterNames", function():Array<String> {
+            return Api.monster != null ? Api.monster.getMapMonsterNames() : [];
         });
     }
 

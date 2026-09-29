@@ -2,6 +2,7 @@ package com.aqwapi.managers;
 
 import com.aqwapi.modules.CombatEngine;
 import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.Api;
 import com.aqwapi.Game;
 
@@ -186,44 +187,120 @@ class CombatManager {
         if (!isRunning()) start(smart);
     }
 
-    public function hunt(monsterName:String, itemName:String = null, quantity:Int = 1):Bool {
+    private var _huntMonster:String = null;
+    private var _huntTargetKills:Int = 0;
+    private var _huntCurrentKills:Int = 0;
+    private var _huntWasAlive:Bool = false;
+
+    public function hunt(monsterName:String, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
+        var targetMMID:Dynamic = mmid;
+        var isKillCount:Bool = false;
+        var targetKills:Int = 0;
+
+        if (itemOrCount != null) {
+            if (Std.isOfType(itemOrCount, Int) || Std.isOfType(itemOrCount, Float)) {
+                isKillCount = true;
+                targetKills = Std.int(itemOrCount);
+                if (targetMMID == null && quantity > 1) {
+                    targetMMID = quantity;
+                }
+            }
+        }
+
         // 1. If tracking an item drop, check if the required quantity is already collected
-        if (itemName != null && itemName != "") {
+        if (!isKillCount && itemOrCount != null && Std.string(itemOrCount) != "") {
+            var itemName:String = Std.string(itemOrCount);
             if (Api.inventory != null && Api.inventory.hasItem(itemName, quantity)) {
                 if (CombatEngine.targetName != null && monsterName != null
                     && CombatEngine.targetName.toLowerCase() == monsterName.toLowerCase()) {
                     CombatEngine.targetName = null;
                 }
+                CombatEngine.lockedMMID = null;
                 return true;
             }
         }
 
-        // 2. Safety checks: player dead or map loading
+        // 2. If tracking kill count (e.g. bot.hunt("Possessed Armor", 10))
+        if (isKillCount && targetKills > 0) {
+            var huntKey = monsterName + (targetMMID != null ? ("#" + targetMMID) : "");
+            if (_huntMonster != huntKey || _huntTargetKills != targetKills) {
+                _huntMonster = huntKey;
+                _huntTargetKills = targetKills;
+                _huntCurrentKills = 0;
+                _huntWasAlive = false;
+            }
+            if (_huntCurrentKills >= _huntTargetKills) {
+                if (CombatEngine.targetName != null && monsterName != null
+                    && CombatEngine.targetName.toLowerCase() == monsterName.toLowerCase()) {
+                    CombatEngine.targetName = null;
+                }
+                CombatEngine.lockedMMID = null;
+                return true;
+            }
+        }
+
+        // 3. Safety checks: player dead or map loading
         if (Api.player != null && !Api.player.isAlive) return false;
         if (Api.map != null && !Api.map.isLoaded) return false;
 
-        // 3. Resolve which cell the monster spawns in across the map
+        // 4. Resolve which cell the monster spawns in across the map
         var targetCell:String = "";
         if (Api.monster != null) {
-            targetCell = Api.monster.getMonsterCell(monsterName);
+            targetCell = Api.monster.getMonsterCell(monsterName, targetMMID);
         }
 
-        // 4. Move to that cell if found and not already there
+        // 5. Move to that cell if found and not already there
         if (targetCell != "" && Api.map != null && !Api.map.isCell(targetCell)) {
             Api.map.jump(targetCell, "Spawn");
             return false;
         }
 
-        // 5. Lock combat engine target to this specific monster
+        // 6. Lock combat engine target to this specific monster & MMID
+        if (targetMMID != null) {
+            CombatEngine.lockedMMID = Std.string(targetMMID);
+        } else {
+            CombatEngine.lockedMMID = null;
+        }
         if (monsterName != null && monsterName != "" && monsterName != "*") {
             CombatEngine.targetName = monsterName;
         }
 
-        // 6. Ensure combat engine is running
+        // 7. Ensure combat engine is running
         ensure(true);
 
-        // 7. If no item was specified, return true once the monster in cell is dead, or false while fighting
-        if (itemName == null || itemName == "") {
+        // 8. Track kill transitions if counting kills
+        if (isKillCount && targetKills > 0) {
+            var cell:String = (targetCell != "") ? targetCell : (Api.player != null ? Api.player.cell : "");
+            var cellMons = (Api.monster != null) ? Api.monster.getByCell(cell) : [];
+            var anyAlive:Bool = false;
+            var search:String = monsterName.toLowerCase();
+            var mmidStr:String = targetMMID != null ? Std.string(targetMMID) : null;
+            for (m in cellMons) {
+                if (m != null && m.alive) {
+                    if (mmidStr != null && m.mapId != mmidStr) continue;
+                    if (search == "*" || m.name.toLowerCase().indexOf(search) != -1) {
+                        anyAlive = true;
+                        break;
+                    }
+                }
+            }
+            if (anyAlive) {
+                _huntWasAlive = true;
+            } else if (_huntWasAlive) {
+                _huntWasAlive = false;
+                _huntCurrentKills++;
+                ApiLogger.info("Combat", "Hunt kill: " + monsterName + (targetMMID != null ? (" [MMID " + targetMMID + "]") : "") + " (" + _huntCurrentKills + "/" + _huntTargetKills + ")");
+                if (_huntCurrentKills >= _huntTargetKills) {
+                    CombatEngine.targetName = null;
+                    CombatEngine.lockedMMID = null;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 9. If no item and no kill count specified, return true once the monster in cell is dead
+        if (itemOrCount == null || Std.string(itemOrCount) == "") {
             var cell:String = (targetCell != "") ? targetCell : (Api.player != null ? Api.player.cell : "");
             var alive:Bool = (Api.monster != null) ? Api.monster.isMonsterAliveInCell(cell) : false;
             return !alive;
@@ -232,8 +309,8 @@ class CombatManager {
         return false;
     }
 
-    public function kill(monsterName:String, itemName:String = null, quantity:Int = 1):Bool {
-        return hunt(monsterName, itemName, quantity);
+    public function kill(monsterName:String, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
+        return hunt(monsterName, itemOrCount, quantity, mmid);
     }
 
     public function startCustom(rotation:String, mode:String = "auto"):Void {
