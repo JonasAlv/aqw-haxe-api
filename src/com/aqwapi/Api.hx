@@ -146,6 +146,27 @@ class Api {
         ApiLogger.error("Bot", Std.string(msg));
     }
 
+    public static inline function stopAttack():Void {
+        if (combat != null) combat.stopAttack();
+    }
+
+    public static inline function stopCombat():Void {
+        if (combat != null) combat.stopCombat();
+    }
+
+    public static inline function dropCombat():Void {
+        if (combat != null) combat.dropCombat();
+    }
+
+    public static inline function endCombat():Void {
+        if (combat != null) combat.endCombat();
+    }
+
+    public static inline function reload(pad:String = null):Void {
+        if (combat != null) combat.dropCombat();
+        else if (map != null) map.reload(pad);
+    }
+
     public static var transport(default, null):TransportAdapter;
     public static var hscript(default, null):HScriptEngine;
 

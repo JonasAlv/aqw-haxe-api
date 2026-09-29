@@ -158,14 +158,20 @@ class CombatManager {
     public function dropCombat():Void {
         cancelAutoAttack();
         cancelTarget();
-        if (_game == null || _game.world == null || _game.world.moveToCell == null) return;
-        try {
-            var currentCell:String = _game.world.strFrame;
-            var currentPad:String = _game.world.strPad;
-            if (currentCell != null && currentPad != null && currentCell != "") {
-                _game.world.moveToCell(currentCell, currentPad);
-            }
-        } catch (e:Dynamic) {}
+        if (Api.map != null) {
+            Api.map.reload();
+        } else if (_game != null && _game.world != null && _game.world.moveToCell != null) {
+            try {
+                var currentCell:String = _game.world.strFrame != null ? Std.string(_game.world.strFrame) : "";
+                var currentPad:String = _game.world.strPad != null ? Std.string(_game.world.strPad) : "";
+                if (currentCell != "") {
+                    if (currentPad == null || currentPad == "" || (currentCell.toLowerCase() != "enter" && currentPad == "Spawn")) {
+                        currentPad = (currentCell.toLowerCase() == "enter") ? "Spawn" : "Left";
+                    }
+                    _game.world.moveToCell(currentCell, currentPad);
+                }
+            } catch (e:Dynamic) {}
+        }
     }
 
     public function startSmart():Void { CombatEngine.start(true, false); }
@@ -175,8 +181,21 @@ class CombatManager {
         else CombatEngine.start(false, false);
     }
 
-    public function stop():Void {
+    public function stopAttack():Void {
         stopAuto();
+    }
+
+    public function stopCombat():Void {
+        stopAuto();
+        dropCombat();
+    }
+
+    public inline function endCombat():Void {
+        stopCombat();
+    }
+
+    public function stop():Void {
+        stopCombat();
     }
 
     public function isRunning():Bool {

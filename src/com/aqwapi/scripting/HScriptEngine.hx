@@ -218,8 +218,12 @@ class HScriptEngine {
             Api.quest.stopAuto();
             Api.quest.clearQueue();
         }
-        if (Api.combat != null) Api.combat.stopAuto();
-        else CombatEngine.stop();
+        if (Api.combat != null) {
+            Api.combat.stopAuto();
+            Api.combat.dropCombat();
+        } else {
+            CombatEngine.stop();
+        }
     }
 
     private function onTimerTick(e:TimerEvent):Void {

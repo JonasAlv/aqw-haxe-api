@@ -224,6 +224,14 @@ class ScriptBindings {
         bind("dropCombat", function():Void {
             if (Api.combat != null) Api.combat.dropCombat();
         });
+        bind("reload", function(pad:String = null):Void {
+            if (Api.combat != null) Api.combat.dropCombat();
+            else if (Api.map != null) Api.map.reload(pad);
+        });
+        bind("reloadCell", function(pad:String = null):Void {
+            if (Api.combat != null) Api.combat.dropCombat();
+            else if (Api.map != null) Api.map.reload(pad);
+        });
         bind("cancelAutoAttack", function():Void {
             if (Api.combat != null) Api.combat.cancelAutoAttack();
         });
@@ -254,7 +262,13 @@ class ScriptBindings {
             }
         });
         bind("stopCombat", function():Void {
-            if (Api.combat != null) Api.combat.stopAuto();
+            if (Api.combat != null) Api.combat.stopCombat();
+        });
+        bind("endCombat", function():Void {
+            if (Api.combat != null) Api.combat.stopCombat();
+        });
+        bind("stopAttack", function():Void {
+            if (Api.combat != null) Api.combat.stopAttack();
         });
         bind("ensureCombat", function(smart:Bool = true):Void {
             if (Api.combat != null) Api.combat.ensure(smart);

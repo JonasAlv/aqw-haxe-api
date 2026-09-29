@@ -175,7 +175,7 @@ class MapManager {
         }
     }
 
-    public function jump(cell:String, pad:String = null):Void {
+    public function jump(cell:String, pad:String = null, force:Bool = false):Void {
         var g = _g();
         if (g == null || g.world == null) return;
         var p:String = pad;
@@ -183,7 +183,7 @@ class MapManager {
             p = (cell != null && cell.toLowerCase() == "enter") ? "Spawn" : "Left";
         }
         if (g.world.moveToCell != null) {
-            if (cell != null && !isCell(cell)) {
+            if (cell != null && (force || !isCell(cell))) {
                 var now = ApiTime.now();
                 if (now - _lastJumpTime < 500) return;
                 _lastJumpTime = now;
@@ -195,6 +195,11 @@ class MapManager {
             _lastSpawnCell = cell;
             Api.player.setSpawnPoint(cell, p);
         }
+    }
+
+    public function reload(pad:String = null):Void {
+        var curCell = (Api.player != null && Api.player.cell != null) ? Api.player.cell : "";
+        if (curCell != "") jump(curCell, pad, true);
     }
 
     public function getMapItem(itemId:Int):Bool {
