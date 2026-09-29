@@ -253,17 +253,16 @@ class InventoryManager {
         }
     }
 
+    public function bankAllExcept(excludeItems:Dynamic):Void {
+        bankAll(excludeItems);
+    }
+
     public function getBankableItems(?excludeItems:Dynamic):Array<String> {
         if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return [];
         var exMap = new Map<String, Bool>();
         if (excludeItems != null) {
-            if (Std.isOfType(excludeItems, Array)) {
-                for (ex in (cast excludeItems : Array<Dynamic>)) if (ex != null) exMap.set(Std.string(ex).toLowerCase(), true);
-            } else {
-                var sEx = Std.string(excludeItems);
-                if (sEx.indexOf(",") != -1) for (p in sEx.split(",")) exMap.set(StringTools.trim(p).toLowerCase(), true);
-                else exMap.set(sEx.toLowerCase(), true);
-            }
+            var resolved = PresetManager.instance.resolveItems(excludeItems);
+            for (ex in resolved) exMap.set(ex.toLowerCase(), true);
         }
         var items:Array<Dynamic> = cast _game.world.myAvatar.items;
         var result:Array<String> = [];
@@ -277,6 +276,22 @@ class InventoryManager {
             }
         }
         return result;
+    }
+
+    public function unbankPreset(presetName:String):Void {
+        var items = PresetManager.instance.getPresetItems(presetName);
+        if (items.length > 0) {
+            ApiLogger.info("Bank", "Unbanking " + items.length + " items for preset: " + presetName);
+            unbank(items);
+        } else {
+            ApiLogger.warn("Bank", "Preset not found or empty: " + presetName);
+        }
+    }
+
+    public function ensurePresetUnbanked(presetName:String):Bool {
+        var items = PresetManager.instance.getPresetItems(presetName);
+        if (items.length == 0) return true;
+        return ensureUnbanked(items);
     }
 
     private function _startBankProcess():Void {

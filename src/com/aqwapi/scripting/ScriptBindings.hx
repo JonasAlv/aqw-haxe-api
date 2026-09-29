@@ -7,6 +7,7 @@ import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.ApiJson;
 import com.aqwapi.utils.ApiStorage;
+import com.aqwapi.managers.PresetManager;
 
 /**
  * Normalized registry for all HScript sandbox variables and shortcuts.
@@ -638,6 +639,9 @@ class ScriptBindings {
         bind("bankAll", function(?exclude:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.bankAll(exclude);
         });
+        bind("bankAllExcept", function(exclude:Dynamic):Void {
+            if (Api.inventory != null) Api.inventory.bankAllExcept(exclude);
+        });
         bind("isBanking", function():Bool {
             return Api.inventory != null && Api.inventory.isBanking;
         });
@@ -650,8 +654,23 @@ class ScriptBindings {
         bind("unbankItem", function(items:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.unbank(items);
         });
+        bind("unbankPreset", function(presetName:String):Void {
+            if (Api.inventory != null) Api.inventory.unbankPreset(presetName);
+        });
         bind("ensureUnbanked", function(items:Dynamic):Bool {
             return Api.inventory != null ? Api.inventory.ensureUnbanked(items) : true;
+        });
+        bind("ensurePresetUnbanked", function(presetName:String):Bool {
+            return Api.inventory != null ? Api.inventory.ensurePresetUnbanked(presetName) : true;
+        });
+        bind("getPresetItems", function(presetName:String):Array<String> {
+            return PresetManager.instance.getPresetItems(presetName);
+        });
+        bind("hasPreset", function(presetName:String):Bool {
+            return PresetManager.instance.hasPreset(presetName);
+        });
+        bind("getPresetNames", function():Array<String> {
+            return PresetManager.instance.getPresetNames();
         });
         bind("isUnbanking", function():Bool {
             return Api.inventory != null && Api.inventory.isUnbanking;

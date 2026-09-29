@@ -23,6 +23,7 @@ class Api {
     public static var shop(default, null):ShopManager = new ShopManager(null);
     public static var monster(default, null):MonsterManager = new MonsterManager(null);
     public static var enhancement(default, null):EnhancementManager = new EnhancementManager(null);
+    public static var presets(default, null):PresetManager = PresetManager.instance;
     public static var script(default, null):com.aqwapi.modules.ScriptManager = com.aqwapi.modules.ScriptManager.SINGLETON;
 
     // Plural aliases

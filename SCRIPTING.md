@@ -99,9 +99,15 @@ Every `.hxs` script defines these standard lifecycle functions:
 - `acceptAllDrops(enabled? = true)`: Enables auto-accepting all item drops for the session and sweeps current screen drops.
 - `bank(items)`: Deposits an item or array of items (`["Item 1", "Item 2"]`) into your Bank with automatic 650ms queue pacing.
 - `bankAll(excludeItems?)`: Deposits **all unequipped, non-temporary** items from backpack into your Bank, optionally skipping any items in `excludeItems`.
+- `bankAllExcept(presetOrList)`: Deposits unequipped backpack items, preserving both equipped gear AND any items in the specified preset or item list (e.g. `bankAllExcept("vhl")`).
 - `isBanking()` *(Bool)*: Returns `true` while the bank deposit queue is actively processing.
 - `getBankableItems(excludeItems?)` *(Array<String>)*: Returns the list of unequipped, non-temporary backpack item names eligible for banking.
 - `unbank(items)`: Retrieves an item or array of items (`["Item 1", "Item 2"]`) from your Bank into your backpack with automatic queue pacing.
+- `unbankPreset(name)`: Unbanks all items from a named hardfarm preset (e.g. `"vhl"`, `"lr"`, `"nsod"`) with automatic queue pacing.
+- `ensurePresetUnbanked(name)` *(Bool)*: Returns `true` once all items in the preset are verified to be in your backpack.
+- `getPresetItems(name)` *(Array<String>)*: Returns the array of item names belonging to the specified preset.
+- `hasPreset(name)` *(Bool)*: Returns `true` if the named preset exists.
+- `getPresetNames()` *(Array<String>)*: Returns the list of all available preset names.
 - `isUnbanking()` *(Bool)*: Returns `true` while the unbank queue is actively processing.
 - `ensureUnbanked(items)` *(Bool)*: Ensures items are out of the bank. Returns `true` once items are confirmed in inventory.
 - `isInBank(itemName)` *(Bool)*: Returns `true` if the item is currently in your bank.
@@ -232,6 +238,49 @@ function onStop() {
 2. **Temporary Items Excluded**: Temporary quest drops (`bTemp == 1`) cannot be stored in the bank and are safely skipped.
 3. **Queue Pacing**: Items are deposited one by one using a safe 650ms queue timer (`isBanking == true`), preventing packet flooding and server disconnects.
 4. **Combat Safety**: Like unbanking, active combat routines automatically pause while banking is in flight to eliminate packet conflicts.
+
+### 🎒 Built-in Hardfarm Item Presets (`unbankPreset()` & `bankAllExcept()`)
+
+AQW hardfarms involve dozens of reagents, quest items, and temporary boss drops. If any reagent exists in your Bank when a mob drops it, AQW routes the drop straight into your Bank instead of your backpack, stalling your farm.
+
+To completely prevent this without writing 50-item lists manually, use the **built-in hardfarm presets** stored in `assets/item_presets.json`:
+
+#### 11 Available Presets:
+- `"vhl"` (*Void Highlord*) - 32 items: Roentgeniums, Crystals A & B, Unidentified 10/13/19, Elders' Blood, Totems, Blood Gems, Vouchers, etc.
+- `"lr"` (*Legion Revenant*) - 24 items: LF1, LF2 (all 10 cohorts), LF3, Spellscrolls, Conquest Wreaths, Exalted Crowns, Legion Tokens.
+- `"dot"` (*Dragon of Time*) - 49 items: All temporal artifacts, boss fangs, and quest requirements.
+- `"ynr"` (*Yami no Ronin*) - 28 items: All sword scrolls, folded steel, yami, and materials.
+- `"kings_echo"` (*King's Echo*) - 19 items: Crown, royal sword, reforged armor, and gold vouchers.
+- `"vdk"` (*Verus DoomKnight*) - 44 items: All souls, elemental traces, and doom artifacts.
+- `"cav"` (*Chaos Avenger*) - 10 items: All fragments, amulets, and insignias.
+- `"arcana_invoker"` (*Arcana Invoker*) - 29 items: All 22 Major Arcana tarot items and core materials.
+- `"archmage"` (*ArchMage*) - 27 items: Books, tomes, astral boss drops, and scribing materials.
+- `"nsod"` (*Necrotic Sword of Doom*) - 29 items: Void auras, essences, hilts, blades, and doom auras.
+- `"sdka"` (*Sepulchure's DoomKnight Armor*) - 40 items: Dark spirit orbs, metals, weapon kits, and doom auras.
+
+#### Usage in Scripts:
+```javascript
+function onStart() {
+    log("Starting Void Highlord farm...");
+    acceptAllDrops();
+    equipLoadout("farm");
+
+    // 1. Bank all junk while strictly preserving VHL materials:
+    bankAllExcept("vhl");
+
+    // 2. Unbank all 32 VHL reagents so drops never get misdirected:
+    unbankPreset("vhl");
+
+    join("tercessuinotlim");
+}
+
+function onTick() {
+    // Wait until unbanking queue completes before fighting:
+    if (isUnbanking()) return;
+
+    // Routine continues...
+}
+```
 
 ---
 
