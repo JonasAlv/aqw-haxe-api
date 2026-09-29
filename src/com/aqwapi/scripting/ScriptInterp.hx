@@ -19,22 +19,43 @@ class ScriptInterp extends Interp {
             case "drop", "drops": return Api.drop;
             case "shop", "shops": return Api.shop;
             case "monster", "monsters": return Api.monster;
+            case "enhancement", "enhancements": return Api.enhancement;
+            case "skills": return Api.skills;
+            case "aura": return Api.aura;
+            case "script": return Api.script;
             case "events": return Api.dispatcher;
             case "ApiTime": return com.aqwapi.utils.ApiTime;
             case "ApiUtils": return com.aqwapi.utils.ApiUtils;
             case "ApiJson": return com.aqwapi.utils.ApiJson;
             case "ApiStorage": return com.aqwapi.utils.ApiStorage;
         }
+        if (ScriptBindings.hasShortcut(id)) {
+            return ScriptBindings.getShortcut(id);
+        }
         return super.resolve(id);
     }
 
     override function get(o:Dynamic, f:String):Dynamic {
         if (o == null) return null;
+        if (o == Api) {
+            // First check if it is a property or manager on Api (e.g. map, combat, player, cell, pad, isReady)
+            var v:Dynamic = Reflect.getProperty(Api, f);
+            if (v != null) return v;
+
+            // Otherwise check registered shortcuts from ScriptBindings
+            if (ScriptBindings.hasShortcut(f)) {
+                return ScriptBindings.getShortcut(f);
+            }
+        }
         return super.get(o, f);
     }
 
     override function fcall(o:Dynamic, f:String, args:Array<Dynamic>):Dynamic {
         if (o == null) return null;
+        if (o == Api && ScriptBindings.hasShortcut(f)) {
+            var fn:Dynamic = ScriptBindings.getShortcut(f);
+            return call(null, fn, args);
+        }
         return super.fcall(o, f, args);
     }
 

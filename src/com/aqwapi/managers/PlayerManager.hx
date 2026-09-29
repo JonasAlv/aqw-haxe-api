@@ -244,4 +244,31 @@ class PlayerManager {
         var a = _avatar();
         return (a != null && a.pMC != null) ? a.pMC.y : 0.0;
     }
+
+    public function rest():Void {
+        var g = _g();
+        if (g != null && g.world != null) {
+            try {
+                if (Reflect.hasField(g.world, "rest")) Reflect.callMethod(g.world, Reflect.field(g.world, "rest"), []);
+                else if (Reflect.hasField(g.world, "sendRestRequest")) Reflect.callMethod(g.world, Reflect.field(g.world, "sendRestRequest"), []);
+            } catch (_:Dynamic) {}
+        }
+    }
+
+    public var isResting(get, never):Bool;
+    @:getter(isResting)
+    public function get_isResting_prop():Bool { return get_isResting(); }
+    public function get_isResting():Bool {
+        var a = _avatar();
+        if (a != null && a.pMC != null) {
+            try {
+                if (Reflect.hasField(a.pMC, "isResting")) return Reflect.field(a.pMC, "isResting") == true;
+                if (Reflect.hasField(a.pMC, "mcChar") && a.pMC.mcChar != null) {
+                    var curLabel:String = Reflect.field(a.pMC.mcChar, "currentLabel");
+                    if (curLabel != null && curLabel.toLowerCase().indexOf("rest") != -1) return true;
+                }
+            } catch (_:Dynamic) {}
+        }
+        return false;
+    }
 }

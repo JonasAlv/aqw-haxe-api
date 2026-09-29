@@ -88,61 +88,32 @@ class Api {
         return combat != null ? combat.hunt(monsterName, itemName, quantity) : false;
     }
 
-    // Direct script helpers on bot / api
+    // Core delegates on bot / api
     public static function smartEnhance(?className:Dynamic, ?force:Dynamic, ?onComplete:Dynamic):Void {
-        if (enhancement == null) return;
-        var cName:String = null;
-        var f:Bool = false;
-        var cb:Void->Void = null;
-
-        if (Reflect.isFunction(className)) {
-            cb = className;
-        } else if (Reflect.isFunction(force)) {
-            cName = (className != null) ? Std.string(className) : null;
-            cb = force;
-        } else {
-            cName = (className != null) ? Std.string(className) : null;
-            f = (force == true || force == 1 || force == "true");
-            if (Reflect.isFunction(onComplete)) cb = onComplete;
-        }
-
-        enhancement.smartEnhance(cName, f, cb);
+        if (enhancement != null) enhancement.smartEnhance(className, force, onComplete);
     }
 
     public static function enhanceEquipped(?type:Dynamic, ?cSpecial:Dynamic, ?hSpecial:Dynamic, ?wSpecial:Dynamic, ?onComplete:Dynamic):Void {
-        if (enhancement == null) return;
-        var t:String = (type != null && !Reflect.isFunction(type)) ? Std.string(type) : "Lucky";
-        var c:String = (cSpecial != null && !Reflect.isFunction(cSpecial)) ? Std.string(cSpecial) : null;
-        var h:String = (hSpecial != null && !Reflect.isFunction(hSpecial)) ? Std.string(hSpecial) : null;
-        var w:String = (wSpecial != null && !Reflect.isFunction(wSpecial)) ? Std.string(wSpecial) : null;
-        var cb:Void->Void = null;
-        if (Reflect.isFunction(onComplete)) cb = onComplete;
-        else if (Reflect.isFunction(wSpecial)) cb = wSpecial;
-        else if (Reflect.isFunction(hSpecial)) cb = hSpecial;
-        else if (Reflect.isFunction(cSpecial)) cb = cSpecial;
-        else if (Reflect.isFunction(type)) cb = type;
-
-        enhancement.enhanceEquipped(t, c, h, w, cb);
+        if (enhancement != null) enhancement.enhanceEquipped(type, cSpecial, hSpecial, wSpecial, onComplete);
     }
 
     public static function enhanceItem(?itemOrName:Dynamic, ?type:Dynamic, ?cSpecial:Dynamic, ?hSpecial:Dynamic, ?wSpecial:Dynamic, ?onComplete:Dynamic):Void {
-        if (enhancement == null) return;
-        enhancement.enhanceItem(itemOrName, type, cSpecial, hSpecial, wSpecial, onComplete);
+        if (enhancement != null) enhancement.enhanceItem(itemOrName, type, cSpecial, hSpecial, wSpecial, onComplete);
     }
 
-    public static inline function sleep(ms:Float):Void {
+    public static function sleep(ms:Float):Void {
         HScriptEngine.SINGLETON.sleep(ms);
     }
 
-    public static inline function log(msg:Dynamic):Void {
+    public static function log(msg:Dynamic):Void {
         ApiLogger.info("Bot", Std.string(msg));
     }
 
-    public static inline function warn(msg:Dynamic):Void {
+    public static function warn(msg:Dynamic):Void {
         ApiLogger.warn("Bot", Std.string(msg));
     }
 
-    public static inline function error(msg:Dynamic):Void {
+    public static function error(msg:Dynamic):Void {
         ApiLogger.error("Bot", Std.string(msg));
     }
 
