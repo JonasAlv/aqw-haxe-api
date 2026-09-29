@@ -172,19 +172,6 @@ ensureMap("shadowbattleon");
 ensureMap("shadowbattleon", "r2", "Left");
 ```
 
-### Safe Combat Cooldown on Map Transfers
-The AQW game server rejects map transfers (`cmd: "tfer"`) if sent within 2000ms of leaving combat. The API automatically tracks combat exit timestamps. When `join(map)` or `joinHouse()` is invoked:
-1. If the player left combat less than 2000ms ago, the API automatically calculates the remaining cooldown time and safely delays the transfer packet.
-2. The transfer is dispatched cleanly without triggering server rejections or disconnects.
-
-This allows routines in `onStop()` to call `join("house")` right after halting combat without needing manual `sleep(2000)` calls:
-```javascript
-function onStop() {
-    log("Routine complete");
-    join("house"); // Automatically handles the 2-second combat cooldown safely!
-}
-```
-
 ---
 
 ## Combat & Hunting
