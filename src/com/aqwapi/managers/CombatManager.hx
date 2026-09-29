@@ -190,7 +190,8 @@ class CombatManager {
     private var _huntMonster:String = null;
     private var _huntTargetKills:Int = 0;
     private var _huntCurrentKills:Int = 0;
-    private var _huntWasAlive:Bool = false;
+    private var _huntLastCell:String = null;
+    private var _huntMonAliveMap:Map<String, Bool> = new Map();
 
     public function hunt(monsterName:String, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
         var targetMMID:Dynamic = mmid;
@@ -227,7 +228,8 @@ class CombatManager {
                 _huntMonster = huntKey;
                 _huntTargetKills = targetKills;
                 _huntCurrentKills = 0;
-                _huntWasAlive = false;
+                _huntLastCell = null;
+                _huntMonAliveMap = new Map();
             }
             if (_huntCurrentKills >= _huntTargetKills) {
                 if (CombatEngine.targetName != null && monsterName != null
@@ -235,6 +237,7 @@ class CombatManager {
                     CombatEngine.targetName = null;
                 }
                 CombatEngine.lockedMMID = null;
+                _huntMonAliveMap = new Map();
                 return true;
             }
         }
@@ -251,7 +254,8 @@ class CombatManager {
 
         // 5. Move to that cell if found and not already there
         if (targetCell != "" && Api.map != null && !Api.map.isCell(targetCell)) {
-            Api.map.jump(targetCell, "Spawn");
+            var defaultPad = (targetCell.toLowerCase() == "enter") ? "Spawn" : "Left";
+            Api.map.jump(targetCell, defaultPad);
             return false;
         }
 
@@ -268,34 +272,64 @@ class CombatManager {
         // 7. Ensure combat engine is running
         ensure(true);
 
-        // 8. Track kill transitions if counting kills
+        // 8. Track individual monster kill transitions if counting kills
         if (isKillCount && targetKills > 0) {
             var cell:String = (targetCell != "") ? targetCell : (Api.player != null ? Api.player.cell : "");
+            var curCellLower:String = (Api.player != null && Api.player.cell != null) ? Api.player.cell.toLowerCase() : "";
+            if (_huntLastCell != curCellLower) {
+                _huntLastCell = curCellLower;
+                _huntMonAliveMap = new Map();
+            }
+
             var cellMons = (Api.monster != null) ? Api.monster.getByCell(cell) : [];
-            var anyAlive:Bool = false;
             var search:String = monsterName.toLowerCase();
             var mmidStr:String = targetMMID != null ? Std.string(targetMMID) : null;
+            var seenThisTick:Map<String, Bool> = new Map();
+
             for (m in cellMons) {
-                if (m != null && m.alive) {
-                    if (mmidStr != null && m.mapId != mmidStr) continue;
-                    if (search == "*" || m.name.toLowerCase().indexOf(search) != -1) {
-                        anyAlive = true;
-                        break;
+                if (m == null) continue;
+                if (mmidStr != null && m.mapId != mmidStr) continue;
+                if (search != "*" && m.name.toLowerCase().indexOf(search) == -1) continue;
+
+                var key:String = (m.mapId != null && m.mapId != "") ? m.mapId : (m.name + "_" + m.id);
+                var isAliveNow:Bool = (m.alive && m.hp > 0 && m.state != 0);
+                seenThisTick.set(key, true);
+
+                if (_huntMonAliveMap.exists(key)) {
+                    var wasAlive:Bool = _huntMonAliveMap.get(key);
+                    if (wasAlive && !isAliveNow) {
+                        _huntMonAliveMap.set(key, false);
+                        _huntCurrentKills++;
+                        ApiLogger.info("Combat", "Hunt kill: " + monsterName + (targetMMID != null ? (" [MMID " + targetMMID + "]") : "") + " (" + _huntCurrentKills + "/" + _huntTargetKills + ")");
+                        if (_huntCurrentKills >= _huntTargetKills) {
+                            CombatEngine.targetName = null;
+                            CombatEngine.lockedMMID = null;
+                            _huntMonAliveMap = new Map();
+                            return true;
+                        }
+                    } else if (!wasAlive && isAliveNow) {
+                        _huntMonAliveMap.set(key, true);
+                    }
+                } else {
+                    _huntMonAliveMap.set(key, isAliveNow);
+                }
+            }
+
+            // Also check for monsters that were previously alive and disappeared from cell while in same room
+            for (key in _huntMonAliveMap.keys()) {
+                if (_huntMonAliveMap.get(key) == true && !seenThisTick.exists(key)) {
+                    _huntMonAliveMap.set(key, false);
+                    _huntCurrentKills++;
+                    ApiLogger.info("Combat", "Hunt kill: " + monsterName + (targetMMID != null ? (" [MMID " + targetMMID + "]") : "") + " (" + _huntCurrentKills + "/" + _huntTargetKills + ")");
+                    if (_huntCurrentKills >= _huntTargetKills) {
+                        CombatEngine.targetName = null;
+                        CombatEngine.lockedMMID = null;
+                        _huntMonAliveMap = new Map();
+                        return true;
                     }
                 }
             }
-            if (anyAlive) {
-                _huntWasAlive = true;
-            } else if (_huntWasAlive) {
-                _huntWasAlive = false;
-                _huntCurrentKills++;
-                ApiLogger.info("Combat", "Hunt kill: " + monsterName + (targetMMID != null ? (" [MMID " + targetMMID + "]") : "") + " (" + _huntCurrentKills + "/" + _huntTargetKills + ")");
-                if (_huntCurrentKills >= _huntTargetKills) {
-                    CombatEngine.targetName = null;
-                    CombatEngine.lockedMMID = null;
-                    return true;
-                }
-            }
+
             return false;
         }
 
@@ -336,6 +370,11 @@ class CombatManager {
     public function stopAuto():Void {
         CombatEngine.stop();
         cancelAutoAttack();
+        _huntMonster = null;
+        _huntTargetKills = 0;
+        _huntCurrentKills = 0;
+        _huntLastCell = null;
+        _huntMonAliveMap = new Map();
     }
 
     public function equipLoadout(type:String):Bool {

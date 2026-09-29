@@ -180,6 +180,12 @@ class ScriptBindings {
         bind("getMapCells", function():Array<String> {
             return Api.map != null ? Api.map.getMapCells() : [];
         });
+        bind("getCellPads", function():Array<String> {
+            return Api.map != null ? Api.map.getCellPads() : [];
+        });
+        bind("getPads", function():Array<String> {
+            return Api.map != null ? Api.map.getCellPads() : [];
+        });
     }
 
     /**

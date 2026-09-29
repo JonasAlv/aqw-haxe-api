@@ -103,7 +103,10 @@ class MapManager {
         }
 
         var c:String = (cell != null && cell != "") ? cell : "Enter";
-        var p:String = (pad != null && pad != "") ? pad : "Spawn";
+        var p:String = pad;
+        if (p == null || p == "" || (c.toLowerCase() != "enter" && p == "Spawn")) {
+            p = (c.toLowerCase() == "enter") ? "Spawn" : "Left";
+        }
 
         if (g.world.gotoTown != null) {
             try {
@@ -175,7 +178,10 @@ class MapManager {
     public function jump(cell:String, pad:String = null):Void {
         var g = _g();
         if (g == null || g.world == null) return;
-        var p:String = (pad != null && pad != "") ? pad : "Spawn";
+        var p:String = pad;
+        if (p == null || p == "" || (cell != null && cell.toLowerCase() != "enter" && p == "Spawn")) {
+            p = (cell != null && cell.toLowerCase() == "enter") ? "Spawn" : "Left";
+        }
         if (g.world.moveToCell != null) {
             if (cell != null && !isCell(cell)) {
                 var now = ApiTime.now();
@@ -307,5 +313,32 @@ class MapManager {
             } catch (e:Dynamic) {}
         }
         return cells;
+    }
+
+    public function getCellPads():Array<String> {
+        var pads:Array<String> = [];
+        var g = _g();
+        if (g != null && g.world != null && g.world.map != null) {
+            try {
+                var mapObj:Dynamic = g.world.map;
+                var mc:Dynamic = (mapObj.mc != null) ? mapObj.mc : ((mapObj.mC != null) ? mapObj.mC : mapObj);
+                if (mc != null && mc.numChildren != null) {
+                    var n:Int = Std.int(mc.numChildren);
+                    for (i in 0...n) {
+                        var child:Dynamic = mc.getChildAt(i);
+                        if (child != null && child.name != null) {
+                            var cName:String = Std.string(child.name);
+                            var lower = cName.toLowerCase();
+                            if (lower == "spawn" || lower == "left" || lower == "right" || lower == "center"
+                                || lower == "top" || lower == "bottom" || lower == "up" || lower == "down"
+                                || lower.indexOf("pad") != -1) {
+                                if (pads.indexOf(cName) == -1) pads.push(cName);
+                            }
+                        }
+                    }
+                }
+            } catch (e:Dynamic) {}
+        }
+        return pads;
     }
 }
