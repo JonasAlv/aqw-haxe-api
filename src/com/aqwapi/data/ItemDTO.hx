@@ -12,6 +12,8 @@ class ItemDTO {
     public var isCoins:Bool;
     public var isTemp:Bool;
     public var isEquipped:Bool;
+    public var isWorn:Bool;
+    public var isCosmetic:Bool;
     public var isMember:Bool;
     public var raw:Dynamic;
 
@@ -61,6 +63,8 @@ class ItemDTO {
         this.isCoins = rawData.bCoins == 1 || rawData.bCoins == "1" || rawData.bCoins == true;
         this.isTemp = rawData.bTemp == 1 || rawData.bTemp == "1" || rawData.bTemp == true;
         this.isEquipped = rawData.bEquip == 1 || rawData.bEquip == "1" || rawData.bEquip == true;
+        this.isWorn = rawData.bWear == 1 || rawData.bWear == "1" || rawData.bWear == true;
+        this.isCosmetic = this.isWorn;
         this.isMember = rawData.bUpg == 1 || rawData.bUpg == "1" || rawData.bUpg == true;
     }
 }

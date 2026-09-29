@@ -44,6 +44,17 @@ class InventoryManager {
         return bEquip == 1 || bEquip == "1" || bEquip == true;
     }
 
+    public function isWorn(itemNameOrId:String):Bool {
+        var item = _findItem(itemNameOrId);
+        if (item == null) return false;
+        var bWear:Dynamic = item.bWear;
+        return bWear == 1 || bWear == "1" || bWear == true;
+    }
+
+    public inline function isCosmetic(itemNameOrId:String):Bool {
+        return isWorn(itemNameOrId);
+    }
+
     public function getQuantity(itemNameOrId:String):Int {
         if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return 0;
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
@@ -275,9 +286,10 @@ class InventoryManager {
         for (item in items) {
             if (item == null || item.sName == null) continue;
             var isEquipped:Bool = (item.bEquip == 1 || item.bEquip == "1" || item.bEquip == true);
+            var isWorn:Bool = (item.bWear == 1 || item.bWear == "1" || item.bWear == true);
             var isTemp:Bool = (item.bTemp == 1 || item.bTemp == "1" || item.bTemp == true);
             var itemName:String = Std.string(item.sName);
-            if (!isEquipped && !isTemp && !exMap.exists(itemName.toLowerCase())) {
+            if (!isEquipped && !isWorn && !isTemp && !exMap.exists(itemName.toLowerCase())) {
                 result.push(itemName);
             }
         }
@@ -312,10 +324,11 @@ class InventoryManager {
         for (item in items) {
             if (item == null || item.sName == null) continue;
             var isEquipped:Bool = (item.bEquip == 1 || item.bEquip == "1" || item.bEquip == true);
+            var isWorn:Bool = (item.bWear == 1 || item.bWear == "1" || item.bWear == true);
             var isTemp:Bool = (item.bTemp == 1 || item.bTemp == "1" || item.bTemp == true);
             var isAC:Bool = (item.bCoins == 1 || item.bCoins == "1" || item.bCoins == true);
             var itemName:String = Std.string(item.sName);
-            if (!isEquipped && !isTemp && isAC && !exMap.exists(itemName.toLowerCase())) {
+            if (!isEquipped && !isWorn && !isTemp && isAC && !exMap.exists(itemName.toLowerCase())) {
                 result.push(itemName);
             }
         }
@@ -441,7 +454,8 @@ class InventoryManager {
                 for (i in items) {
                     if (i != null && i.sName != null && Std.string(i.sName).toLowerCase() == targetName) {
                         var isEquipped:Bool = (i.bEquip == 1 || i.bEquip == "1" || i.bEquip == true);
-                        if (!isEquipped) {
+                        var isWorn:Bool = (i.bWear == 1 || i.bWear == "1" || i.bWear == true);
+                        if (!isEquipped && !isWorn) {
                             bItem = i;
                             break;
                         }

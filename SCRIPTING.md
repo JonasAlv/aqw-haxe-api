@@ -262,7 +262,7 @@ function onTick() {
 
 #### How banking and unbanking protects your account:
 1. **Private House Safety**: If you are not in your private house, the engine automatically moves you to `house` first before opening or transferring items.
-2. **Equipped Armor & Weapons Protected**: The engine strictly checks `bEquip == 1`. Classes, armors, weapons, helms, capes, and pets you are currently wearing are never banked.
+2. **Equipped & Cosmetic Items Protected**: The engine strictly checks both `bEquip == 1` (equipped gear) and `bWear == 1` (cosmetics shown in green). Classes, armors, weapons, helms, capes, and pets you are currently wearing or displaying as cosmetics are never banked.
 3. **Temporary Items Excluded**: Temporary quest drops (`bTemp == 1`) cannot be stored in the bank and are safely skipped.
 4. **Queue Pacing & Lag Compensation**: Items are transferred one by one using an 1100ms server cooldown timer (`isBanking == true` / `isUnbanking == true`), preventing packet flooding, server warnings, or disconnects.
 5. **Inventory Overflow Protection**: When unbanking Non-AC items, the queue checks `isFull` and safely halts if your bag fills up, preventing exceeded storage server modals.

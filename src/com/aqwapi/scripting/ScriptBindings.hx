@@ -498,6 +498,15 @@ class ScriptBindings {
             Api.inventory.equip(itemName);
             return false;
         });
+        bind("isEquipped", function(itemName:String):Bool {
+            return Api.inventory != null ? Api.inventory.isEquipped(itemName) : false;
+        });
+        bind("isWorn", function(itemName:String):Bool {
+            return Api.inventory != null ? Api.inventory.isWorn(itemName) : false;
+        });
+        bind("isCosmetic", function(itemName:String):Bool {
+            return Api.inventory != null ? Api.inventory.isCosmetic(itemName) : false;
+        });
         bind("equipPotion", function(itemName:String):Void {
             if (Api.inventory != null) Api.inventory.equipUsable(itemName);
         });
