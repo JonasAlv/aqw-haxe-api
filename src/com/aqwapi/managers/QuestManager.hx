@@ -250,10 +250,15 @@ class QuestManager {
         processQueue();
     }
 
-    public function ensureComplete(questId:Int, itemId:Int = -1):Bool {
+    public function ensureComplete(questId:Int, itemId:Int = -1, ?callback:Dynamic):Bool {
         if (!isInProgress(questId)) return true;
         if (canComplete(questId)) {
             complete(questId, itemId);
+            if (callback != null && Reflect.isFunction(callback)) {
+                haxe.Timer.delay(function() {
+                    try { callback(); } catch (e:Dynamic) {}
+                }, 300);
+            }
             return true;
         }
         return false;

@@ -380,8 +380,17 @@ class ScriptBindings {
                 Api.quest.accept(questId);
             }
         });
-        bind("ensureComplete", function(questId:Int, itemId:Int = -1):Bool {
-            return Api.quest != null ? Api.quest.ensureComplete(questId, itemId) : false;
+        bind("ensureComplete", function(questId:Int, ?arg1:Dynamic, ?arg2:Dynamic):Bool {
+            if (Api.quest == null) return false;
+            var itemId:Int = -1;
+            var cb:Dynamic = null;
+            if (Reflect.isFunction(arg1)) {
+                cb = arg1;
+            } else {
+                if (arg1 != null) itemId = ApiUtils.parseInt(arg1, -1);
+                if (Reflect.isFunction(arg2)) cb = arg2;
+            }
+            return Api.quest.ensureComplete(questId, itemId, cb);
         });
 
         bind("completeQuest", function(questId:Int, itemId:Int = -1):Void {

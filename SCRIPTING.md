@@ -13,7 +13,7 @@ The recommended and default style for all `.hxs` scripts is **clean, top-level n
 // Test Script: Hunt 10 Possessed Armor in ShadowBattleon
 function onStart() {
     log("starting routine");
-    acceptAcdrops();
+    acceptACs = true;
     equipLoadout("farm");
     join("shadowbattleon");
 }
@@ -87,8 +87,8 @@ Every `.hxs` script can define these standard lifecycle functions:
 - `stopAutoQuest()`: Stops background auto-questing.
 
 ### Drops & Inventory
-- `acceptAcdrops(enabled = true)`: Automatically accepts any AdventureCoin drop and sweeps current screen drops.
-- `acceptAllDrops(enabled = true)`: Automatically accepts all drops and sweeps current screen drops.
+- `acceptACs = true;`: Automatically picks up any AdventureCoin drop.
+- `acceptAll = true;`: Automatically picks up all drops.
 - `acceptDrop(itemName)`: Picks up a specific drop.
 - `hasItem(itemName, qty?)`: Returns `true` if you have the required item quantity in your backpack.
 - `ensureEquipped(itemName)`: Equips an item or class if not currently worn.
@@ -145,7 +145,17 @@ hunt(monsterName, itemOrCount?, callback?)
 
 ## Quests
 
-### The `ensure*` Workflow
+There are two primary ways to handle quests depending on your goal:
+
+### 1. Multi-Quest Looping Farms (`autoQuest`)
+For background farming where you continuously complete and re-accept multiple quests (e.g. leveling in ShadowBattleon with quests 9421, 9422, 9423):
+- Call `autoQuest([9421, 9422, 9423]);` once in `onStart()`.
+- It runs in the background on an independent 800ms timer with a serialized queue (1100ms server cooldown).
+- It handles pre-loading, accepting, turning in, and re-accepting with zero packet spam.
+- Keeps `onTick()` completely free of quest boilerplate!
+
+### 2. Sequential & Storyline Quests (`ensureQuest` & `ensureComplete`)
+For storyline chains, one-off dailies, or specific reward selections where Quest B only unlocks after Quest A completes:
 ```javascript
 function onTick() {
     ensureMap("shadowbattleon");
@@ -153,13 +163,12 @@ function onTick() {
 
     hunt("Possessed Armor", "Armor Scrap", 10);
 
-    ensureComplete(1234);
+    ensureComplete(1234, stop);
 }
 ```
 - `ensureQuest(1234)` ensures the quest is loaded and accepted.
-- `hunt(...)` tracks the required item; when inventory reaches 10, it returns `true`.
-- `ensureComplete(1234)` turns in the quest and claims rewards.
-- On the next tick, `Armor Scrap` is consumed, so `hunt` seamlessly starts collecting 10 more for the next turn-in!
+- `hunt(...)` tracks the required item and returns `true` once 10 are in your bag.
+- `ensureComplete(1234, stop)`: **Crucial**: Notice `stop` is passed to `ensureComplete`, **not** `hunt`! If `stop` were passed to `hunt`, the script would immediately exit before the quest could turn in. Passing `stop` to `ensureComplete` ensures the turn-in packet is delivered to the server before stopping!
 
 ---
 
@@ -169,7 +178,7 @@ If you prefer an object-oriented style, all modular managers remain available:
 - `map.ensure(...)`, `map.join(...)`, `map.jump(...)`, `map.reload()`
 - `combat.ensure()`, `combat.hunt(...)`, `combat.stop()`
 - `quest.ensureAccept(...)`, `quest.ensureComplete(...)`
-- `drop.acceptAcdrops()`, `drop.acceptAllDrops()`
+- `drop.acceptACs = true`, `drop.acceptAll = true`
 - `player.hp`, `player.mp`, `player.isInCombat`, `player.hasAura(...)`
 
 Both top-level shortcuts and namespaced methods execute the exact same underlying logic.
@@ -182,7 +191,7 @@ Both top-level shortcuts and namespaced methods execute the exact same underlyin
 ```javascript
 function onStart() {
     log("starting routine");
-    acceptAcdrops();
+    acceptACs = true;
     equipLoadout("farm");
     join("shadowbattleon");
 }
@@ -201,7 +210,7 @@ function onStop() {
 ### 2. Multi-Monster Sequential Hunter
 ```javascript
 function onStart() {
-    acceptAcdrops();
+    acceptACs = true;
     equipLoadout("farm");
     join("shadowbattleon");
 }
@@ -222,7 +231,7 @@ function onStop() {
 ```javascript
 function onStart() {
     log("Starting auto-leveling...");
-    acceptAllDrops();
+    acceptAll = true;
     equipLoadout("farm");
     join("shadowbattleon", "Enter", "Spawn");
     autoQuest([9421, 9422, 9423]);
