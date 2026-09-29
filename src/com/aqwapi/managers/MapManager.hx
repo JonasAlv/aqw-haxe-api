@@ -74,6 +74,14 @@ class MapManager {
         return true;
     }
 
+    public inline function ensureMap(mapName:String, cell:String = null, pad:String = null):Bool {
+        return ensure(mapName, cell, pad);
+    }
+
+    public inline function ensureCell(cell:String, pad:String = null):Bool {
+        return ensure(null, cell, pad);
+    }
+
     public inline function stay(mapName:String, cell:String = null, pad:String = null):Bool {
         return ensure(mapName, cell, pad);
     }
