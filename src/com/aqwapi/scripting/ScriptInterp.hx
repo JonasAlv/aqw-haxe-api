@@ -28,7 +28,6 @@ class ScriptInterp extends Interp {
             case "ApiUtils": return com.aqwapi.utils.ApiUtils;
             case "ApiJson": return com.aqwapi.utils.ApiJson;
             case "ApiStorage": return com.aqwapi.utils.ApiStorage;
-            case "acceptACs", "acceptACDrops": return (Api.drop != null) ? Api.drop.acceptACs : false;
         }
         if (ScriptBindings.hasShortcut(id)) {
             return ScriptBindings.getShortcut(id);
@@ -80,9 +79,14 @@ class ScriptInterp extends Interp {
                 #end
                 switch (ed1) {
                     case EIdent(id):
-                        if (id == "acceptACs" || id == "acceptACDrops") {
+                        if (id == "acceptAcdrops" || id == "acceptAcDrops" || id == "acceptACDrops" || id == "acceptACs") {
                             var v:Dynamic = expr(e2);
-                            if (Api.drop != null) Api.drop.acceptACs = (v == true);
+                            if (Api.drop != null) Api.drop.acceptACDrops(v == true);
+                            variables.set(id, v);
+                            return v;
+                        } else if (id == "acceptAllDrops" || id == "acceptAll") {
+                            var v:Dynamic = expr(e2);
+                            if (Api.drop != null) Api.drop.acceptAllDrops(v == true);
                             variables.set(id, v);
                             return v;
                         }

@@ -168,12 +168,16 @@ class DropManager {
         return acceptPendingDrops([itemName]);
     }
 
-    public inline function acceptAllDrops():Int {
+    public function acceptAllDrops(enabled:Bool = true):Int {
+        acceptAll = enabled;
+        if (!enabled) return 0;
         scanScreenDrops();
         return acceptPendingDrops(["all"]);
     }
 
-    public function acceptACDrops():Int {
+    public function acceptACDrops(enabled:Bool = true):Int {
+        acceptACs = enabled;
+        if (!enabled) return 0;
         if (_game == null || _game.sfc == null) return 0;
         scanScreenDrops();
         var accepted:Int = 0;
@@ -191,6 +195,14 @@ class DropManager {
             i--;
         }
         return accepted;
+    }
+
+    public inline function acceptAcdrops(enabled:Bool = true):Int {
+        return acceptACDrops(enabled);
+    }
+
+    public inline function acceptAcDrops(enabled:Bool = true):Int {
+        return acceptACDrops(enabled);
     }
 
     public function acceptPendingDrops(itemNames:Array<Dynamic>):Int {

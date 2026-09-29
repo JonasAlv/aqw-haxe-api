@@ -529,12 +529,26 @@ class ScriptBindings {
      * Drops
      */
     private static function registerDropShortcuts():Void {
-        bind("acceptACs", function(enabled:Bool = true):Void {
-            if (Api.drop != null) Api.drop.acceptACs = enabled;
-        });
-        bind("acceptACDrops", function(enabled:Bool = true):Void {
-            if (Api.drop != null) Api.drop.acceptACs = enabled;
-        });
+        var fnAcceptAC:Dynamic = function(?enabled:Dynamic):Void {
+            var b:Bool = (enabled == null || enabled == true || enabled == 1 || enabled == "true");
+            if (enabled == false || enabled == 0 || enabled == "false") b = false;
+            if (Api.drop != null) Api.drop.acceptACDrops(b);
+        };
+        var fnAcceptAll:Dynamic = function(?enabled:Dynamic):Void {
+            var b:Bool = (enabled == null || enabled == true || enabled == 1 || enabled == "true");
+            if (enabled == false || enabled == 0 || enabled == "false") b = false;
+            if (Api.drop != null) Api.drop.acceptAllDrops(b);
+        };
+
+        // Normalized primary function names
+        bind("acceptAllDrops", fnAcceptAll);
+        bind("acceptAcdrops", fnAcceptAC);
+        bind("acceptAcDrops", fnAcceptAC);
+        bind("acceptACDrops", fnAcceptAC);
+
+        // Backward compatibility
+        bind("acceptACs", fnAcceptAC);
+        bind("acceptAll", fnAcceptAll);
         bind("getDrop", function(drops:Dynamic):Void {
             if (Api.drop == null) return;
             if (Std.isOfType(drops, Array)) {

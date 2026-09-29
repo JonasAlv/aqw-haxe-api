@@ -1,259 +1,242 @@
 # AQW Haxe Scripting API Guide (.hxs)
 
-Welcome to the official scripting documentation for the AQW Haxe API. Scripts are written in **HScript** (`.hxs` files) — a fast, lightweight, and sandbox-safe scripting language matching JavaScript/ActionScript 3 syntax.
+Welcome to the official scripting guide for the AQW Haxe API. Scripts are written in **HScript** (`.hxs` files) — a dynamic, lightweight scripting language matching standard JavaScript/ActionScript 3 syntax that executes live inside the client.
+
+---
+
+## 🌟 The Default Scripting Style (Top-Level & Zero-Boilerplate)
+
+The recommended and default style for all `.hxs` scripts is **clean, top-level natural language**. Redundant prefixes like `bot.`, `map.`, or `combat.` are unnecessary — every primary action is available directly at the top level.
+
+### Canonical Example:
+```javascript
+// Test Script: Hunt 10 Possessed Armor in ShadowBattleon
+function onStart() {
+    log("starting routine");
+    acceptAcdrops();
+    equipLoadout("farm");
+    join("shadowbattleon");
+}
+
+function onTick() {
+    ensureMap("shadowbattleon");
+    hunt("Possessed Armor", 10, stop);
+}
+
+function onStop() {
+    log("ending routine");
+    join("house"); 
+}
+```
+
+Reading `onTick()` in plain English:
+> *"Ensure map shadowbattleon. Hunt 10 Possessed Armor, then stop."*
 
 ---
 
 ## Table of Contents
-1. [Core Philosophy: Zero-Boilerplate](#core-philosophy-zero-boilerplate)
-2. [Script Lifecycle Hooks](#script-lifecycle-hooks)
-3. [Namespaces & Syntax Flavors](#namespaces--syntax-flavors)
-4. [Map & Navigation (`map`)](#map--navigation-map)
-5. [Combat & Hunting (`combat`)](#combat--hunting-combat)
-6. [Quests (`quest`)](#quests-quest)
-7. [Inventory, Drops & Bank](#inventory-drops--bank)
-8. [Player Status & Auras (`player`)](#player-status--auras-player)
-9. [Utility & Flow Control](#utility--flow-control)
-10. [End-to-End Examples](#end-to-end-examples)
-
----
-
-## Core Philosophy: Zero-Boilerplate
-
-Scripts are designed to read like natural language. The engine internally handles aggro drops, in-combat safety, coordinate preservation, cell discovery, and multi-task sequencing.
-
-### Before vs. After
-```javascript
-// ❌ Old boilerplate style:
-function onTick() {
-    if (!bot.isMap("shadowbattleon")) {
-        bot.ensureMap("shadowbattleon");
-        return;
-    }
-    if (!bot.hunt("Possessed Armor", 10)) {
-        return;
-    }
-    bot.stop();
-}
-
-// ✅ Modern Zero-Boilerplate style:
-function onTick() {
-    map.ensure("shadowbattleon");
-    hunt("Possessed Armor", 10, stop);
-}
-```
+1. [Script Lifecycle Hooks](#script-lifecycle-hooks)
+2. [Top-Level Quick Reference](#top-level-quick-reference)
+3. [Map & Navigation](#map--navigation)
+4. [Combat & Hunting (`hunt`)](#combat--hunting-hunt)
+5. [Quests](#quests)
+6. [Drops, Inventory & Bank](#drops-inventory--bank)
+7. [Player Status & Auras](#player-status--auras)
+8. [Namespaces (Optional)](#namespaces-optional)
+9. [End-to-End Script Templates](#end-to-end-script-templates)
 
 ---
 
 ## Script Lifecycle Hooks
 
-Every `.hxs` script can implement any of these standard entry points:
+Every `.hxs` script can define these standard lifecycle functions:
 
-| Hook | When it executes | Common Usage |
+| Hook | When it executes | Usage |
 |---|---|---|
-| `onStart()` | Executed once when the script starts | Set configurations, equip classes, join initial map |
-| `onTick()` | Executed periodically (default: every 100ms) | Main bot loop (hunting, turning in quests, movement) |
-| `onStop()` | Executed once when the script stops | Cleanup, final logs, state notifications |
-| `onPacket(packet)` | Executed on every incoming server packet | Packet listening, packet logging, triggers |
+| `onStart()` | Executed once when the script starts | Set drop filters, equip loadouts, join starting map |
+| `onTick()` | Executed periodically (default: every 100ms) | Main routine (hunting, ensuring map, turning in quests) |
+| `onStop()` | Executed once when the script finishes or is stopped | Final teleport (e.g. `join("house")`), cleanup, final logs |
+| `onPacket(packet)` | Executed on every incoming server packet | Packet listening, triggers, packet analysis |
 | `onZoneEntered(zone)`| Executed on cell or map transfers | Area triggers, specialized buffs |
 | `onQuestUpdated(id)` | Executed when a quest objective updates | Quest tracking |
 | `onInventoryChanged(item)`| Executed when items are added/removed | Drop notifications |
 
 ---
 
-## Namespaces & Syntax Flavors
+## Top-Level Quick Reference
 
-You can write your scripts in whatever style you find most readable:
+### Navigation
+- `join(mapName, cell?, pad?)`: Transfers to a map. `join("house")` routes directly to your house.
+- `ensureMap(mapName, cell?, pad?)`: Ensures you are in the target map and cell. Automatically drops combat stealthily before transferring if you are fighting.
+- `ensureCell(cell, pad?)`: Ensures you are in the specified room on the current map.
+- `jump(cell, pad?)`: Jumps to a room on the current map. Defaults to `"Spawn"` on `"Enter"`, and `"Left"` on all other rooms.
+- `reload()`: Drops combat in-place with **stealth coordinate retention** (breaks aggro without character warping).
 
-1. **Natural / Flat Style:** Direct global functions (`ensureMap("battleon")`, `hunt("Frogzard", 5)`, `stop()`).
-2. **Object-Oriented Style:** Modular namespaces (`map.ensure("battleon")`, `combat.hunt("Frogzard", 5)`).
-3. **Bot Prefix Style:** Explicit client root (`bot.map.ensure("battleon")`, `bot.combat.hunt("Frogzard", 5)`).
+### Combat
+- `hunt(monster, count?, callback?)`: High-level full-map hunter. Discovers the cell, jumps there, locks target, tracks kills/drops, and auto-drops combat when done.
+- `ensureCombat()`: Ensures smart combat rotations and auto-attack are active (safely idles while loading).
+- `equipLoadout("farm" | "solo" | "support")`: Equips predefined class and skill rotations.
+- `stopCombat()` / `endCombat()`: Stops attacking and breaks combat aggro in-place.
+- `attack(monster)` / `selectTarget(monster)`: Targets a specific monster.
+- `useSkill(1..4)`: Manually activates a skill.
 
-All three styles execute identically and can be mixed freely.
+### Quests
+- `ensureQuest(id)` / `ensureAccept(id)`: Accepts the quest if not already in your active quest log.
+- `ensureComplete(id, itemId?)`: Turns in the quest once all requirements are fulfilled.
+- `autoQuest([ids])` / `startAutoQuests([ids])`: Runs quest acceptance and turn-in automatically in the background.
+- `stopAutoQuest()`: Stops background auto-questing.
+
+### Drops & Inventory
+- `acceptAcdrops(enabled = true)`: Automatically accepts any AdventureCoin drop and sweeps current screen drops.
+- `acceptAllDrops(enabled = true)`: Automatically accepts all drops and sweeps current screen drops.
+- `acceptDrop(itemName)`: Picks up a specific drop.
+- `hasItem(itemName, qty?)`: Returns `true` if you have the required item quantity in your backpack.
+- `ensureEquipped(itemName)`: Equips an item or class if not currently worn.
+
+### System & Flow Control
+- `log(message)`: Outputs a timestamped message to the bot log console.
+- `sleep(ms)` / `wait(ms)`: Pauses `onTick()` execution for the specified milliseconds.
+- `stop()`: Halts the script, drops combat automatically, and triggers `onStop()`.
 
 ---
 
-## Map & Navigation (`map`)
+## Map & Navigation
 
-The `map` manager handles map transfers, cell jumps, coordinate retention, and room reloads.
+### Stealth Drop Combat
+AQW blocks map transfers while in combat. When you call `join()` or `ensureMap()`, the engine automatically:
+1. Detects if you are in combat.
+2. Captures your exact `(x, y)` avatar coordinates.
+3. Reloads the cell in-place to send the aggro reset packet `%xt%zm%moveToCell%...%`.
+4. Instantly restores your avatar position so other players don't see you warp across the room.
+5. Pauses 600ms, then transfers to the target map cleanly.
 
-### Methods & Properties
-- `map.ensure(mapName, cell?, pad?)` *(returns Bool)*:
-  - If you are not in the target map, it automatically drops combat in-place, pauses the script, and transfers you there.
-  - Automatically defaults pads to `"Spawn"` on `"Enter"`, and `"Left"` on all other rooms (no more warping to the center of the screen).
-  - Returns `true` only when the map is fully loaded and you are in the target cell.
-- `map.join(mapName, cell?, pad?)`: Direct map transfer. Automatically drops combat if fighting before sending the transfer packet.
-- `map.jump(cell, pad?)`: Jumps to a cell on the current map.
-- `map.reload(pad?)`: **Stealth Drop Combat**. Reloads the current cell while preserving the player's exact `(x, y)` coordinates, dropping server aggro without your character visibly teleporting across the screen.
-- `map.ensureCell(cell, pad?)`: Ensures you are in a specific cell on the current map.
-- `map.isMap(mapName)` *(Bool)*: Returns whether you are on the specified map.
-- `map.isCell(cellName)` *(Bool)*: Returns whether you are in the specified cell.
-- `map.isLoaded` *(Bool)*: Returns whether the current map is fully loaded and ready for interaction.
-- `map.getMapCells()` *(Array<String>)*: Returns all cell names on the current map.
-- `map.getCellPads()` *(Array<String>)*: Returns all door and spawn pads on the current frame.
-- `map.usePrivateRoom = true`: Automatically appends a private room number (`-100000+`).
+### Normalized Room Pads
+Non-`"Enter"` rooms in AQW do not have a `"Spawn"` pad. The API automatically normalizes default pads:
+- Cell `"Enter"` -> defaults to `"Spawn"`
+- All other cells -> default to `"Left"`
+- This completely prevents the game from defaulting your avatar to the center of the canvas `(480, 275)`.
 
 ---
 
-## Combat & Hunting (`combat`)
+## Combat & Hunting (`hunt`)
 
-The `combat` manager automates targeting, skill rotations, loadouts, and cross-map monster farming.
-
-### The Universal `hunt()` Method
-`hunt(monsterName, itemOrCount?, quantityOrCallback?, mmidOrCallback?, onComplete?)`
-
-`hunt()` is a full-featured automated hunter:
-1. Automatically queries the map's monster definition tree (`monTree` / `mondef`) to discover which cell the monster spawns in.
-2. Automatically jumps to that cell using the correct pad.
-3. Locks combat targeting to that monster name (or MMID).
-4. Tracks individual kills even in rooms with multiple monsters using per-monster alive-state transitions.
-5. **Auto Combat Drop:** Once the goal is reached, it automatically calls `stopCombat()` to clear aggro in-place.
-6. **Auto Multi-Task Sequencing:** Multiple `hunt()` lines in `onTick()` automatically queue sequentially without needing `if (!...) return;`.
-
-#### Usage Examples:
+The `hunt()` function is a complete autonomous farming engine:
 ```javascript
-// 1. Kill count with stop callback:
-hunt("Possessed Armor", 10, stop);
-
-// 2. Kill count with custom lambda callback:
-hunt("Possessed Armor", 10, function() {
-    log("Possessed Armor hunt completed!");
-    map.jump("Enter");
-});
-
-// 3. Item drop hunting:
-hunt("Possessed Armor", "Shadow Core", 5, stop);
-
-// 4. Sequential hunting (Zero Boilerplate):
-hunt("Possessed Armor", 10);      // Runs first until 10 kills
-hunt("Bone Cruncher", 5, stop);   // Automatically waits, then runs until 5 kills and stops
+hunt(monsterName, itemOrCount?, callback?)
 ```
 
-### Other Combat Methods
-- `combat.ensure()`: Starts auto-combat if not already running (safely idles while map loads).
-- `combat.stopAttack()`: Stops auto-attack and skill rotations without reloading the room.
-- `combat.dropCombat()`: Cancels target, cancels auto-attack, and reloads cell in-place to break aggro.
-- `combat.stopCombat()` / `combat.stop()`: Stops attack AND drops combat aggro.
-- `combat.equipLoadout("farm" | "solo" | "support")`: Equips predefined skill rotations and classes.
-- `combat.useSkill(1..4)`: Manually activates a skill (bypasses range limitations).
-- `combat.selectTarget(name)` / `attack(name)`: Targets a specific monster.
-- `resetHunt()`: Resets all active and completed hunt tracking states.
+1. **Full-Map Discovery:** Automatically searches the map's monster definition tree (`monTree`) to find which cell the monster spawns in without needing hardcoded cell names.
+2. **Multi-Mob Kill Tracking:** In rooms with multiple monsters (e.g. 2-3 Possessed Armors), each individual kill transition is tracked independently.
+3. **Auto Combat Dropping:** The instant target kills or item counts are achieved, `hunt()` automatically calls `stopCombat()` to clear aggro in-place.
+4. **Completion Callbacks:** Pass `stop` as the callback to automatically halt the script and trigger `onStop()`:
+   ```javascript
+   hunt("Possessed Armor", 10, stop);
+   ```
+5. **Multi-Hunt Sequencing:** Multiple `hunt()` calls in `onTick()` automatically queue sequentially:
+   ```javascript
+   function onTick() {
+       ensureMap("shadowbattleon");
+       hunt("Possessed Armor", 10);      // Runs first to 10 kills
+       hunt("Bone Cruncher", 5, stop);   // Automatically waits, then runs to 5 kills and stops
+   }
+   ```
 
 ---
 
-## Quests (`quest`)
+## Quests
 
-The `quest` manager manages quest loading, accepting, turning in, and auto-progression.
-
-### Methods
-- `quest.ensureAccept(questId)`: Accepts the quest if not already accepted.
-- `quest.ensureComplete(questId, itemId?)`: Turns in the quest once all requirements are met.
-- `quest.load(questId)`: Loads quest definitions from the server.
-- `quest.has(questId)` *(Bool)*: Returns whether the quest is in the active quest log.
-- `quest.canComplete(questId)` *(Bool)*: Returns whether all turn-in items and requirements are fulfilled.
-- `quest.startAuto([questIds])`: Automatically accepts and turns in the specified quest IDs in the background.
-- `quest.stopAuto()`: Halts auto-questing.
-
----
-
-## Inventory, Drops & Bank
-
-### Drops (`drop`)
-- `drop.accept(itemName)`: Picks up a dropped item from the screen.
-- `drop.acceptACs = true`: Automatically picks up any drop worth AdventureCoins.
-- `drop.startAuto([itemNames])`: Automatically picks up specific drops on arrival.
-
-### Inventory (`inventory`)
-- `inventory.hasItem(itemName, qty = 1)` *(Bool)*: Returns whether you have the item and amount in your backpack.
-- `inventory.getQuantity(itemName)` *(Int)*: Returns the current quantity of the item.
-- `inventory.equip(itemName)`: Equips an inventory item or class.
-
-### Bank (`bank`)
-- `bank.open()`: Opens the bank.
-- `bank.toInventory(itemName)`: Withdraws an item to your backpack.
-- `bank.toBank(itemName)`: Deposits an item to your bank.
-
----
-
-## Player Status & Auras (`player`)
-
-- `player.hp` / `player.maxHp`: Current and maximum hit points.
-- `player.mp` / `player.maxMp`: Current and maximum mana points.
-- `player.level`: Current character level.
-- `player.cell` / `player.pad`: Current room and pad.
-- `player.x` / `player.y`: Exact avatar stage coordinates.
-- `player.isAlive` *(Bool)*: Character alive status.
-- `player.isInCombat` *(Bool)*: True if character is in combat or has active combat state.
-- `player.className` *(String)*: Name of currently equipped class.
-- `player.hasAura(auraName)` *(Bool)*: Checks if you currently have a specific buff/debuff.
-- `player.getAuraStacks(auraName)` *(Float)*: Returns the stack count of an active aura.
-- `player.getAuraRemaining(auraName)` *(Float)*: Returns seconds remaining on an aura.
-- `player.rest()`: Initiates player resting to regenerate HP/MP.
-
----
-
-## Utility & Flow Control
-
-- `log(message)`: Outputs a timestamped message to the bot log console.
-- `sleep(ms)`: Pauses execution of `onTick()` for the specified duration in milliseconds.
-- `stop()`: Halts the script, stops combat, and stealthily drops aggro.
-- `sendPacket(packet)`: Sends a raw string packet to the server (e.g. `"%xt%zm%...%"`).
-
----
-
-## End-to-End Examples
-
-### 1. Minimalist Kill-Count Hunter (Zero Boilerplate)
+### The `ensure*` Workflow
 ```javascript
-// Hunt 10 Possessed Armor and stop
+function onTick() {
+    ensureMap("shadowbattleon");
+    ensureQuest(1234);
+
+    hunt("Possessed Armor", "Armor Scrap", 10);
+
+    ensureComplete(1234);
+}
+```
+- `ensureQuest(1234)` ensures the quest is loaded and accepted.
+- `hunt(...)` tracks the required item; when inventory reaches 10, it returns `true`.
+- `ensureComplete(1234)` turns in the quest and claims rewards.
+- On the next tick, `Armor Scrap` is consumed, so `hunt` seamlessly starts collecting 10 more for the next turn-in!
+
+---
+
+## Namespaces (Optional)
+
+If you prefer an object-oriented style, all modular managers remain available:
+- `map.ensure(...)`, `map.join(...)`, `map.jump(...)`, `map.reload()`
+- `combat.ensure()`, `combat.hunt(...)`, `combat.stop()`
+- `quest.ensureAccept(...)`, `quest.ensureComplete(...)`
+- `drop.acceptAcdrops()`, `drop.acceptAllDrops()`
+- `player.hp`, `player.mp`, `player.isInCombat`, `player.hasAura(...)`
+
+Both top-level shortcuts and namespaced methods execute the exact same underlying logic.
+
+---
+
+## End-to-End Script Templates
+
+### 1. Minimalist Kill-Count Hunter
+```javascript
 function onStart() {
-    log("Starting Hunt Test...");
-    drop.acceptACs = true;
-    combat.equipLoadout("farm");
-    map.join("shadowbattleon");
+    log("starting routine");
+    acceptAcdrops();
+    equipLoadout("farm");
+    join("shadowbattleon");
 }
 
 function onTick() {
-    map.ensure("shadowbattleon");
+    ensureMap("shadowbattleon");
     hunt("Possessed Armor", 10, stop);
 }
 
 function onStop() {
-    log("Hunt Test finished!");
+    log("ending routine");
+    join("house"); 
 }
 ```
 
 ### 2. Multi-Monster Sequential Hunter
 ```javascript
-// Hunts 10 Possessed Armor, then 5 Bone Crunchers, then stops
 function onStart() {
-    combat.equipLoadout("farm");
+    acceptAcdrops();
+    equipLoadout("farm");
+    join("shadowbattleon");
 }
 
 function onTick() {
-    map.ensure("shadowbattleon");
-
-    // Automatically executes in order:
+    ensureMap("shadowbattleon");
     hunt("Possessed Armor", 10);
     hunt("Bone Cruncher", 5, stop);
 }
+
+function onStop() {
+    log("Routine completed.");
+    join("house");
+}
 ```
 
-### 3. Infinite Quest Farming Loop
+### 3. Background Auto-Quest Leveling
 ```javascript
-// Repeatedly completes quest 1234
 function onStart() {
-    combat.equipLoadout("farm");
-    drop.startAuto(["Shadow Core"]);
+    log("Starting auto-leveling...");
+    acceptAllDrops();
+    equipLoadout("farm");
+    join("shadowbattleon", "Enter", "Spawn");
+    autoQuest([9421, 9422, 9423]);
 }
 
 function onTick() {
-    map.ensure("shadowbattleon");
-    quest.ensureAccept(1234);
+    ensureMap("shadowbattleon", "Enter", "Spawn");
+    ensureCombat();
+}
 
-    // Farms 5 Shadow Cores; automatically continues to turnIn when collected
-    hunt("Possessed Armor", "Shadow Core", 5);
-
-    quest.ensureComplete(1234);
+function onStop() {
+    log("Stopped leveling.");
+    stopAutoQuest();
+    stopCombat();
+    join("house");
 }
 ```
