@@ -899,6 +899,11 @@ class ScriptBindings {
         bind("notify", function(msg:Dynamic):Void {
             Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, Std.string(msg)));
         });
+        bind("msg", function(msg:Dynamic):Void {
+            var str = Std.string(msg);
+            ApiLogger.info("Script", str);
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, str));
+        });
 
         bind("sleep", function(ms:Float):Void {
             HScriptEngine.SINGLETON.sleep(ms);

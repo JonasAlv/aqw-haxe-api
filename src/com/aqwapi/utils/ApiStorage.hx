@@ -410,6 +410,27 @@ class ApiStorage {
             return fName;
         };
 
+        var scanDir:Dynamic->String->Void = null;
+        scanDir = function(dir:Dynamic, prefix:String):Void {
+            if (dir == null || !dir.exists || !dir.isDirectory) return;
+            var list:Array<Dynamic> = untyped dir.getDirectoryListing();
+            if (list == null) return;
+            for (f in list) {
+                if (f == null) continue;
+                if (f.isDirectory) {
+                    scanDir(f, prefix + f.name + "/");
+                } else {
+                    var s = cleanName(f.name);
+                    if (s != null && s != "") {
+                        var full = prefix + s;
+                        if (scripts.indexOf(full) == -1) {
+                            scripts.push(full);
+                        }
+                    }
+                }
+            }
+        };
+
         // 1. Scan bundled scripts in applicationDirectory/assets/scripts
         try {
             var FileClass:Dynamic = getFileClass();
@@ -417,19 +438,7 @@ class ApiStorage {
                 var appDir:Dynamic = getStaticProp(FileClass, "applicationDirectory");
                 if (appDir != null) {
                     var bDir = appDir.resolvePath("assets/scripts");
-                    if (bDir != null && bDir.exists && bDir.isDirectory) {
-                        var list:Array<Dynamic> = untyped bDir.getDirectoryListing();
-                        if (list != null) {
-                            for (f in list) {
-                                if (f != null && !f.isDirectory) {
-                                    var s = cleanName(f.name);
-                                    if (s != null && s != "" && scripts.indexOf(s) == -1) {
-                                        scripts.push(s);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    scanDir(bDir, "");
                 }
             }
         } catch (_:Dynamic) {}
@@ -439,19 +448,7 @@ class ApiStorage {
             var dir = getDataDirectory();
             if (dir != null) {
                 var uDir = dir.resolvePath("scripts");
-                if (uDir != null && uDir.exists && uDir.isDirectory) {
-                    var list:Array<Dynamic> = untyped uDir.getDirectoryListing();
-                    if (list != null) {
-                        for (f in list) {
-                            if (f != null && !f.isDirectory) {
-                                var s = cleanName(f.name);
-                                if (s != null && s != "" && scripts.indexOf(s) == -1) {
-                                    scripts.push(s);
-                                }
-                            }
-                        }
-                    }
-                }
+                scanDir(uDir, "");
             }
         } catch (_:Dynamic) {}
 
@@ -473,6 +470,10 @@ class ApiStorage {
                 if (appDir != null) {
                     var f = appDir.resolvePath("assets/scripts/" + scriptName + ".hxs");
                     if (f != null && f.exists) return true;
+                    if (scriptName.indexOf("/") == -1) {
+                        var fRep = appDir.resolvePath("assets/scripts/rep/" + scriptName + ".hxs");
+                        if (fRep != null && fRep.exists) return true;
+                    }
                 }
             }
         } catch (_:Dynamic) {}
@@ -486,7 +487,11 @@ class ApiStorage {
         if (dir == null) return false;
         try {
             var f = dir.resolvePath("scripts/" + scriptName + ".hxs");
-            return (f != null && f.exists == true);
+            if (f != null && f.exists == true) return true;
+            if (scriptName.indexOf("/") == -1) {
+                var fRep = dir.resolvePath("scripts/rep/" + scriptName + ".hxs");
+                if (fRep != null && fRep.exists == true) return true;
+            }
         } catch (_:Dynamic) {}
         return false;
     }
@@ -505,6 +510,12 @@ class ApiStorage {
                 var uf = dir.resolvePath("scripts/" + clean + ".hxs");
                 var txt = readFileStream(uf);
                 if (txt != null && StringTools.trim(txt).length > 0) return txt;
+
+                if (clean.indexOf("/") == -1) {
+                    var ufRep = dir.resolvePath("scripts/rep/" + clean + ".hxs");
+                    var txtRep = readFileStream(ufRep);
+                    if (txtRep != null && StringTools.trim(txtRep).length > 0) return txtRep;
+                }
             } catch (_:Dynamic) {}
         }
 
@@ -523,6 +534,12 @@ class ApiStorage {
                     var bf = appDir.resolvePath("assets/scripts/" + clean + ".hxs");
                     var btxt = readFileStream(bf);
                     if (btxt != null && StringTools.trim(btxt).length > 0) return btxt;
+
+                    if (clean.indexOf("/") == -1) {
+                        var bfRep = appDir.resolvePath("assets/scripts/rep/" + clean + ".hxs");
+                        var btxtRep = readFileStream(bfRep);
+                        if (btxtRep != null && StringTools.trim(btxtRep).length > 0) return btxtRep;
+                    }
                 }
             }
         } catch (_:Dynamic) {}
