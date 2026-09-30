@@ -643,34 +643,78 @@ class ScriptBindings {
             var grabKey = questId + "_" + Std.string(itemIds);
             var currentGrabs = _mapItemGrabCount.exists(grabKey) ? _mapItemGrabCount.get(grabKey) : 0;
 
-            var mapItemNeeded = false;
-            if (allReqs.length > 0) {
-                for (req in missingReqs) {
-                    var reqQty:Int = (req.iQty != null) ? Std.int(req.iQty) : ((req.qty != null) ? Std.int(req.qty) : 1);
-                    if (reqQty == amount) {
-                        mapItemNeeded = true;
-                        break;
-                    }
+            var isMissing = function(req:Dynamic):Bool {
+                if (req == null) return false;
+                var rId:Int = (req.ItemID != null) ? Std.int(req.ItemID) : ((req.id != null) ? Std.int(req.id) : 0);
+                var rName:String = (req.sName != null) ? Std.string(req.sName).toLowerCase() : ((req.name != null) ? Std.string(req.name).toLowerCase() : "");
+                for (m in missingReqs) {
+                    if (m == null) continue;
+                    var mId:Int = (m.ItemID != null) ? Std.int(m.ItemID) : ((m.id != null) ? Std.int(m.id) : 0);
+                    var mName:String = (m.sName != null) ? Std.string(m.sName).toLowerCase() : ((m.name != null) ? Std.string(m.name).toLowerCase() : "");
+                    if (rId > 0 && mId > 0 && rId == mId) return true;
+                    if (rName != "" && mName != "" && rName == mName) return true;
                 }
-            }
-
-            // If the map item is satisfied in inventory for a hybrid quest:
-            if (!mapItemNeeded && allReqs.length > 1 && missingReqs.length > 0) {
-                return true; // Map item complete! Allow subsequent kill quest to hunt remaining monster drops
-            }
-
-            _mapItemGrabCount.set(grabKey, currentGrabs + 1);
+                return false;
+            };
 
             if (Std.isOfType(itemIds, Array)) {
                 var arr:Array<Dynamic> = cast itemIds;
-                for (id in arr) {
-                    var mid = ApiUtils.parseInt(id, 0);
-                    if (mid > 0) {
-                        Api.map.getMapItem(mid);
-                        break;
+                if (arr.length == 0) return true;
+
+                // Check if all map items corresponding to this array are satisfied for a hybrid quest
+                if (arr.length == allReqs.length && missingReqs.length > 0) {
+                    var anyArrMissing = false;
+                    for (i in 0...arr.length) {
+                        if (isMissing(allReqs[i])) {
+                            anyArrMissing = true;
+                            break;
+                        }
+                    }
+                    if (!anyArrMissing) {
+                        return true; // All map items in array satisfied; allow subsequent kill quest to proceed
                     }
                 }
+
+                _mapItemGrabCount.set(grabKey, currentGrabs + 1);
+
+                var targetMid:Int = 0;
+                if (arr.length == allReqs.length) {
+                    // Match 1:1 with quest requirements
+                    for (i in 0...arr.length) {
+                        if (isMissing(allReqs[i])) {
+                            targetMid = ApiUtils.parseInt(arr[i], 0);
+                            break;
+                        }
+                    }
+                }
+                if (targetMid <= 0) {
+                    // Fallback: round-robin cycle through array
+                    var idx = currentGrabs % arr.length;
+                    targetMid = ApiUtils.parseInt(arr[idx], 0);
+                }
+
+                if (targetMid > 0) {
+                    Api.map.getMapItem(targetMid);
+                }
             } else {
+                var mapItemNeeded = false;
+                if (allReqs.length > 0) {
+                    for (req in missingReqs) {
+                        var reqQty:Int = (req.iQty != null) ? Std.int(req.iQty) : ((req.qty != null) ? Std.int(req.qty) : 1);
+                        if (reqQty == amount) {
+                            mapItemNeeded = true;
+                            break;
+                        }
+                    }
+                }
+
+                // If the map item is satisfied in inventory for a hybrid quest:
+                if (!mapItemNeeded && allReqs.length > 1 && missingReqs.length > 0) {
+                    return true; // Map item complete! Allow subsequent kill quest to hunt remaining monster drops
+                }
+
+                _mapItemGrabCount.set(grabKey, currentGrabs + 1);
+
                 var mid = ApiUtils.parseInt(itemIds, 0);
                 if (mid > 0) {
                     Api.map.getMapItem(mid);

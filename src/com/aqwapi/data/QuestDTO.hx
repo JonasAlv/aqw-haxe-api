@@ -1,5 +1,7 @@
 package com.aqwapi.data;
 
+import com.aqwapi.utils.ApiUtils;
+
 class QuestDTO {
     public var id:Int;
     public var questId(get, never):Int;
@@ -85,9 +87,9 @@ class QuestDTO {
         else this.index = 0;
 
         // Requirements
-        if (rawData.Requirements != null && Std.isOfType(rawData.Requirements, Array)) {
+        if (rawData.Requirements != null && Std.isOfType(rawData.Requirements, Array) && (cast rawData.Requirements : Array<Dynamic>).length > 0) {
             this.requirements = cast rawData.Requirements;
-        } else if (rawData.turnin != null && Std.isOfType(rawData.turnin, Array)) {
+        } else if (rawData.turnin != null && Std.isOfType(rawData.turnin, Array) && (cast rawData.turnin : Array<Dynamic>).length > 0) {
             var rawTurnin:Array<Dynamic> = cast rawData.turnin;
             var reqList:Array<Dynamic> = [];
             for (tItem in rawTurnin) {
@@ -102,7 +104,9 @@ class QuestDTO {
                     var oItem:Dynamic = Reflect.field(rawData.oItems, Std.string(tId));
                     if (oItem != null) {
                         if (oItem.sName != null) tName = Std.string(oItem.sName);
+                        else if (oItem.name != null) tName = Std.string(oItem.name);
                         if (oItem.bTemp != null) tTemp = oItem.bTemp;
+                        if (oItem.iQty != null && tQty <= 1) tQty = Std.int(oItem.iQty);
                     }
                 }
 
@@ -117,8 +121,30 @@ class QuestDTO {
                 });
             }
             this.requirements = reqList;
-        } else if (rawData.oItems != null && Std.isOfType(rawData.oItems, Array)) {
-            this.requirements = cast rawData.oItems;
+        } else if (rawData.oItems != null) {
+            if (Std.isOfType(rawData.oItems, Array)) {
+                this.requirements = cast rawData.oItems;
+            } else {
+                var reqList:Array<Dynamic> = [];
+                for (key in Reflect.fields(rawData.oItems)) {
+                    var oItem:Dynamic = Reflect.field(rawData.oItems, key);
+                    if (oItem == null) continue;
+                    var tId:Int = (oItem.ItemID != null) ? Std.int(oItem.ItemID) : ((oItem.id != null) ? Std.int(oItem.id) : ApiUtils.parseInt(key, 0));
+                    var tQty:Int = (oItem.iQty != null) ? Std.int(oItem.iQty) : ((oItem.qty != null) ? Std.int(oItem.qty) : 1);
+                    var tName:String = (oItem.sName != null) ? Std.string(oItem.sName) : ((oItem.name != null) ? Std.string(oItem.name) : "");
+                    var tTemp:Dynamic = oItem.bTemp;
+                    reqList.push({
+                        ItemID: tId,
+                        id: tId,
+                        sName: tName,
+                        name: tName,
+                        iQty: tQty,
+                        qty: tQty,
+                        bTemp: tTemp
+                    });
+                }
+                this.requirements = reqList;
+            }
         } else {
             this.requirements = [];
         }

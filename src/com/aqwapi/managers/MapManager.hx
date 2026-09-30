@@ -297,9 +297,9 @@ class MapManager {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return false;
         var now = ApiTime.now();
-        if (now - _lastMapItemTime < 1500) return false;
+        if (now - _lastMapItemTime < 2000) return false;
         _lastMapItemTime = now;
-        _pauseScriptIfRunning(1500);
+        _pauseScriptIfRunning(2000);
         try {
             var roomId:Dynamic = (g.world.curRoom != null) ? g.world.curRoom : (g.sfc.activeRoomId != null ? g.sfc.activeRoomId : 1);
             g.sfc.sendString("%xt%zm%getMapItem%" + roomId + "%" + itemId + "%");

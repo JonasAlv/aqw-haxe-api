@@ -204,7 +204,17 @@ class QuestManager {
 
         var reqs:Array<Dynamic> = q.requirements;
         // If quest genuinely has no requirements, it's considered met
-        if (reqs == null || reqs.length == 0) return true;
+        if (reqs == null || reqs.length == 0) {
+            if (q.raw != null) {
+                if (q.raw.turnin != null && Std.isOfType(q.raw.turnin, Array) && (cast q.raw.turnin:Array<Dynamic>).length > 0) {
+                    return false;
+                }
+                if (q.raw.oItems != null && Reflect.fields(q.raw.oItems).length > 0) {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         if (Api.inventory == null) return false;
 
