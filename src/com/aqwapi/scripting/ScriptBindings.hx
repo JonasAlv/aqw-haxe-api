@@ -199,6 +199,9 @@ class ScriptBindings {
         bind("isSkipCutscenes", function():Bool {
             return Api.map != null && Api.map.skipCutscenes;
         });
+        bind("mapRoom", function():Int {
+            return Api.map != null ? Api.map.roomId : 0;
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -258,8 +261,22 @@ class ScriptBindings {
         bind("startCombat", function(smart:Bool = true):Void {
             if (Api.combat != null) {
                 if (smart) Api.combat.startSmart();
-                else Api.combat.startCustom("");
+                else Api.combat.startAuto();
             }
+        });
+        bind("startAuto", function():Void {
+            if (Api.combat != null) Api.combat.startAuto();
+        });
+        bind("startCustom", function(rotation:String, mode:String = "auto"):Void {
+            if (Api.combat != null) Api.combat.startCustom(rotation, mode);
+        });
+        bind("isCombatMode", function(mode:String):Bool {
+            if (Api.combat == null) return false;
+            var m = (mode != null) ? mode.toLowerCase() : "";
+            if (m == "smart") return Api.combat.isSmartRunning;
+            if (m == "custom") return Api.combat.isCustomRunning;
+            if (m == "auto") return Api.combat.isAutoRunning && !Api.combat.isSmartRunning;
+            return Api.combat.isAutoRunning;
         });
         bind("stopCombat", function():Void {
             if (Api.combat != null) Api.combat.stopCombat();
@@ -419,6 +436,9 @@ class ScriptBindings {
         bind("getQuestValue", function(slot:Int):Int {
             return Api.quest != null ? Api.quest.getQuestValue(slot) : 0;
         });
+        bind("searchQuest", function(query:String, max:Int = 10):Array<Dynamic> {
+            return Api.quest != null ? cast Api.quest.search(query, max) : [];
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -431,6 +451,15 @@ class ScriptBindings {
         });
         bind("getItemCount", function(itemName:String):Int {
             return Api.inventory != null ? Api.inventory.getItemCount(itemName) : 0;
+        });
+        bind("getQuestQuantity", function(itemName:String):Int {
+            return Api.inventory != null ? Api.inventory.getQuestQuantity(itemName) : 0;
+        });
+        bind("getInventory", function():Array<Dynamic> {
+            return Api.inventory != null ? cast Api.inventory.getItems() : [];
+        });
+        bind("getBankItems", function():Array<Dynamic> {
+            return Api.inventory != null ? cast Api.inventory.getBankItems() : [];
         });
         bind("equip", function(itemName:String):Void {
             if (Api.inventory != null) Api.inventory.equip(itemName);
@@ -465,7 +494,7 @@ class ScriptBindings {
             return false;
         });
 
-        // Inventory Capacity
+        // Inventory & Bank Capacity
         bind("isInventoryFull", function():Bool {
             return Api.inventory != null && Api.inventory.isFull;
         });
@@ -477,6 +506,15 @@ class ScriptBindings {
         });
         bind("maxSlots", function():Int {
             return Api.inventory != null ? Api.inventory.maxSlots : 0;
+        });
+        bind("maxBankSlots", function():Int {
+            return Api.inventory != null ? Api.inventory.maxBankSlots : 0;
+        });
+        bind("usedBankSlots", function():Int {
+            return Api.inventory != null ? Api.inventory.usedBankSlots : 0;
+        });
+        bind("freeBankSlots", function():Int {
+            return Api.inventory != null ? Api.inventory.freeBankSlots : 0;
         });
     }
 
@@ -553,12 +591,15 @@ class ScriptBindings {
         bind("isShopLoaded", function():Bool {
             return Api.shop != null && Api.shop.isShopLoaded;
         });
+        bind("loadedShopId", function():Int {
+            return Api.shop != null ? Api.shop.loadedShopId : 0;
+        });
 
         // Bank
         bind("loadBank", function():Void {
             if (Api.inventory != null) Api.inventory.loadBank();
         });
-        bind("openBank", function():Void {
+        bind("toggleBank", function():Void {
             if (Api.inventory != null) Api.inventory.toggleBank();
         });
         bind("closeBank", function():Void {
@@ -569,9 +610,6 @@ class ScriptBindings {
         });
         bind("bankAll", function(?exclude:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.bankAll(exclude);
-        });
-        bind("bankAllExcept", function(exclude:Dynamic):Void {
-            if (Api.inventory != null) Api.inventory.bankAllExcept(exclude);
         });
         bind("bankAllAcItems", function(?exclude:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.bankAllAc(exclude);
@@ -690,6 +728,15 @@ class ScriptBindings {
         bind("isMember", function():Bool {
             return Api.player != null && Api.player.isMember;
         });
+        bind("className", function():String {
+            return Api.player != null ? Api.player.className : "";
+        });
+        bind("playerX", function():Float {
+            return Api.player != null ? Api.player.x : 0.0;
+        });
+        bind("playerY", function():Float {
+            return Api.player != null ? Api.player.y : 0.0;
+        });
 
         // Target & Auras
         bind("getTarget", function():Dynamic {
@@ -730,6 +777,12 @@ class ScriptBindings {
                 }
             }
             return false;
+        });
+        bind("getAuraStacks", function(auraName:String, target:String = "player"):Float {
+            return Api.aura != null ? Api.aura.getStacks(auraName, target) : 0.0;
+        });
+        bind("getAuraRemaining", function(auraName:String, target:String = "player"):Float {
+            return Api.aura != null ? Api.aura.getRemaining(auraName, target) : 0.0;
         });
     }
 

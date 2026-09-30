@@ -76,6 +76,7 @@ Every `.hxs` script defines these standard lifecycle functions:
 - `setDeathSpawn(enabled? = true)`: Enables/disables auto-respawn at spawn point on death.
 - `setSkipCutscenes(enabled? = true)`: Toggles automatic cutscene skipping on map joins.
 - `skipCutscene()`: Immediately aborts any active in-game cutscene.
+- `mapRoom()` *(Int)*: Returns the current room number of the active map.
 
 ### Combat & Hunting
 - `hunt(monster, count?, callback?)`: High-level full-map hunter. Discovers the cell, jumps there, locks target, tracks kills, and auto-drops combat when done.
@@ -85,6 +86,11 @@ Every `.hxs` script defines these standard lifecycle functions:
   - Format B: `hunt("Mob", [["Item A", 10], ["Item B", 5], ["Item C", 1]])`
   - Format C: `hunt("Mob", ["Item A", "Item B", "Item C"], 10)` (shared quantity)
 - `huntQuest(questId, monster?, callback?)`: Automatically inspects quest requirements from the game data and hunts `monster` until all items for `questId` are collected (`canCompleteQuest(questId) == true`).
+- `startCombat(smart? = true)`: Starts combat engine. Defaults to smart class-specific rules; if `false`, runs standard auto combat.
+- `startAuto()`: Starts standard auto combat with default skill priority.
+- `startCustom(rotation, mode? = "auto")`: Starts combat with a custom rotation string (e.g. `"1,2,3,4"` or `"1234"`).
+- `isCombatMode("smart" | "auto" | "custom")` *(Bool)*: Checks if a specific combat mode is currently running.
+- `isCombatOn()` *(Bool)*: Returns true if the combat engine is active.
 - `ensureCombat()`: Ensures smart combat rotations and auto-attack are active (safely idles while loading).
 - `equipLoadout("farm" | "solo" | "support")`: Equips predefined class and skill rotations.
 - `stopCombat()` / `stopAttack()`: Stops attacking and breaks combat aggro in-place.
@@ -107,6 +113,7 @@ Every `.hxs` script defines these standard lifecycle functions:
 - `stopAutoQuest()`: Stops background auto-questing.
 - `isQuestComplete(id)` *(Bool)*: Returns true if the quest has been completed and saved on the server (for story quests).
 - `canCompleteQuest(id)` *(Bool)*: Returns true if all turn-in requirements are currently in your inventory.
+- `searchQuest(query, maxResults? = 10)` *(Array)*: Searches quests by name substring.
 
 ### Drops, Inventory & Bank
 - `acceptAcDrops(enabled? = true)`: Enables auto-accepting AdventureCoins drops for the session and sweeps current screen drops.
@@ -114,8 +121,7 @@ Every `.hxs` script defines these standard lifecycle functions:
 - `getDrop(itemName)`: Picks up a specific drop.
 - `getDrops(filter?)`: Picks up pending drops matching filter or all drops (`"all"`).
 - `bankItem(items)`: Deposits an item or array of items (`["Item 1", "Item 2"]`) into your Bank with automatic queue pacing.
-- `bankAll(excludeItems?)`: Deposits **all unequipped, non-temporary** items from backpack into your Bank, optionally skipping any items in `excludeItems`.
-- `bankAllExcept(presetOrList)`: Deposits unequipped backpack items, preserving both equipped gear AND any items in the specified preset or item list (e.g. `bankAllExcept("vhl")`).
+- `bankAll(excludeItemsOrPreset?)`: Deposits **all unequipped, non-temporary** items from backpack into your Bank, optionally preserving specified items or hardfarm preset (e.g. `bankAll("vhl")` or `bankAll(["Gold Voucher 25k"])`).
 - `bankAllAcItems(excludeItems?)`: Deposits all unequipped AC items into free bank storage.
 - `unbankItem(items)`: Retrieves an item or array of items (`["Item 1", "Item 2"]`) from your Bank into your backpack with automatic queue pacing.
 - `unbankPreset(name)`: Unbanks all items from a named hardfarm preset (e.g. `"nulgath"`, `"vhl"`, `"lr"`, `"nsod"`) with automatic queue pacing.
@@ -123,6 +129,9 @@ Every `.hxs` script defines these standard lifecycle functions:
 - `ensureUnbanked(items)` *(Bool)*: Ensures items are out of the bank. Returns `true` once items are confirmed in inventory.
 - `unbankAllNonAcItems(excludeItems?)`: Loads your bank and withdraws all non-AC items back into inventory (automatically halting if inventory fills up).
 - `bankAcAndUnbankNonAc(excludeItems?)`: Sequentially banks all AC items first, then withdraws non-AC items.
+- `toggleBank()`: Toggles the in-game Bank interface.
+- `loadBank()`: Sends a request to load bank data from server.
+- `isBankLoaded()` *(Bool)*: Returns `true` if bank data has been loaded from server.
 - `getBankableItems(excludeItems?)` *(Array<String>)*: Returns the list of unequipped, non-temporary backpack item names eligible for banking.
 - `getBankableAcItems(excludeItems?)` *(Array<String>)*: Returns the list of unequipped AC item names eligible for banking.
 - `getPresetItems(name)` *(Array<String>)*: Returns the array of item names belonging to the specified preset.
@@ -133,9 +142,40 @@ Every `.hxs` script defines these standard lifecycle functions:
 - `isInBank(itemName)` *(Bool)*: Returns `true` if the item is currently in your bank.
 - `hasItem(itemName, qty? = 1)` *(Bool)*: Returns `true` if you have the required item quantity in your backpack.
 - `getItemCount(itemName)` *(Int)*: Returns the current quantity of an item in your backpack.
+- `getQuestQuantity(itemName)` *(Int)*: Returns current quantity checking inventory, temp items, and quest tree.
+- `getInventory()` *(Array<Dynamic>)*: Returns list of item objects currently in backpack.
+- `getBankItems()` *(Array<Dynamic>)*: Returns list of item objects currently in Bank.
 - `ensureEquipped(itemName)`: Equips an item or class if not currently worn.
 - `isInventoryFull()` *(Bool)*: Returns `true` if backpack is full.
 - `freeSlots()` *(Int)*: Returns count of empty inventory slots.
+- `usedSlots()` *(Int)*: Returns count of occupied inventory slots.
+- `maxSlots()` *(Int)*: Returns maximum inventory slots.
+- `freeBankSlots()` *(Int)*: Returns count of empty bank slots.
+- `usedBankSlots()` *(Int)*: Returns count of occupied bank slots.
+- `maxBankSlots()` *(Int)*: Returns maximum bank slots.
+
+### Player Status & Auras
+- `className()` *(String)*: Returns the name of your currently equipped class.
+- `playerX()` / `playerY()` *(Float)*: Returns your avatar's current stage coordinates.
+- `hp()` / `maxHp()` *(Int)*: Returns current / maximum hit points.
+- `hpPercent()` *(Float)*: Returns current HP as a ratio (0.0 to 1.0).
+- `mp()` / `maxMp()` *(Int)*: Returns current / maximum mana points.
+- `mpPercent()` *(Float)*: Returns current MP as a ratio (0.0 to 1.0).
+- `level()` *(Int)*: Returns current character level.
+- `isAlive()` / `isDead()` *(Bool)*: Checks if your character is alive or dead.
+- `isInCombat()` *(Bool)*: Returns `true` if player avatar is engaged in combat.
+- `getAuraStacks(name, target? = "player")` *(Float)*: Returns numeric stack count of aura on `"player"` or `"target"`.
+- `getAuraRemaining(name, target? = "player")` *(Float)*: Returns remaining duration in seconds of aura on `"player"` or `"target"`.
+- `hasPlayerAura(name)` *(Bool)*: Returns `true` if player has the specified aura.
+- `hasTargetAura(name)` *(Bool)*: Returns `true` if current target has the specified aura.
+- `hasAura(name, targetOnly? = false)` *(Bool)*: Checks player, target, and cell monsters.
+
+### Shops
+- `loadShop(shopId)`: Sends a request to load a shop.
+- `isShopLoaded()` *(Bool)*: Returns `true` if a shop is currently loaded.
+- `loadedShopId()` *(Int)*: Returns the ID of the currently loaded shop (0 if none).
+- `buyItem(shopIdOrItem, itemName?, qty? = 1)`: Buys an item from a shop.
+- `sellItem(itemName, qty? = 1)`: Sells an item from inventory.
 
 ### Blacklist
 - `addBlacklist(name)`: Adds an item to the blacklist filter.
@@ -297,7 +337,7 @@ function onTick() {
 5. **Inventory Overflow Protection**: When unbanking Non-AC items, the queue checks `isFull` and safely halts if your bag fills up, preventing exceeded storage server modals.
 6. **Auto Popup Closing**: Closes the bank popup (`ui.mcPopup.fClose()`) once transfers complete.
 
-### Built-in Hardfarm Item Presets (`unbankPreset()` & `bankAllExcept()`)
+### Built-in Hardfarm Item Presets (`unbankPreset()` & `bankAll()`)
 
 AQW hardfarms involve dozens of reagents, quest items, and temporary boss drops. If any reagent exists in your Bank when a mob drops it, AQW routes the drop straight into your Bank instead of your backpack, stalling your farm.
 
@@ -325,7 +365,7 @@ function onStart() {
     equipLoadout("farm");
 
     // 1. Bank all junk while strictly preserving VHL materials:
-    bankAllExcept("vhl");
+    bankAll("vhl");
 
     // 2. Unbank all 32 VHL reagents so drops never get misdirected:
     unbankPreset("vhl");

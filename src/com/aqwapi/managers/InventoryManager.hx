@@ -1148,6 +1148,16 @@ class InventoryManager {
         return 0;
     }
 
+    public var freeBankSlots(get, never):Int;
+    @:getter(freeBankSlots)
+    public function get_freeBankSlots_prop():Int { return get_freeBankSlots(); }
+    public function get_freeBankSlots():Int {
+        var max = maxBankSlots;
+        if (max <= 0) return 0;
+        var free = max - usedBankSlots;
+        return free > 0 ? free : 0;
+    }
+
     public function getItems():Array<ItemDTO> {
         var result:Array<ItemDTO> = [];
         if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.items != null) {

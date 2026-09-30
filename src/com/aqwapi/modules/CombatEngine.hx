@@ -37,6 +37,8 @@ class CombatEngine {
     public static var globalStopOnTargetAuras:Array<String> = null;
 
     // Internal execution state
+    public static var customRotation(get, never):Array<Int>;
+    public static inline function get_customRotation():Array<Int> { return _customRotation; }
     private static var _customRotation:Array<Int> = [];
     private static var _rotationIndex:Int = 0;
     private static var _sequenceStepStartTime:Float = 0;

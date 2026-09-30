@@ -352,10 +352,9 @@ class EnhancementManager {
             return;
         }
 
-        // 1. Safety: if in combat, snap/jump to safe cell
+        // 1. Safety: if in combat, stop and drop combat
         if (Api.player != null && Api.player.isInCombat) {
-            if (Api.combat != null) Api.combat.stopAuto();
-            if (Api.map != null) Api.map.jump("Enter", "Spawn");
+            if (Api.combat != null) Api.combat.stopCombat();
         }
 
         // 2. Equip class if not already equipped

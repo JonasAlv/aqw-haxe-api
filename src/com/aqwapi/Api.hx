@@ -165,8 +165,7 @@ class Api {
     }
 
     public static inline function reload(pad:String = null):Void {
-        if (combat != null) combat.dropCombat();
-        else if (map != null) map.reload(pad);
+        if (map != null) map.reload(pad);
     }
 
     public static var transport(default, null):TransportAdapter;

@@ -202,9 +202,16 @@ class CombatManager {
         }
     }
 
+    public function startAuto():Void {
+        if (CombatEngine.customRotation == null || CombatEngine.customRotation.length == 0) {
+            CombatEngine.setCustomRotation([1, 2, 3, 4], "priority");
+        }
+        CombatEngine.start(false, false);
+    }
+
     public function start(smart:Bool = true):Void {
         if (smart) startSmart();
-        else CombatEngine.start(false, false);
+        else startAuto();
     }
 
     public function stopAttack():Void {
