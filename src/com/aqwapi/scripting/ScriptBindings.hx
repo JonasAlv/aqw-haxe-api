@@ -427,10 +427,16 @@ class ScriptBindings {
         bind("hasBeenCompleted", function(questId:Int):Bool {
             return Api.quest != null ? Api.quest.hasBeenCompleted(questId) : false;
         });
+        bind("isCompletedBefore", function(questId:Int):Bool {
+            return Api.quest != null ? Api.quest.hasBeenCompleted(questId) : false;
+        });
         bind("isDailyComplete", function(questId:Int):Bool {
             return Api.quest != null ? Api.quest.isDailyComplete(questId) : false;
         });
         bind("canCompleteQuest", function(questId:Int):Bool {
+            return Api.quest != null ? Api.quest.canComplete(questId) : false;
+        });
+        bind("canComplete", function(questId:Int):Bool {
             return Api.quest != null ? Api.quest.canComplete(questId) : false;
         });
         bind("getQuestValue", function(slot:Int):Int {

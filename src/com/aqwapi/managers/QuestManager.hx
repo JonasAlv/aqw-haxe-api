@@ -597,6 +597,8 @@ class QuestManager {
             if (qData != null) {
                 qslot = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
                 qval = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
+            } else {
+                load(questId);
             }
         }
 
@@ -615,6 +617,10 @@ class QuestManager {
         return isCompleted(questId);
     }
 
+    public inline function isCompletedBefore(questId:Int):Bool {
+        return isCompleted(questId);
+    }
+
     public function isUnlocked(questId:Int):Bool {
         var qslot:Int = -1;
         var qval:Int = 0;
@@ -624,6 +630,8 @@ class QuestManager {
             if (qData != null) {
                 qslot = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
                 qval = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
+            } else {
+                load(questId);
             }
         }
 
