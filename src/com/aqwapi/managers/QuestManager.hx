@@ -226,23 +226,15 @@ class QuestManager {
 
             var curQty:Int = 0;
 
-            // 1. Check world.invTree directly by ItemID (Fastest & most accurate AQW dictionary)
-            if (_game != null && _game.world != null && _game.world.invTree != null && itemId > 0) {
-                var treeItem:Dynamic = Reflect.field(_game.world.invTree, Std.string(itemId));
-                if (treeItem != null) {
-                    curQty = (treeItem.iQty != null) ? Std.int(treeItem.iQty) : 1;
-                }
-            }
-
-            // 2. Check by ItemName if not satisfied by ID
-            if (curQty < reqQty && itemName != "") {
+            // 1. Check by ItemName
+            if (itemName != "") {
                 var questQty = Api.inventory.getQuestQuantity(itemName);
                 var invQty = Api.inventory.getQuantity(itemName);
                 var bestQty = questQty > invQty ? questQty : invQty;
                 if (bestQty > curQty) curQty = bestQty;
             }
 
-            // 3. Fallback check by ID string
+            // 2. Check by ItemID
             if (curQty < reqQty && itemId > 0) {
                 var questIdQty = Api.inventory.getQuestQuantity(Std.string(itemId));
                 var idQty = Api.inventory.getQuantity(Std.string(itemId));
@@ -275,14 +267,7 @@ class QuestManager {
 
             var curQty:Int = 0;
 
-            if (_game != null && _game.world != null && _game.world.invTree != null && itemId > 0) {
-                var treeItem:Dynamic = Reflect.field(_game.world.invTree, Std.string(itemId));
-                if (treeItem != null) {
-                    curQty = (treeItem.iQty != null) ? Std.int(treeItem.iQty) : 1;
-                }
-            }
-
-            if (curQty < reqQty && itemName != "") {
+            if (itemName != "") {
                 var questQty = Api.inventory.getQuestQuantity(itemName);
                 var invQty = Api.inventory.getQuantity(itemName);
                 var bestQty = questQty > invQty ? questQty : invQty;

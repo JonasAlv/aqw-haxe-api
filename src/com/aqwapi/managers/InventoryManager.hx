@@ -27,14 +27,11 @@ class InventoryManager {
 
     public function hasItemById(itemId:Int, quantity:Int = 1):Bool {
         if (itemId <= 0) return false;
-        if (_game != null && _game.world != null && _game.world.invTree != null) {
-            var treeItem:Dynamic = Reflect.field(_game.world.invTree, Std.string(itemId));
-            if (treeItem != null) {
-                var curQty:Int = (treeItem.iQty != null) ? Std.int(treeItem.iQty) : 1;
-                if (curQty >= quantity) return true;
-            }
-        }
-        return hasItem(Std.string(itemId), quantity);
+        var strId = Std.string(itemId);
+        var q = getQuestQuantity(strId);
+        if (q >= quantity) return true;
+        var invQ = getQuantity(strId);
+        return invQ >= quantity;
     }
 
     public function isEquipped(itemNameOrId:String):Bool {
@@ -81,15 +78,7 @@ class InventoryManager {
         var countedNames:Dynamic = {};
         var quantity:Int = 0;
 
-        // 1. Check world.invTree
-        if (_game.world.invTree != null) {
-            for (key in Reflect.fields(_game.world.invTree)) {
-                var item:Dynamic = Reflect.field(_game.world.invTree, key);
-                quantity += _addQuestQty(item, targetNames, countedNames);
-            }
-        }
-
-        // 2. Check myAvatar items (normal inventory)
+        // 1. Check myAvatar items (normal inventory)
         if (_game.world.myAvatar != null && _game.world.myAvatar.items != null) {
             var items:Array<Dynamic> = cast _game.world.myAvatar.items;
             for (avatarItem in items) quantity += _addQuestQty(avatarItem, targetNames, countedNames);
@@ -116,12 +105,13 @@ class InventoryManager {
     private function _addQuestQty(item:Dynamic, targetNames:Array<String>, countedNames:Dynamic):Int {
         if (item == null) return 0;
         var itemName:String = (item.sName != null) ? Std.string(item.sName).toLowerCase() : "";
+        var itemItemId:Int = (item.ItemID != null) ? Std.int(item.ItemID) : ((item.id != null) ? Std.int(item.id) : 0);
         for (targetName in targetNames) {
             var targetId:Int = ApiUtils.parseInt(targetName, 0);
             var isIdLookup:Bool = targetId > 0;
-            var matches:Bool = isIdLookup ? (item.ItemID == targetId) : (itemName == targetName);
+            var matches:Bool = isIdLookup ? (itemItemId == targetId) : (itemName == targetName);
             if (matches) {
-                var uniqueKey:String = (item.ItemID != null) ? Std.string(item.ItemID) : targetName;
+                var uniqueKey:String = itemItemId > 0 ? Std.string(itemItemId) : targetName;
                 if (Reflect.hasField(countedNames, uniqueKey)) return 0;
                 Reflect.setField(countedNames, uniqueKey, true);
                 var qty:Int = ApiUtils.parseInt(item.iQty, 1);
