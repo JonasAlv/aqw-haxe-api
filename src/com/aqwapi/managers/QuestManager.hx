@@ -344,6 +344,21 @@ class QuestManager {
         return Reflect.field(_game.world.questTree, Std.string(questId)) != null;
     }
 
+    public function areAllLoaded(questIds:Array<Int>):Bool {
+        if (questIds == null || questIds.length == 0) return true;
+        for (qid in questIds) {
+            if (qid > 0 && !isLoaded(qid)) return false;
+        }
+        return true;
+    }
+
+    public function ensureLoaded(questIds:Array<Int>):Bool {
+        if (questIds == null || questIds.length == 0) return true;
+        if (areAllLoaded(questIds)) return true;
+        loadMultiple(questIds);
+        return false;
+    }
+
     public function showQuests(questIds:String):Void {
         if (_game == null || _game.world == null) return;
         try {

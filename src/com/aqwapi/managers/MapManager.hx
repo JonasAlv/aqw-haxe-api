@@ -9,6 +9,7 @@ class MapManager {
     private var _game:Game;
     private var _lastJoinTime:Float = 0;
     private var _lastJumpTime:Float = 0;
+    private var _lastMapItemTime:Float = 0;
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -295,6 +296,10 @@ class MapManager {
     public function getMapItem(itemId:Int):Bool {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return false;
+        var now = ApiTime.now();
+        if (now - _lastMapItemTime < 1000) return false;
+        _lastMapItemTime = now;
+        _pauseScriptIfRunning(1000);
         try {
             var roomId:Dynamic = (g.world.curRoom != null) ? g.world.curRoom : (g.sfc.activeRoomId != null ? g.sfc.activeRoomId : 1);
             g.sfc.sendString("%xt%zm%getMapItem%" + roomId + "%" + itemId + "%");

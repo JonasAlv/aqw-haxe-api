@@ -202,6 +202,9 @@ class ScriptBindings {
         bind("mapRoom", function():Int {
             return Api.map != null ? Api.map.roomId : 0;
         });
+        bind("isHouse", function():Bool {
+            return Api.map != null ? Api.map.isHouse() : false;
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -449,14 +452,47 @@ class ScriptBindings {
             return Api.quest != null ? Api.quest.getMissingRequirements(questId) : [];
         });
 
+        bind("areQuestsLoaded", function(questIds:Dynamic):Bool {
+            if (Api.quest == null) return false;
+            var intArr:Array<Int> = [];
+            if (Std.isOfType(questIds, Array)) {
+                for (item in (cast questIds:Array<Dynamic>)) {
+                    var qid = ApiUtils.parseInt(item, 0);
+                    if (qid > 0) intArr.push(qid);
+                }
+            } else if (questIds != null) {
+                var qid = ApiUtils.parseInt(questIds, 0);
+                if (qid > 0) intArr.push(qid);
+            }
+            return Api.quest.areAllLoaded(intArr);
+        });
+        bind("ensureQuestsLoaded", function(questIds:Dynamic):Bool {
+            if (Api.quest == null) return false;
+            var intArr:Array<Int> = [];
+            if (Std.isOfType(questIds, Array)) {
+                for (item in (cast questIds:Array<Dynamic>)) {
+                    var qid = ApiUtils.parseInt(item, 0);
+                    if (qid > 0) intArr.push(qid);
+                }
+            } else if (questIds != null) {
+                var qid = ApiUtils.parseInt(questIds, 0);
+                if (qid > 0) intArr.push(qid);
+            }
+            return Api.quest.ensureLoaded(intArr);
+        });
+
         // High-level story quest progression
         bind("storyKillQuest", function(questId:Int, mapName:String, monster:Dynamic):Bool {
             if (Api.quest == null || Api.map == null || Api.combat == null) return false;
+            if (!Api.quest.isLoaded(questId)) {
+                Api.quest.load(questId);
+                return false;
+            }
             if (Api.quest.hasBeenCompleted(questId)) return true;
             if (!Api.map.ensure(mapName)) return false;
             if (!Api.quest.isAccepted(questId)) {
-                if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);
                 Api.quest.accept(questId);
+                return false;
             }
             if (!Api.quest.canComplete(questId)) {
                 var targetMonster:String = "*";
@@ -489,11 +525,15 @@ class ScriptBindings {
 
         bind("storyMapItemQuest", function(questId:Int, mapName:String, itemIds:Dynamic, amount:Int = 1):Bool {
             if (Api.quest == null || Api.map == null) return false;
+            if (!Api.quest.isLoaded(questId)) {
+                Api.quest.load(questId);
+                return false;
+            }
             if (Api.quest.hasBeenCompleted(questId)) return true;
             if (!Api.map.ensure(mapName)) return false;
             if (!Api.quest.isAccepted(questId)) {
-                if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);
                 Api.quest.accept(questId);
+                return false;
             }
             if (!Api.quest.canComplete(questId)) {
                 if (Std.isOfType(itemIds, Array)) {
@@ -501,13 +541,14 @@ class ScriptBindings {
                     for (id in arr) {
                         var mid = ApiUtils.parseInt(id, 0);
                         if (mid > 0) {
-                            for (i in 0...amount) Api.map.getMapItem(mid);
+                            Api.map.getMapItem(mid);
+                            break;
                         }
                     }
                 } else {
                     var mid = ApiUtils.parseInt(itemIds, 0);
                     if (mid > 0) {
-                        for (i in 0...amount) Api.map.getMapItem(mid);
+                        Api.map.getMapItem(mid);
                     }
                 }
                 return false;
@@ -518,12 +559,15 @@ class ScriptBindings {
 
         bind("storyChainQuest", function(questId:Int, mapName:String = null):Bool {
             if (Api.quest == null) return false;
+            if (!Api.quest.isLoaded(questId)) {
+                Api.quest.load(questId);
+                return false;
+            }
             if (Api.quest.hasBeenCompleted(questId)) return true;
             if (mapName != null && mapName != "" && Api.map != null) {
                 if (!Api.map.ensure(mapName)) return false;
             }
             if (!Api.quest.isAccepted(questId)) {
-                if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);
                 Api.quest.accept(questId);
                 return false;
             }
