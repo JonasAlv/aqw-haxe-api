@@ -562,8 +562,8 @@ class ScriptBindings {
                 }
             }
 
-            // If the map item is satisfied or we have already grabbed it amount times in a hybrid quest:
-            if ((!mapItemNeeded || currentGrabs >= amount) && allReqs.length > 1 && missingReqs.length > 0) {
+            // If the map item is satisfied in inventory for a hybrid quest:
+            if (!mapItemNeeded && allReqs.length > 1 && missingReqs.length > 0) {
                 return true; // Map item complete! Allow subsequent kill quest to hunt remaining monster drops
             }
 
