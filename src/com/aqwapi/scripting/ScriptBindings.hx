@@ -499,19 +499,111 @@ class ScriptBindings {
                 var targetMonster:String = "*";
                 if (Std.isOfType(monster, Array)) {
                     var arr:Array<Dynamic> = cast monster;
-                    var q = Api.quest.get(questId);
-                    var allReqs:Array<Dynamic> = (q != null && q.requirements != null) ? q.requirements : [];
-                    var missingReqs = Api.quest.getMissingRequirements(questId);
-                    if (missingReqs.length > 0 && allReqs.length > 0) {
-                        var firstMissing = missingReqs[0];
-                        var reqIdx:Int = allReqs.indexOf(firstMissing);
-                        if (reqIdx >= 0 && reqIdx < arr.length) {
-                            targetMonster = Std.string(arr[reqIdx]);
-                        } else if (arr.length > 0) {
-                            targetMonster = Std.string(arr[arr.length - 1]);
-                        }
-                    } else if (arr.length > 0) {
+                    if (arr.length == 0) {
+                        targetMonster = "*";
+                    } else if (arr.length == 1) {
                         targetMonster = Std.string(arr[0]);
+                    } else {
+                        var q = Api.quest.get(questId);
+                        var allReqs:Array<Dynamic> = (q != null && q.requirements != null) ? q.requirements : [];
+                        var missingReqs = Api.quest.getMissingRequirements(questId);
+                        var foundMonster:String = null;
+
+                        if (missingReqs.length > 0) {
+                            var firstMissing = missingReqs[0];
+                            var missingId:Int = (firstMissing.ItemID != null) ? Std.int(firstMissing.ItemID) : ((firstMissing.id != null) ? Std.int(firstMissing.id) : 0);
+                            var rawMissingName:String = (firstMissing.sName != null) ? Std.string(firstMissing.sName) : ((firstMissing.name != null) ? Std.string(firstMissing.name) : "");
+                            var missingName = StringTools.trim(rawMissingName).toLowerCase();
+
+                            // Token extraction helper (length >= 3, skipping stop words)
+                            var getTokens = function(s:String):Array<String> {
+                                var clean = "";
+                                for (ci in 0...s.length) {
+                                    var c = s.charAt(ci);
+                                    if ((c >= "a" && c <= "z") || (c >= "0" && c <= "9")) {
+                                        clean += c;
+                                    } else {
+                                        clean += " ";
+                                    }
+                                }
+                                var rawWords = clean.split(" ");
+                                var tokens:Array<String> = [];
+                                for (w in rawWords) {
+                                    var wt = StringTools.trim(w);
+                                    if (wt.length >= 3 && wt != "the" && wt != "and" && wt != "for" && wt != "with") {
+                                        tokens.push(wt);
+                                    }
+                                }
+                                return tokens;
+                            };
+
+                            var reqTokens = getTokens(missingName);
+                            var bestScore:Int = 0;
+                            var bestCandidate:String = null;
+
+                            for (m in arr) {
+                                if (m == null) continue;
+                                var mStr = StringTools.trim(Std.string(m)).toLowerCase();
+                                var mTokens = getTokens(mStr);
+                                var score:Int = 0;
+
+                                for (rt in reqTokens) {
+                                    if (mTokens.indexOf(rt) != -1) score += 10;
+                                    else if (mStr.indexOf(rt) != -1) score += 8;
+                                }
+                                for (mt in mTokens) {
+                                    if (missingName.indexOf(mt) != -1) score += 8;
+                                }
+
+                                // Prefix/stem match (length >= 4)
+                                for (rt in reqTokens) {
+                                    for (mt in mTokens) {
+                                        if (rt.length >= 4 && mt.length >= 4) {
+                                            var minL = rt.length < mt.length ? rt.length : mt.length;
+                                            var pLen = minL >= 6 ? 6 : (minL >= 5 ? 5 : 4);
+                                            if (rt.substr(0, pLen) == mt.substr(0, pLen)) {
+                                                score += 5;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (score > bestScore) {
+                                    bestScore = score;
+                                    bestCandidate = Std.string(m);
+                                }
+                            }
+
+                            if (bestScore > 0 && bestCandidate != null) {
+                                foundMonster = bestCandidate;
+                            } else if (allReqs.length > 0) {
+                                var reqIdx:Int = -1;
+                                for (i in 0...allReqs.length) {
+                                    var r = allReqs[i];
+                                    if (r == null) continue;
+                                    var rId:Int = (r.ItemID != null) ? Std.int(r.ItemID) : ((r.id != null) ? Std.int(r.id) : 0);
+                                    var rName:String = (r.sName != null) ? Std.string(r.sName).toLowerCase() : ((r.name != null) ? Std.string(r.name).toLowerCase() : "");
+                                    if ((missingId > 0 && rId == missingId) || (missingName != "" && rName == missingName)) {
+                                        reqIdx = i;
+                                        break;
+                                    }
+                                }
+
+                                if (allReqs.length > arr.length) {
+                                    var offset = allReqs.length - arr.length;
+                                    var mappedIdx = reqIdx - offset;
+                                    if (mappedIdx >= 0 && mappedIdx < arr.length) {
+                                        foundMonster = Std.string(arr[mappedIdx]);
+                                    } else if (reqIdx >= 0 && reqIdx < arr.length) {
+                                        foundMonster = Std.string(arr[reqIdx]);
+                                    }
+                                } else if (reqIdx >= 0 && reqIdx < arr.length) {
+                                    foundMonster = Std.string(arr[reqIdx]);
+                                }
+                            }
+                        }
+
+                        targetMonster = (foundMonster != null) ? foundMonster : Std.string(arr[0]);
                     }
                 } else if (monster != null) {
                     targetMonster = Std.string(monster);

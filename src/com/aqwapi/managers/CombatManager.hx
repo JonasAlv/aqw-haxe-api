@@ -222,6 +222,7 @@ class CombatManager {
         stopAuto();
         dropCombat();
         lastCombatExitTime = com.aqwapi.utils.ApiTime.now();
+        resetHunt();
     }
 
     public inline function endCombat():Void {
@@ -407,11 +408,19 @@ class CombatManager {
             }
         }
 
-        // If another hunt task is currently running, don't interrupt it
-        if (_activeHuntKey != null && _activeHuntKey != huntKey) {
-            return false;
+        var isBoundedHunt:Bool = (isKillCount && targetKills > 0) || (isArrayItems && itemList.length > 0) || (!isKillCount && !isArrayItems && itemOrCount != null && Std.string(itemOrCount) != "");
+
+        if (isBoundedHunt) {
+            // If another hunt task is currently running, don't interrupt it
+            if (_activeHuntKey != null && _activeHuntKey != huntKey) {
+                return false;
+            }
+            _activeHuntKey = huntKey;
+        } else {
+            // Unbounded hunt: hunting a monster directly without a completion count
+            // Clear active hunt lock to allow dynamic target switching
+            _activeHuntKey = null;
         }
-        _activeHuntKey = huntKey;
 
         // 3. Safety checks: player dead, map loading, or banking/unbanking items
         if (Api.player != null && !Api.player.isAlive) return false;

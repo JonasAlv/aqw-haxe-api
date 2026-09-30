@@ -213,6 +213,17 @@ class CombatEngine {
             if (target.pMC == null || target.dataLeaf == null || target.objData == null) isInvalid = true;
             else if (target.dataLeaf.intHP != null && target.dataLeaf.intHP <= 0) isInvalid = true;
             else if (target.dataLeaf.intState != null && target.dataLeaf.intState == 0) isInvalid = true;
+            else if (targetName != null && targetName != "*" && targetName != "") {
+                var ent = new EntityDTO(target);
+                if (ent.name != "" && ent.name.toLowerCase().indexOf(targetName.toLowerCase()) == -1) {
+                    isInvalid = true;
+                }
+            } else if (lockedMMID != null) {
+                var ent = new EntityDTO(target);
+                if (ent.mapId != lockedMMID) {
+                    isInvalid = true;
+                }
+            }
 
             if (isInvalid) {
                 if (world.cancelTarget != null) {
