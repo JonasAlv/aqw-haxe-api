@@ -280,4 +280,76 @@ class PlayerManager {
         }
         return false;
     }
+
+    public function getFactionRank(factionName:String):Int {
+        var targetLower = StringTools.trim(factionName).toLowerCase();
+        var a = _avatar();
+        var list:Dynamic = null;
+        if (a != null) {
+            if (a.factions != null) list = a.factions;
+            else if (a.objData != null && a.objData.factions != null) list = a.objData.factions;
+            else if (a.dataLeaf != null && a.dataLeaf.factions != null) list = a.dataLeaf.factions;
+        }
+        if (list == null) {
+            var g = _g();
+            if (g != null && g.world != null && g.world.factions != null) list = g.world.factions;
+        }
+        if (list == null) return 0;
+
+        var len:Int = 0;
+        try { len = untyped list.length; } catch (_:Dynamic) { return 0; }
+        for (i in 0...len) {
+            var f = untyped list[i];
+            if (f != null && f.sName != null) {
+                var sName:String = Std.string(f.sName).toLowerCase();
+                if (sName == targetLower) {
+                    var r:Int = _di(f.iRank);
+                    if (r <= 0 && f.iRep != null) {
+                        var rep:Int = _di(f.iRep);
+                        if (rep >= 302500) return 10;
+                        if (rep >= 202500) return 9;
+                        if (rep >= 129600) return 8;
+                        if (rep >= 78400) return 7;
+                        if (rep >= 44100) return 6;
+                        if (rep >= 22500) return 5;
+                        if (rep >= 10000) return 4;
+                        if (rep >= 3600) return 3;
+                        if (rep >= 900) return 2;
+                        if (rep > 0) return 1;
+                    }
+                    return r;
+                }
+            }
+        }
+        return 0;
+    }
+
+    public function getFactionRep(factionName:String):Int {
+        var targetLower = StringTools.trim(factionName).toLowerCase();
+        var a = _avatar();
+        var list:Dynamic = null;
+        if (a != null) {
+            if (a.factions != null) list = a.factions;
+            else if (a.objData != null && a.objData.factions != null) list = a.objData.factions;
+            else if (a.dataLeaf != null && a.dataLeaf.factions != null) list = a.dataLeaf.factions;
+        }
+        if (list == null) {
+            var g = _g();
+            if (g != null && g.world != null && g.world.factions != null) list = g.world.factions;
+        }
+        if (list == null) return 0;
+
+        var len:Int = 0;
+        try { len = untyped list.length; } catch (_:Dynamic) { return 0; }
+        for (i in 0...len) {
+            var f = untyped list[i];
+            if (f != null && f.sName != null) {
+                var sName:String = Std.string(f.sName).toLowerCase();
+                if (sName == targetLower) {
+                    return _di(f.iRep);
+                }
+            }
+        }
+        return 0;
+    }
 }

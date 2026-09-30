@@ -738,6 +738,20 @@ class ScriptBindings {
             return Api.player != null ? Api.player.y : 0.0;
         });
 
+        // Factions & Reputation
+        bind("factionRank", function(name:String):Int {
+            return Api.player != null ? Api.player.getFactionRank(name) : 0;
+        });
+        bind("getFactionRank", function(name:String):Int {
+            return Api.player != null ? Api.player.getFactionRank(name) : 0;
+        });
+        bind("factionRep", function(name:String):Int {
+            return Api.player != null ? Api.player.getFactionRep(name) : 0;
+        });
+        bind("getFactionRep", function(name:String):Int {
+            return Api.player != null ? Api.player.getFactionRep(name) : 0;
+        });
+
         // Target & Auras
         bind("getTarget", function():Dynamic {
             return Api.player != null ? Api.player.target : null;
