@@ -407,27 +407,34 @@ class ApiStorage {
             if (StringTools.endsWith(fName.toLowerCase(), ".hxs")) {
                 return fName.substring(0, fName.length - 4);
             }
-            return fName;
+            return null;
         };
 
         var scanDir:Dynamic->String->Void = null;
         scanDir = function(dir:Dynamic, prefix:String):Void {
-            if (dir == null || !dir.exists || !dir.isDirectory) return;
-            var list:Array<Dynamic> = untyped dir.getDirectoryListing();
-            if (list == null) return;
-            for (f in list) {
-                if (f == null) continue;
-                if (f.isDirectory) {
-                    scanDir(f, prefix + f.name + "/");
-                } else {
-                    var s = cleanName(f.name);
-                    if (s != null && s != "") {
-                        var full = prefix + s;
-                        if (scripts.indexOf(full) == -1) {
-                            scripts.push(full);
+            if (dir == null) return;
+            try {
+                if (!dir.exists || !dir.isDirectory) return;
+                var list:Array<Dynamic> = untyped dir.getDirectoryListing();
+                if (list == null) return;
+                for (f in list) {
+                    if (f == null) continue;
+                    try {
+                        if (f.isDirectory) {
+                            scanDir(f, prefix + f.name + "/");
+                        } else {
+                            var s = cleanName(f.name);
+                            if (s != null && s != "") {
+                                var full = prefix + s;
+                                if (scripts.indexOf(full) == -1) {
+                                    scripts.push(full);
+                                }
+                            }
                         }
-                    }
+                    } catch (_:Dynamic) {}
                 }
+            } catch (err:Dynamic) {
+                ApiLogger.warn("Storage", "Error scanning scripts dir " + prefix + ": " + err);
             }
         };
 
@@ -441,7 +448,9 @@ class ApiStorage {
                     scanDir(bDir, "");
                 }
             }
-        } catch (_:Dynamic) {}
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Storage", "Error scanning bundled scripts: " + e);
+        }
 
         // 2. Scan user scripts in applicationStorageDirectory/scripts
         try {
@@ -450,13 +459,28 @@ class ApiStorage {
                 var uDir = dir.resolvePath("scripts");
                 scanDir(uDir, "");
             }
-        } catch (_:Dynamic) {}
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Storage", "Error scanning user scripts: " + e);
+        }
+
+        // Sort scripts alphabetically
+        scripts.sort(function(a:String, b:String):Int {
+            var aLow = a.toLowerCase();
+            var bLow = b.toLowerCase();
+            if (aLow < bLow) return -1;
+            if (aLow > bLow) return 1;
+            return 0;
+        });
 
         return scripts;
     }
 
     public static function isBundledScript(scriptName:String):Bool {
         if (scriptName == null || scriptName == "") return false;
+        var clean = cleanFileName(scriptName);
+        if (StringTools.endsWith(clean.toLowerCase(), ".hxs")) {
+            clean = clean.substring(0, clean.length - 4);
+        }
         try {
             var FileClass:Dynamic = getFileClass();
             if (FileClass != null) {
@@ -468,11 +492,13 @@ class ApiStorage {
                     appDir = getStaticProp(FileClass, "applicationDirectory");
                 }
                 if (appDir != null) {
-                    var f = appDir.resolvePath("assets/scripts/" + scriptName + ".hxs");
+                    var f = appDir.resolvePath("assets/scripts/" + clean + ".hxs");
                     if (f != null && f.exists) return true;
-                    if (scriptName.indexOf("/") == -1) {
-                        var fRep = appDir.resolvePath("assets/scripts/rep/" + scriptName + ".hxs");
+                    if (clean.indexOf("/") == -1) {
+                        var fRep = appDir.resolvePath("assets/scripts/rep/" + clean + ".hxs");
                         if (fRep != null && fRep.exists) return true;
+                        var fSaga = appDir.resolvePath("assets/scripts/saga/LordofChaos/" + clean + ".hxs");
+                        if (fSaga != null && fSaga.exists) return true;
                     }
                 }
             }
@@ -486,11 +512,17 @@ class ApiStorage {
         var dir = getDataDirectory();
         if (dir == null) return false;
         try {
-            var f = dir.resolvePath("scripts/" + scriptName + ".hxs");
+            var clean = cleanFileName(scriptName);
+            if (StringTools.endsWith(clean.toLowerCase(), ".hxs")) {
+                clean = clean.substring(0, clean.length - 4);
+            }
+            var f = dir.resolvePath("scripts/" + clean + ".hxs");
             if (f != null && f.exists == true) return true;
-            if (scriptName.indexOf("/") == -1) {
-                var fRep = dir.resolvePath("scripts/rep/" + scriptName + ".hxs");
+            if (clean.indexOf("/") == -1) {
+                var fRep = dir.resolvePath("scripts/rep/" + clean + ".hxs");
                 if (fRep != null && fRep.exists == true) return true;
+                var fSaga = dir.resolvePath("scripts/saga/LordofChaos/" + clean + ".hxs");
+                if (fSaga != null && fSaga.exists == true) return true;
             }
         } catch (_:Dynamic) {}
         return false;
@@ -515,6 +547,10 @@ class ApiStorage {
                     var ufRep = dir.resolvePath("scripts/rep/" + clean + ".hxs");
                     var txtRep = readFileStream(ufRep);
                     if (txtRep != null && StringTools.trim(txtRep).length > 0) return txtRep;
+
+                    var ufSaga = dir.resolvePath("scripts/saga/LordofChaos/" + clean + ".hxs");
+                    var txtSaga = readFileStream(ufSaga);
+                    if (txtSaga != null && StringTools.trim(txtSaga).length > 0) return txtSaga;
                 }
             } catch (_:Dynamic) {}
         }
@@ -539,6 +575,10 @@ class ApiStorage {
                         var bfRep = appDir.resolvePath("assets/scripts/rep/" + clean + ".hxs");
                         var btxtRep = readFileStream(bfRep);
                         if (btxtRep != null && StringTools.trim(btxtRep).length > 0) return btxtRep;
+
+                        var bfSaga = appDir.resolvePath("assets/scripts/saga/LordofChaos/" + clean + ".hxs");
+                        var btxtSaga = readFileStream(bfSaga);
+                        if (btxtSaga != null && StringTools.trim(btxtSaga).length > 0) return btxtSaga;
                     }
                 }
             }
