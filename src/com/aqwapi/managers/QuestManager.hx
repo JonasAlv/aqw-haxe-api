@@ -246,6 +246,52 @@ class QuestManager {
         return true;
     }
 
+    public function getMissingRequirements(questId:Int):Array<Dynamic> {
+        var q = get(questId);
+        if (q == null) return [];
+
+        var reqs:Array<Dynamic> = q.requirements;
+        if (reqs == null || reqs.length == 0) return [];
+
+        var missing:Array<Dynamic> = [];
+        if (Api.inventory == null) return reqs;
+
+        for (req in reqs) {
+            if (req == null) continue;
+            var itemId:Int = (req.ItemID != null) ? Std.int(req.ItemID) : ((req.id != null) ? Std.int(req.id) : 0);
+            var itemName:String = (req.sName != null) ? Std.string(req.sName) : ((req.name != null) ? Std.string(req.name) : "");
+            var reqQty:Int = (req.iQty != null) ? Std.int(req.iQty) : ((req.qty != null) ? Std.int(req.qty) : 1);
+
+            var curQty:Int = 0;
+
+            if (_game != null && _game.world != null && _game.world.invTree != null && itemId > 0) {
+                var treeItem:Dynamic = Reflect.field(_game.world.invTree, Std.string(itemId));
+                if (treeItem != null) {
+                    curQty = (treeItem.iQty != null) ? Std.int(treeItem.iQty) : 1;
+                }
+            }
+
+            if (curQty < reqQty && itemName != "") {
+                var questQty = Api.inventory.getQuestQuantity(itemName);
+                var invQty = Api.inventory.getQuantity(itemName);
+                var bestQty = questQty > invQty ? questQty : invQty;
+                if (bestQty > curQty) curQty = bestQty;
+            }
+
+            if (curQty < reqQty && itemId > 0) {
+                var questIdQty = Api.inventory.getQuestQuantity(Std.string(itemId));
+                var idQty = Api.inventory.getQuantity(Std.string(itemId));
+                var bestIdQty = questIdQty > idQty ? questIdQty : idQty;
+                if (bestIdQty > curQty) curQty = bestIdQty;
+            }
+
+            if (curQty < reqQty) {
+                missing.push(req);
+            }
+        }
+        return missing;
+    }
+
     // ==========================================
     // SERVER INTERACTION & NETWORK LOADING
     // ==========================================

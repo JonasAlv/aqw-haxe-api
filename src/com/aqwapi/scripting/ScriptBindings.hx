@@ -445,6 +445,91 @@ class ScriptBindings {
         bind("searchQuest", function(query:String, max:Int = 10):Array<Dynamic> {
             return Api.quest != null ? cast Api.quest.search(query, max) : [];
         });
+        bind("getMissingRequirements", function(questId:Int):Array<Dynamic> {
+            return Api.quest != null ? Api.quest.getMissingRequirements(questId) : [];
+        });
+
+        // High-level story quest progression
+        bind("storyKillQuest", function(questId:Int, mapName:String, monster:Dynamic):Bool {
+            if (Api.quest == null || Api.map == null || Api.combat == null) return false;
+            if (Api.quest.hasBeenCompleted(questId)) return true;
+            if (!Api.map.ensure(mapName)) return false;
+            if (!Api.quest.isAccepted(questId)) {
+                if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);
+                Api.quest.accept(questId);
+            }
+            if (!Api.quest.canComplete(questId)) {
+                var targetMonster:String = "*";
+                if (Std.isOfType(monster, Array)) {
+                    var arr:Array<Dynamic> = cast monster;
+                    var q = Api.quest.get(questId);
+                    var allReqs:Array<Dynamic> = (q != null && q.requirements != null) ? q.requirements : [];
+                    var missingReqs = Api.quest.getMissingRequirements(questId);
+                    if (missingReqs.length > 0 && allReqs.length > 0) {
+                        var firstMissing = missingReqs[0];
+                        var reqIdx:Int = allReqs.indexOf(firstMissing);
+                        if (reqIdx >= 0 && reqIdx < arr.length) {
+                            targetMonster = Std.string(arr[reqIdx]);
+                        } else if (arr.length > 0) {
+                            targetMonster = Std.string(arr[arr.length - 1]);
+                        }
+                    } else if (arr.length > 0) {
+                        targetMonster = Std.string(arr[0]);
+                    }
+                } else if (monster != null) {
+                    targetMonster = Std.string(monster);
+                }
+                Api.combat.hunt(targetMonster);
+                return false;
+            }
+            Api.combat.stopCombat();
+            Api.quest.ensureComplete(questId);
+            return Api.quest.hasBeenCompleted(questId);
+        });
+
+        bind("storyMapItemQuest", function(questId:Int, mapName:String, itemIds:Dynamic, amount:Int = 1):Bool {
+            if (Api.quest == null || Api.map == null) return false;
+            if (Api.quest.hasBeenCompleted(questId)) return true;
+            if (!Api.map.ensure(mapName)) return false;
+            if (!Api.quest.isAccepted(questId)) {
+                if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);
+                Api.quest.accept(questId);
+            }
+            if (!Api.quest.canComplete(questId)) {
+                if (Std.isOfType(itemIds, Array)) {
+                    var arr:Array<Dynamic> = cast itemIds;
+                    for (id in arr) {
+                        var mid = ApiUtils.parseInt(id, 0);
+                        if (mid > 0) {
+                            for (i in 0...amount) Api.map.getMapItem(mid);
+                        }
+                    }
+                } else {
+                    var mid = ApiUtils.parseInt(itemIds, 0);
+                    if (mid > 0) {
+                        for (i in 0...amount) Api.map.getMapItem(mid);
+                    }
+                }
+                return false;
+            }
+            Api.quest.ensureComplete(questId);
+            return Api.quest.hasBeenCompleted(questId);
+        });
+
+        bind("storyChainQuest", function(questId:Int, mapName:String = null):Bool {
+            if (Api.quest == null) return false;
+            if (Api.quest.hasBeenCompleted(questId)) return true;
+            if (mapName != null && mapName != "" && Api.map != null) {
+                if (!Api.map.ensure(mapName)) return false;
+            }
+            if (!Api.quest.isAccepted(questId)) {
+                if (!Api.quest.isLoaded(questId)) Api.quest.load(questId);
+                Api.quest.accept(questId);
+                return false;
+            }
+            Api.quest.ensureComplete(questId);
+            return Api.quest.hasBeenCompleted(questId);
+        });
     }
 
     // -------------------------------------------------------------------------
