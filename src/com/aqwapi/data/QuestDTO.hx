@@ -1,6 +1,7 @@
 package com.aqwapi.data;
 
 import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.Api;
 
 class QuestDTO {
     public var id:Int;
@@ -87,43 +88,79 @@ class QuestDTO {
         else this.index = 0;
 
         // Requirements
-        if (rawData.Requirements != null && Std.isOfType(rawData.Requirements, Array) && (cast rawData.Requirements : Array<Dynamic>).length > 0) {
-            this.requirements = cast rawData.Requirements;
-        } else if (rawData.turnin != null && Std.isOfType(rawData.turnin, Array) && (cast rawData.turnin : Array<Dynamic>).length > 0) {
-            var rawTurnin:Array<Dynamic> = cast rawData.turnin;
-            var reqList:Array<Dynamic> = [];
-            for (tItem in rawTurnin) {
-                if (tItem == null) continue;
-                var tId:Int = (tItem.ItemID != null) ? Std.int(tItem.ItemID) : ((tItem.id != null) ? Std.int(tItem.id) : 0);
-                var tQty:Int = (tItem.iQty != null) ? Std.int(tItem.iQty) : ((tItem.qty != null) ? Std.int(tItem.qty) : 1);
-                var tName:String = (tItem.sName != null) ? Std.string(tItem.sName) : null;
-                var tTemp:Dynamic = tItem.bTemp;
-
-                // Look up in rawData.oItems if name is missing
-                if ((tName == null || tName == "") && tId > 0 && rawData.oItems != null) {
-                    var oItem:Dynamic = Reflect.field(rawData.oItems, Std.string(tId));
-                    if (oItem != null) {
-                        if (oItem.sName != null) tName = Std.string(oItem.sName);
-                        else if (oItem.name != null) tName = Std.string(oItem.name);
-                        if (oItem.bTemp != null) tTemp = oItem.bTemp;
-                        if (oItem.iQty != null && tQty <= 1) tQty = Std.int(oItem.iQty);
-                    }
+        var parsedReqs:Array<Dynamic> = null;
+        if (rawData.Requirements != null) {
+            try {
+                if (Std.isOfType(rawData.Requirements, Array) && (cast rawData.Requirements : Array<Dynamic>).length > 0) {
+                    parsedReqs = cast rawData.Requirements;
                 }
+            } catch (e:Dynamic) {}
+        }
 
-                reqList.push({
-                    ItemID: tId,
-                    id: tId,
-                    sName: (tName != null) ? tName : "",
-                    name: (tName != null) ? tName : "",
-                    iQty: tQty,
-                    qty: tQty,
-                    bTemp: tTemp
-                });
+        if (parsedReqs == null && rawData.turnin != null) {
+            var rawTurnin:Dynamic = rawData.turnin;
+            var turninLen:Int = 0;
+            try {
+                if (rawTurnin.length != null) {
+                    turninLen = Std.int(rawTurnin.length);
+                }
+            } catch (e:Dynamic) {}
+
+            if (turninLen > 0) {
+                var reqList:Array<Dynamic> = [];
+                for (i in 0...turninLen) {
+                    var tItem:Dynamic = null;
+                    try { tItem = rawTurnin[i]; } catch (e:Dynamic) {}
+                    if (tItem == null) continue;
+                    var tId:Int = (tItem.ItemID != null) ? Std.int(tItem.ItemID) : ((tItem.id != null) ? Std.int(tItem.id) : 0);
+                    var tQty:Int = (tItem.iQty != null) ? Std.int(tItem.iQty) : ((tItem.qty != null) ? Std.int(tItem.qty) : 1);
+                    var tName:String = (tItem.sName != null) ? Std.string(tItem.sName) : null;
+                    var tTemp:Dynamic = tItem.bTemp;
+
+                    // 1. Look up in rawData.oItems if name is missing
+                    if ((tName == null || tName == "") && tId > 0 && rawData.oItems != null) {
+                        try {
+                            var oItem:Dynamic = Reflect.field(rawData.oItems, Std.string(tId));
+                            if (oItem != null) {
+                                if (oItem.sName != null) tName = Std.string(oItem.sName);
+                                else if (oItem.name != null) tName = Std.string(oItem.name);
+                                if (oItem.bTemp != null) tTemp = oItem.bTemp;
+                                if (oItem.iQty != null && tQty <= 1) tQty = Std.int(oItem.iQty);
+                            }
+                        } catch (e:Dynamic) {}
+                    }
+
+                    // 2. Look up in invTree if name is still missing
+                    if ((tName == null || tName == "") && tId > 0) {
+                        try {
+                            if (Api.game != null && Api.game.world != null && Api.game.world.invTree != null) {
+                                var invItem:Dynamic = Reflect.field(Api.game.world.invTree, Std.string(tId));
+                                if (invItem != null) {
+                                    if (invItem.sName != null) tName = Std.string(invItem.sName);
+                                    else if (invItem.name != null) tName = Std.string(invItem.name);
+                                    if (invItem.bTemp != null) tTemp = invItem.bTemp;
+                                }
+                            }
+                        } catch (e:Dynamic) {}
+                    }
+
+                    reqList.push({
+                        ItemID: tId,
+                        id: tId,
+                        sName: (tName != null) ? tName : "",
+                        name: (tName != null) ? tName : "",
+                        iQty: tQty,
+                        qty: tQty,
+                        bTemp: tTemp
+                    });
+                }
+                parsedReqs = reqList;
             }
-            this.requirements = reqList;
-        } else if (rawData.oItems != null) {
+        }
+
+        if (parsedReqs == null && rawData.oItems != null) {
             if (Std.isOfType(rawData.oItems, Array)) {
-                this.requirements = cast rawData.oItems;
+                parsedReqs = cast rawData.oItems;
             } else {
                 var reqList:Array<Dynamic> = [];
                 for (key in Reflect.fields(rawData.oItems)) {
@@ -143,11 +180,11 @@ class QuestDTO {
                         bTemp: tTemp
                     });
                 }
-                this.requirements = reqList;
+                parsedReqs = reqList;
             }
-        } else {
-            this.requirements = [];
         }
+
+        this.requirements = (parsedReqs != null) ? parsedReqs : [];
 
         // Rewards
         this.rewards = [];

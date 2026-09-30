@@ -206,12 +206,21 @@ class QuestManager {
         // If quest genuinely has no requirements, it's considered met
         if (reqs == null || reqs.length == 0) {
             if (q.raw != null) {
-                if (q.raw.turnin != null && Std.isOfType(q.raw.turnin, Array) && (cast q.raw.turnin:Array<Dynamic>).length > 0) {
-                    return false;
-                }
-                if (q.raw.oItems != null && Reflect.fields(q.raw.oItems).length > 0) {
-                    return false;
-                }
+                var hasTurnIn:Bool = false;
+                try {
+                    if (q.raw.turnin != null && q.raw.turnin.length != null && Std.int(q.raw.turnin.length) > 0) {
+                        hasTurnIn = true;
+                    }
+                } catch (e:Dynamic) {}
+                try {
+                    if (q.raw.oItems != null) {
+                        for (_ in Reflect.fields(q.raw.oItems)) {
+                            hasTurnIn = true;
+                            break;
+                        }
+                    }
+                } catch (e:Dynamic) {}
+                if (hasTurnIn) return false;
             }
             return true;
         }
@@ -602,6 +611,10 @@ class QuestManager {
     private function _executeComplete(questId:Int, itemId:Int = -1):Void {
         if (_game == null || _game.world == null || questId <= 0) return;
         if (!isInProgress(questId)) return;
+        if (!canComplete(questId)) {
+            ApiLogger.warn("Quest", "Cannot complete quest " + questId + ": requirements not satisfied yet.");
+            return;
+        }
 
         var now = ApiTime.now();
         var lastQTurnIn:Float = Reflect.hasField(_lastTurnIns, Std.string(questId)) ? Reflect.field(_lastTurnIns, Std.string(questId)) : 0.0;
@@ -729,13 +742,37 @@ class QuestManager {
     }
 
     public function canComplete(questId:Int):Bool {
-        if (_game == null || _game.world == null) return false;
+        if (_game == null || _game.world == null || questId <= 0) return false;
         if (isCompleteQueued(questId)) return false;
 
-        // Must be currently in progress
+        // 1. Must be currently in progress (accepted)
         if (!isInProgress(questId)) return false;
 
-        // Must strictly satisfy all required items in inventory/temp inventory
+        // 2. Refresh native AQW quest status if method exists
+        try {
+            if (_game.world.checkAllQuestStatus != null) {
+                _game.world.checkAllQuestStatus();
+            }
+        } catch (e:Dynamic) {}
+
+        // 3. Native AQW engine check: canTurnInQuest(questId)
+        if (_game.world.canTurnInQuest != null) {
+            try {
+                if (!_game.world.canTurnInQuest(questId)) return false;
+            } catch (e:Dynamic) {}
+        }
+
+        // 4. Native AQW questTree status check: "p" = in progress (incomplete), "c" = complete
+        if (_game.world.questTree != null) {
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            if (qData != null) {
+                var s:Dynamic = qData.status;
+                if (s == "p") return false;
+                if (s == "c") return true;
+            }
+        }
+
+        // 5. Strict inventory & temp inventory requirement verification
         return hasRequirements(questId);
     }
 

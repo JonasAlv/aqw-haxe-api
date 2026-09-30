@@ -694,6 +694,7 @@ class ScriptBindings {
                 }
 
                 if (targetMid > 0) {
+                    ApiLogger.info("Story", "Grabbing map item " + targetMid + " for quest " + questId + " (" + missingReqs.length + "/" + allReqs.length + " missing)");
                     Api.map.getMapItem(targetMid);
                 }
             } else {
@@ -717,6 +718,7 @@ class ScriptBindings {
 
                 var mid = ApiUtils.parseInt(itemIds, 0);
                 if (mid > 0) {
+                    ApiLogger.info("Story", "Grabbing map item " + mid + " for quest " + questId);
                     Api.map.getMapItem(mid);
                 }
             }
