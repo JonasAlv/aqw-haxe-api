@@ -23,6 +23,22 @@ class ScriptBindings {
     public static var shortcuts(default, null):Map<String, Dynamic> = new Map();
     private static var _initialized:Bool = false;
     private static var _mapItemGrabCount:Map<String, Int> = new Map();
+    private static var _reqToMonsterMap:Map<String, String> = new Map();
+
+    private static function _cleanQuestStoryData(questId:Int):Void {
+        var prefix = questId + "_";
+        var grabKeys:Array<String> = [];
+        for (k in _mapItemGrabCount.keys()) {
+            if (StringTools.startsWith(k, prefix)) grabKeys.push(k);
+        }
+        for (k in grabKeys) _mapItemGrabCount.remove(k);
+
+        var monsterKeys:Array<String> = [];
+        for (k in _reqToMonsterMap.keys()) {
+            if (StringTools.startsWith(k, prefix)) monsterKeys.push(k);
+        }
+        for (k in monsterKeys) _reqToMonsterMap.remove(k);
+    }
 
     public static inline function hasShortcut(name:String):Bool {
         ensureInitialized();
@@ -489,7 +505,10 @@ class ScriptBindings {
                 Api.quest.load(questId);
                 return false;
             }
-            if (Api.quest.hasBeenCompleted(questId)) return true;
+            if (Api.quest.hasBeenCompleted(questId)) {
+                _cleanQuestStoryData(questId);
+                return true;
+            }
             if (!Api.map.ensure(mapName)) return false;
             if (!Api.quest.isAccepted(questId)) {
                 Api.quest.accept(questId);
@@ -514,92 +533,102 @@ class ScriptBindings {
                             var missingId:Int = (firstMissing.ItemID != null) ? Std.int(firstMissing.ItemID) : ((firstMissing.id != null) ? Std.int(firstMissing.id) : 0);
                             var rawMissingName:String = (firstMissing.sName != null) ? Std.string(firstMissing.sName) : ((firstMissing.name != null) ? Std.string(firstMissing.name) : "");
                             var missingName = StringTools.trim(rawMissingName).toLowerCase();
+                            var rMapKey = questId + "_" + (missingId > 0 ? Std.string(missingId) : missingName);
 
-                            // Token extraction helper (length >= 3, skipping stop words)
-                            var getTokens = function(s:String):Array<String> {
-                                var clean = "";
-                                for (ci in 0...s.length) {
-                                    var c = s.charAt(ci);
-                                    if ((c >= "a" && c <= "z") || (c >= "0" && c <= "9")) {
-                                        clean += c;
-                                    } else {
-                                        clean += " ";
+                            if (_reqToMonsterMap.exists(rMapKey)) {
+                                foundMonster = _reqToMonsterMap.get(rMapKey);
+                            } else {
+                                // Token extraction helper (length >= 3, skipping stop words)
+                                var getTokens = function(s:String):Array<String> {
+                                    var clean = "";
+                                    for (ci in 0...s.length) {
+                                        var c = s.charAt(ci);
+                                        if ((c >= "a" && c <= "z") || (c >= "0" && c <= "9")) {
+                                            clean += c;
+                                        } else {
+                                            clean += " ";
+                                        }
                                     }
-                                }
-                                var rawWords = clean.split(" ");
-                                var tokens:Array<String> = [];
-                                for (w in rawWords) {
-                                    var wt = StringTools.trim(w);
-                                    if (wt.length >= 3 && wt != "the" && wt != "and" && wt != "for" && wt != "with") {
-                                        tokens.push(wt);
+                                    var rawWords = clean.split(" ");
+                                    var tokens:Array<String> = [];
+                                    for (w in rawWords) {
+                                        var wt = StringTools.trim(w);
+                                        if (wt.length >= 3 && wt != "the" && wt != "and" && wt != "for" && wt != "with") {
+                                            tokens.push(wt);
+                                        }
                                     }
-                                }
-                                return tokens;
-                            };
+                                    return tokens;
+                                };
 
-                            var reqTokens = getTokens(missingName);
-                            var bestScore:Int = 0;
-                            var bestCandidate:String = null;
+                                var reqTokens = getTokens(missingName);
 
-                            for (m in arr) {
-                                if (m == null) continue;
-                                var mStr = StringTools.trim(Std.string(m)).toLowerCase();
-                                var mTokens = getTokens(mStr);
-                                var score:Int = 0;
+                                // Thematic synonyms to map elemental monster drops reliably
+                                if (missingName.indexOf("frigid") != -1 || missingName.indexOf("frost") != -1 || missingName.indexOf("frozen") != -1) reqTokens.push("ice");
+                                if (missingName.indexOf("lava") != -1 || missingName.indexOf("flame") != -1 || missingName.indexOf("burn") != -1) reqTokens.push("fire");
+                                if (missingName.indexOf("liquid") != -1 || missingName.indexOf("tear") != -1) reqTokens.push("water");
+                                if (missingName.indexOf("spark") != -1 || missingName.indexOf("shine") != -1) reqTokens.push("light");
+                                if (missingName.indexOf("dark") != -1 || missingName.indexOf("dusk") != -1) reqTokens.push("shadow");
+                                if (missingName.indexOf("rock") != -1 || missingName.indexOf("stone") != -1 || missingName.indexOf("ore") != -1) reqTokens.push("earth");
+                                if (missingName.indexOf("breeze") != -1 || missingName.indexOf("gale") != -1) reqTokens.push("wind");
 
-                                for (rt in reqTokens) {
-                                    if (mTokens.indexOf(rt) != -1) score += 10;
-                                    else if (mStr.indexOf(rt) != -1) score += 8;
-                                }
-                                for (mt in mTokens) {
-                                    if (missingName.indexOf(mt) != -1) score += 8;
-                                }
+                                var bestScore:Int = 0;
+                                var bestCandidate:String = null;
 
-                                // Prefix/stem match (length >= 4)
-                                for (rt in reqTokens) {
+                                for (m in arr) {
+                                    if (m == null) continue;
+                                    var mStr = StringTools.trim(Std.string(m)).toLowerCase();
+                                    var mTokens = getTokens(mStr);
+                                    var score:Int = 0;
+
+                                    for (rt in reqTokens) {
+                                        if (mTokens.indexOf(rt) != -1) score += 10;
+                                        else if (mStr.indexOf(rt) != -1) score += 8;
+                                    }
                                     for (mt in mTokens) {
-                                        if (rt.length >= 4 && mt.length >= 4) {
-                                            var minL = rt.length < mt.length ? rt.length : mt.length;
-                                            var pLen = minL >= 6 ? 6 : (minL >= 5 ? 5 : 4);
-                                            if (rt.substr(0, pLen) == mt.substr(0, pLen)) {
-                                                score += 5;
+                                        if (missingName.indexOf(mt) != -1) score += 8;
+                                    }
+
+                                    // Prefix/stem match (length >= 4)
+                                    for (rt in reqTokens) {
+                                        for (mt in mTokens) {
+                                            if (rt.length >= 4 && mt.length >= 4) {
+                                                var minL = rt.length < mt.length ? rt.length : mt.length;
+                                                var pLen = minL >= 6 ? 6 : (minL >= 5 ? 5 : 4);
+                                                if (rt.substr(0, pLen) == mt.substr(0, pLen)) {
+                                                    score += 5;
+                                                }
                                             }
                                         }
                                     }
-                                }
 
-                                if (score > bestScore) {
-                                    bestScore = score;
-                                    bestCandidate = Std.string(m);
-                                }
-                            }
-
-                            if (bestScore > 0 && bestCandidate != null) {
-                                foundMonster = bestCandidate;
-                            } else if (allReqs.length > 0) {
-                                var reqIdx:Int = -1;
-                                for (i in 0...allReqs.length) {
-                                    var r = allReqs[i];
-                                    if (r == null) continue;
-                                    var rId:Int = (r.ItemID != null) ? Std.int(r.ItemID) : ((r.id != null) ? Std.int(r.id) : 0);
-                                    var rName:String = (r.sName != null) ? Std.string(r.sName).toLowerCase() : ((r.name != null) ? Std.string(r.name).toLowerCase() : "");
-                                    if ((missingId > 0 && rId == missingId) || (missingName != "" && rName == missingName)) {
-                                        reqIdx = i;
-                                        break;
+                                    if (score > bestScore) {
+                                        bestScore = score;
+                                        bestCandidate = Std.string(m);
                                     }
                                 }
 
-                                if (allReqs.length > arr.length) {
-                                    var offset = allReqs.length - arr.length;
-                                    var mappedIdx = reqIdx - offset;
-                                    if (mappedIdx >= 0 && mappedIdx < arr.length) {
-                                        foundMonster = Std.string(arr[mappedIdx]);
-                                    } else if (reqIdx >= 0 && reqIdx < arr.length) {
-                                        foundMonster = Std.string(arr[reqIdx]);
+                                if (bestScore > 0 && bestCandidate != null) {
+                                    foundMonster = bestCandidate;
+                                } else {
+                                    // 1-to-1 requirement to monster fallback (like Skua)
+                                    var usedMonsters:Array<String> = [];
+                                    for (k in _reqToMonsterMap.keys()) {
+                                        if (StringTools.startsWith(k, questId + "_")) {
+                                            usedMonsters.push(_reqToMonsterMap.get(k));
+                                        }
                                     }
-                                } else if (reqIdx >= 0 && reqIdx < arr.length) {
-                                    foundMonster = Std.string(arr[reqIdx]);
+                                    for (m in arr) {
+                                        var mStr = Std.string(m);
+                                        if (usedMonsters.indexOf(mStr) == -1) {
+                                            foundMonster = mStr;
+                                            break;
+                                        }
+                                    }
+                                    if (foundMonster == null) {
+                                        foundMonster = Std.string(arr[0]);
+                                    }
                                 }
+                                _reqToMonsterMap.set(rMapKey, foundMonster);
                             }
                         }
 
@@ -613,7 +642,9 @@ class ScriptBindings {
             }
             Api.combat.stopCombat();
             Api.quest.ensureComplete(questId);
-            return Api.quest.hasBeenCompleted(questId);
+            var done = Api.quest.hasBeenCompleted(questId);
+            if (done) _cleanQuestStoryData(questId);
+            return done;
         });
 
         bind("storyMapItemQuest", function(questId:Int, mapName:String, itemIds:Dynamic, amount:Int = 1):Bool {
@@ -622,7 +653,10 @@ class ScriptBindings {
                 Api.quest.load(questId);
                 return false;
             }
-            if (Api.quest.hasBeenCompleted(questId)) return true;
+            if (Api.quest.hasBeenCompleted(questId)) {
+                _cleanQuestStoryData(questId);
+                return true;
+            }
             if (!Api.map.ensure(mapName)) return false;
             if (!Api.quest.isAccepted(questId)) {
                 Api.quest.accept(questId);
@@ -631,97 +665,105 @@ class ScriptBindings {
             if (Api.quest.canComplete(questId)) {
                 Api.quest.ensureComplete(questId);
                 var done = Api.quest.hasBeenCompleted(questId);
-                if (done) _mapItemGrabCount.remove(questId + "_" + Std.string(itemIds));
+                if (done) _cleanQuestStoryData(questId);
                 return done;
             }
 
-            // Check if map item requirements are already satisfied (for hybrid quests)
+            // Normalize target map item IDs
+            var targetMids:Array<Int> = [];
+            if (Std.isOfType(itemIds, Array)) {
+                for (m in (cast itemIds:Array<Dynamic>)) {
+                    var mid = ApiUtils.parseInt(m, 0);
+                    if (mid > 0 && targetMids.indexOf(mid) == -1) targetMids.push(mid);
+                }
+            } else {
+                var mid = ApiUtils.parseInt(itemIds, 0);
+                if (mid > 0) targetMids.push(mid);
+            }
+            if (targetMids.length == 0) return true;
+
             var q = Api.quest.get(questId);
             var allReqs:Array<Dynamic> = (q != null && q.requirements != null) ? q.requirements : [];
             var missingReqs = Api.quest.getMissingRequirements(questId);
 
-            var grabKey = questId + "_" + Std.string(itemIds);
-            var currentGrabs = _mapItemGrabCount.exists(grabKey) ? _mapItemGrabCount.get(grabKey) : 0;
-
-            var isMissing = function(req:Dynamic):Bool {
-                if (req == null) return false;
+            var getReqCurQty = function(req:Dynamic):Int {
+                if (req == null || Api.inventory == null) return 0;
                 var rId:Int = (req.ItemID != null) ? Std.int(req.ItemID) : ((req.id != null) ? Std.int(req.id) : 0);
-                var rName:String = (req.sName != null) ? Std.string(req.sName).toLowerCase() : ((req.name != null) ? Std.string(req.name).toLowerCase() : "");
-                for (m in missingReqs) {
-                    if (m == null) continue;
-                    var mId:Int = (m.ItemID != null) ? Std.int(m.ItemID) : ((m.id != null) ? Std.int(m.id) : 0);
-                    var mName:String = (m.sName != null) ? Std.string(m.sName).toLowerCase() : ((m.name != null) ? Std.string(m.name).toLowerCase() : "");
-                    if (rId > 0 && mId > 0 && rId == mId) return true;
-                    if (rName != "" && mName != "" && rName == mName) return true;
+                var rName:String = (req.sName != null) ? Std.string(req.sName) : ((req.name != null) ? Std.string(req.name) : "");
+                var cur:Int = 0;
+                if (rName != "") {
+                    var nq = Api.inventory.getQuestQuantity(rName);
+                    if (nq > cur) cur = nq;
                 }
-                return false;
+                if (rId > 0) {
+                    var iq = Api.inventory.getQuestQuantity(Std.string(rId));
+                    if (iq > cur) cur = iq;
+                }
+                return cur;
             };
 
-            if (Std.isOfType(itemIds, Array)) {
-                var arr:Array<Dynamic> = cast itemIds;
-                if (arr.length == 0) return true;
+            var isReqSatisfied = function(req:Dynamic):Bool {
+                if (req == null) return true;
+                var reqQty:Int = (req.iQty != null) ? Std.int(req.iQty) : ((req.qty != null) ? Std.int(req.qty) : 1);
+                return getReqCurQty(req) >= reqQty;
+            };
 
-                // Check if all map items corresponding to this array are satisfied for a hybrid quest
-                if (arr.length == allReqs.length && missingReqs.length > 0) {
-                    var anyArrMissing = false;
-                    for (i in 0...arr.length) {
-                        if (isMissing(allReqs[i])) {
-                            anyArrMissing = true;
-                            break;
-                        }
+            var satisfiedReqsCount:Int = 0;
+            for (req in allReqs) {
+                if (isReqSatisfied(req)) satisfiedReqsCount++;
+            }
+
+            var allMidsDone:Bool = true;
+            var nextMidToGrab:Int = 0;
+
+            for (mid in targetMids) {
+                var grabKey = questId + "_" + mid;
+                var grabs = _mapItemGrabCount.exists(grabKey) ? _mapItemGrabCount.get(grabKey) : 0;
+                if (grabs < amount) {
+                    allMidsDone = false;
+                    if (nextMidToGrab == 0) {
+                        nextMidToGrab = mid;
                     }
-                    if (!anyArrMissing) {
-                        return true; // All map items in array satisfied; allow subsequent kill quest to proceed
-                    }
-                }
-
-                _mapItemGrabCount.set(grabKey, currentGrabs + 1);
-
-                var targetMid:Int = 0;
-                if (arr.length == allReqs.length) {
-                    // Match 1:1 with quest requirements
-                    for (i in 0...arr.length) {
-                        if (isMissing(allReqs[i])) {
-                            targetMid = ApiUtils.parseInt(arr[i], 0);
-                            break;
-                        }
-                    }
-                }
-                if (targetMid <= 0) {
-                    // Fallback: round-robin cycle through array
-                    var idx = currentGrabs % arr.length;
-                    targetMid = ApiUtils.parseInt(arr[idx], 0);
-                }
-
-                if (targetMid > 0) {
-                    ApiLogger.info("Story", "Grabbing map item " + targetMid + " for quest " + questId + " (" + missingReqs.length + "/" + allReqs.length + " missing)");
-                    Api.map.getMapItem(targetMid);
-                }
-            } else {
-                var mapItemNeeded = false;
-                if (allReqs.length > 0) {
-                    for (req in missingReqs) {
-                        var reqQty:Int = (req.iQty != null) ? Std.int(req.iQty) : ((req.qty != null) ? Std.int(req.qty) : 1);
-                        if (reqQty == amount) {
-                            mapItemNeeded = true;
-                            break;
-                        }
-                    }
-                }
-
-                // If the map item is satisfied in inventory for a hybrid quest:
-                if (!mapItemNeeded && allReqs.length > 1 && missingReqs.length > 0) {
-                    return true; // Map item complete! Allow subsequent kill quest to hunt remaining monster drops
-                }
-
-                _mapItemGrabCount.set(grabKey, currentGrabs + 1);
-
-                var mid = ApiUtils.parseInt(itemIds, 0);
-                if (mid > 0) {
-                    ApiLogger.info("Story", "Grabbing map item " + mid + " for quest " + questId);
-                    Api.map.getMapItem(mid);
                 }
             }
+
+            // Recovery checks if bot restarted and temp inventory already holds the items:
+            // 1. Single map item with exact requirement quantity match (e.g. quest 2378, reqQty = 8)
+            if (!allMidsDone && targetMids.length == 1 && allReqs.length > 0) {
+                for (req in allReqs) {
+                    var rQty:Int = (req.iQty != null) ? Std.int(req.iQty) : ((req.qty != null) ? Std.int(req.qty) : 1);
+                    if (rQty == amount && isReqSatisfied(req)) {
+                        allMidsDone = true;
+                        break;
+                    }
+                }
+            }
+
+            // 2. Hybrid quest where number of satisfied requirements in quest covers targetMids
+            if (!allMidsDone && allReqs.length > targetMids.length && satisfiedReqsCount >= targetMids.length) {
+                allMidsDone = true;
+            }
+
+            if (allMidsDone) {
+                if (Api.quest.canComplete(questId)) {
+                    Api.quest.ensureComplete(questId);
+                    var done = Api.quest.hasBeenCompleted(questId);
+                    if (done) _cleanQuestStoryData(questId);
+                    return done;
+                }
+                // Hybrid quest: all map items for this step satisfied, proceed to kill quest
+                return true;
+            }
+
+            if (nextMidToGrab > 0) {
+                var grabKey = questId + "_" + nextMidToGrab;
+                var grabs = _mapItemGrabCount.exists(grabKey) ? _mapItemGrabCount.get(grabKey) : 0;
+                _mapItemGrabCount.set(grabKey, grabs + 1);
+
+                ApiLogger.info("Story", "Grabbing map item " + nextMidToGrab + " (" + (grabs + 1) + "/" + amount + ") for quest " + questId + " (" + missingReqs.length + "/" + allReqs.length + " missing)");
+                Api.map.getMapItem(nextMidToGrab);
+            }
+
             return false;
         });
 
@@ -731,7 +773,10 @@ class ScriptBindings {
                 Api.quest.load(questId);
                 return false;
             }
-            if (Api.quest.hasBeenCompleted(questId)) return true;
+            if (Api.quest.hasBeenCompleted(questId)) {
+                _cleanQuestStoryData(questId);
+                return true;
+            }
             if (mapName != null && mapName != "" && Api.map != null) {
                 if (!Api.map.ensure(mapName)) return false;
             }
@@ -740,7 +785,9 @@ class ScriptBindings {
                 return false;
             }
             Api.quest.ensureComplete(questId);
-            return Api.quest.hasBeenCompleted(questId);
+            var done = Api.quest.hasBeenCompleted(questId);
+            if (done) _cleanQuestStoryData(questId);
+            return done;
         });
     }
 

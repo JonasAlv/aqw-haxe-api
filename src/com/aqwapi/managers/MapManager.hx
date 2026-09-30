@@ -10,6 +10,7 @@ class MapManager {
     private var _lastJoinTime:Float = 0;
     private var _lastJumpTime:Float = 0;
     private var _lastMapItemTime:Float = 0;
+    private var _lastCombatCooldownLogTime:Float = 0;
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -113,10 +114,14 @@ class MapManager {
             if (Api.combat != null) Api.combat.dropCombat();
             else reload();
             var remainingMs:Int = inCombat ? 2000 : Std.int(Math.max(200, 2000 - timeSinceCombat));
-            ApiLogger.info("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining " + mapName + "...");
-            ApiTime.delay(remainingMs, function() {
-                join(mapName, cell, pad, force);
-            });
+            var now2 = ApiTime.now();
+            if (now2 - _lastCombatCooldownLogTime >= 2000) {
+                _lastCombatCooldownLogTime = now2;
+                ApiLogger.info("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining " + mapName + "...");
+                ApiTime.delay(remainingMs, function() {
+                    join(mapName, cell, pad, force);
+                });
+            }
             return;
         }
 
@@ -169,10 +174,14 @@ class MapManager {
         if (inCombat || timeSinceCombat < 2000) {
             if (Api.combat != null) Api.combat.dropCombat();
             var remainingMs:Int = inCombat ? 2000 : Std.int(Math.max(200, 2000 - timeSinceCombat));
-            ApiLogger.info("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining house...");
-            ApiTime.delay(remainingMs, function() {
-                joinHouse(username);
-            });
+            var now2 = ApiTime.now();
+            if (now2 - _lastCombatCooldownLogTime >= 2000) {
+                _lastCombatCooldownLogTime = now2;
+                ApiLogger.info("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining house...");
+                ApiTime.delay(remainingMs, function() {
+                    joinHouse(username);
+                });
+            }
             return;
         }
 

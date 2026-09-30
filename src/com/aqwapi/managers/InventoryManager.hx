@@ -57,13 +57,17 @@ class InventoryManager {
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
         var targetName:String = itemNameOrId.toLowerCase();
-        var items:Array<Dynamic> = cast _game.world.myAvatar.items;
-        for (item in items) {
-            if (item == null || item.sName == null) continue;
-            var sName:String = Std.string(item.sName).toLowerCase();
-            var matches:Bool = isIdLookup ? (item.ItemID == targetId) : (sName == targetName);
-            if (matches) return (item.iQty != null) ? Std.int(item.iQty) : 1;
-        }
+        try {
+            var items:Dynamic = _game.world.myAvatar.items;
+            var len:Int = Std.int(items.length);
+            for (i in 0...len) {
+                var item:Dynamic = items[i];
+                if (item == null || item.sName == null) continue;
+                var sName:String = Std.string(item.sName).toLowerCase();
+                var matches:Bool = isIdLookup ? (Std.int(item.ItemID) == targetId) : (sName == targetName);
+                if (matches) return (item.iQty != null) ? Std.int(item.iQty) : 1;
+            }
+        } catch (_:Dynamic) {}
         return 0;
     }
 
@@ -80,8 +84,14 @@ class InventoryManager {
 
         // 1. Check myAvatar items (normal inventory)
         if (_game.world.myAvatar != null && _game.world.myAvatar.items != null) {
-            var items:Array<Dynamic> = cast _game.world.myAvatar.items;
-            for (avatarItem in items) quantity += _addQuestQty(avatarItem, targetNames, countedNames);
+            try {
+                var items:Dynamic = _game.world.myAvatar.items;
+                var itemLen:Int = Std.int(items.length);
+                for (i in 0...itemLen) {
+                    var avatarItem:Dynamic = items[i];
+                    quantity += _addQuestQty(avatarItem, targetNames, countedNames);
+                }
+            } catch (_:Dynamic) {}
         }
 
         // 3. Check myAvatar tempitems / tempItems
@@ -94,9 +104,51 @@ class InventoryManager {
             if (Reflect.field(_game.world, "tempitems") != null) tempArr = Reflect.field(_game.world, "tempitems");
             else if (Reflect.field(_game.world, "tempItems") != null) tempArr = Reflect.field(_game.world, "tempItems");
         }
-        if (tempArr != null && Std.isOfType(tempArr, Array)) {
-            var tempItems:Array<Dynamic> = cast tempArr;
-            for (avatarItem in tempItems) quantity += _addQuestQty(avatarItem, targetNames, countedNames);
+        if (tempArr != null) {
+            try {
+                var len:Int = Std.int(tempArr.length);
+                for (i in 0...len) {
+                    var avatarItem:Dynamic = tempArr[i];
+                    quantity += _addQuestQty(avatarItem, targetNames, countedNames);
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        // 4. Check invTree (AQW's master dictionary of inventory & temporary items)
+        if (_game.world.invTree != null) {
+            try {
+                for (targetName in targetNames) {
+                    var targetId:Int = ApiUtils.parseInt(targetName, 0);
+                    if (targetId > 0) {
+                        var treeItem:Dynamic = _game.world.invTree[targetId];
+                        if (treeItem != null) {
+                            quantity += _addQuestQty(treeItem, [targetName], countedNames);
+                        }
+                    } else {
+                        for (k in Reflect.fields(_game.world.invTree)) {
+                            var treeItem:Dynamic = Reflect.field(_game.world.invTree, k);
+                            if (treeItem != null) {
+                                quantity += _addQuestQty(treeItem, [targetName], countedNames);
+                            }
+                        }
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        // 5. Check myAvatar.getItemByID (AQW native method that checks items, houseitems, and tempitems)
+        if (_game.world.myAvatar != null && _game.world.myAvatar.getItemByID != null) {
+            try {
+                for (targetName in targetNames) {
+                    var targetId:Int = ApiUtils.parseInt(targetName, 0);
+                    if (targetId > 0) {
+                        var avItem:Dynamic = _game.world.myAvatar.getItemByID(targetId);
+                        if (avItem != null) {
+                            quantity += _addQuestQty(avItem, [targetName], countedNames);
+                        }
+                    }
+                }
+            } catch (_:Dynamic) {}
         }
 
         return quantity;
