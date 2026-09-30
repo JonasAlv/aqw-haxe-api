@@ -128,33 +128,63 @@ class EnhancementManager {
     // CURRENT EQUIPMENT INSPECTION
     // ==========================================
 
-    public function getEquippedSlots():{ weapon:ItemDTO, armor:ItemDTO, helm:ItemDTO, cape:ItemDTO } {
-        var res = { weapon: null, armor: null, helm: null, cape: null };
+    public function getEquippedSlots():{ weapon:ItemDTO, armor:ItemDTO, classItem:ItemDTO, helm:ItemDTO, cape:ItemDTO } {
+        var res = { weapon: null, armor: null, classItem: null, helm: null, cape: null };
         if (Api.inventory == null) return res;
+
+        var equippedClassName = (Api.player != null && Api.player.className != null) ? StringTools.trim(Api.player.className.toLowerCase()) : "";
         var items = Api.inventory.getItems();
         for (item in items) {
             if (item == null || !item.isEquipped) continue;
             var es = (item.es != null) ? item.es.toLowerCase() : "";
             var st = (item.type != null) ? item.type.toLowerCase() : "";
-            if (es == "weapon" || st == "sword" || st == "axe" || st == "dagger" || st == "gun" ||
+            var sName = (item.name != null) ? StringTools.trim(item.name.toLowerCase()) : "";
+
+            // Strictly identify Class items (exclude cosmetic armors st == "armor" / es == "co")
+            var isClass = (st == "class") ||
+                          (item.raw != null && (item.raw.bClass == 1 || item.raw.bClass == "1" || item.raw.bClass == true)) ||
+                          (equippedClassName != "" && sName == equippedClassName);
+
+            if (isClass) {
+                if (res.classItem == null) {
+                    res.classItem = item;
+                    res.armor = item;
+                }
+            } else if (es == "weapon" || st == "sword" || st == "axe" || st == "dagger" || st == "gun" ||
                 st == "bow" || st == "mace" || st == "gauntlet" || st == "polearm" || st == "staff" ||
                 st == "wand" || st == "whip" || st == "handgun" || st == "rifle") {
                 if (res.weapon == null) res.weapon = item;
-            } else if (es == "ar" || es == "co" || st == "class" || st == "armor") {
-                if (res.armor == null) res.armor = item;
             } else if (es == "he" || st == "helm") {
                 if (res.helm == null) res.helm = item;
             } else if (es == "ba" || st == "cape") {
                 if (res.cape == null) res.cape = item;
+            } else if (es == "ar" && st != "armor" && es != "co") {
+                if (res.classItem == null) {
+                    res.classItem = item;
+                    res.armor = item;
+                }
             }
         }
+
+        // Fallback: If equipped class item had out-of-sync bEquip, search by player class name
+        if (res.classItem == null && equippedClassName != "") {
+            for (item in items) {
+                if (item != null && item.name != null && StringTools.trim(item.name.toLowerCase()) == equippedClassName) {
+                    res.classItem = item;
+                    res.armor = item;
+                    break;
+                }
+            }
+        }
+
         return res;
     }
 
     public function currentClassEnh():String {
         var slots = getEquippedSlots();
-        if (slots.armor != null) {
-            var pat = slots.armor.enhPatternId;
+        var target = (slots.classItem != null) ? slots.classItem : slots.armor;
+        if (target != null) {
+            var pat = target.enhPatternId;
             return patternIdToName(pat);
         }
         return "None";
@@ -393,7 +423,16 @@ class EnhancementManager {
         var slots = getEquippedSlots();
         var tasks:Array<EnhanceTask> = [];
 
-        // Weapon
+        // 1. Class (Armor slot in AQW terminology)
+        var classTarget = (slots.classItem != null) ? slots.classItem : slots.armor;
+        if (classTarget != null) {
+            if (!isAlreadyEnhanced(classTarget, t, "None")) {
+                var aShopId = getBaseShopId(t);
+                tasks.push({ item: classTarget, baseType: t, special: "None", shopId: aShopId, targetMap: null });
+            }
+        }
+
+        // 2. Weapon
         if (slots.weapon != null) {
             var w = (wSpec != "" && wSpec != "None") ? wSpec : "None";
             if (!isAlreadyEnhanced(slots.weapon, t, w)) {
@@ -403,15 +442,7 @@ class EnhancementManager {
             }
         }
 
-        // Armor
-        if (slots.armor != null) {
-            if (!isAlreadyEnhanced(slots.armor, t, "None")) {
-                var aShopId = getBaseShopId(t);
-                tasks.push({ item: slots.armor, baseType: t, special: "None", shopId: aShopId, targetMap: null });
-            }
-        }
-
-        // Helm
+        // 3. Helm
         if (slots.helm != null) {
             var h = (hSpec != "" && hSpec != "None") ? hSpec : "None";
             if (!isAlreadyEnhanced(slots.helm, t, h)) {
@@ -421,7 +452,7 @@ class EnhancementManager {
             }
         }
 
-        // Cape
+        // 4. Cape
         if (slots.cape != null) {
             var c = (cSpec != "" && cSpec != "None") ? cSpec : "None";
             if (!isAlreadyEnhanced(slots.cape, t, c)) {
@@ -602,14 +633,15 @@ class EnhancementManager {
                     candidates.push(si);
                 }
             } else {
+                var siES = (si.sES != null) ? Std.string(si.sES).toLowerCase() : "";
                 if (slot == "ar" || slot == "co") {
-                    if (sNameL.indexOf("armor") != -1 || sNameL.indexOf("class") != -1) candidates.push(si);
+                    if (siES == "ar" || sNameL.indexOf("armor") != -1 || sNameL.indexOf("class") != -1) candidates.push(si);
                 } else if (slot == "he") {
-                    if (sNameL.indexOf("helm") != -1 || sNameL.indexOf("hood") != -1) candidates.push(si);
+                    if (siES == "he" || sNameL.indexOf("helm") != -1 || sNameL.indexOf("hood") != -1) candidates.push(si);
                 } else if (slot == "ba") {
-                    if (sNameL.indexOf("cape") != -1 || sNameL.indexOf("back") != -1) candidates.push(si);
+                    if (siES == "ba" || sNameL.indexOf("cape") != -1 || sNameL.indexOf("back") != -1) candidates.push(si);
                 } else if (slot == "Weapon") {
-                    if (sNameL.indexOf("weapon") != -1 || sNameL.indexOf("blade") != -1) candidates.push(si);
+                    if (siES == "weapon" || sNameL.indexOf("weapon") != -1 || sNameL.indexOf("blade") != -1) candidates.push(si);
                 }
             }
         }
@@ -725,11 +757,14 @@ class EnhancementManager {
 
     public function getItemSlot(item:ItemDTO):String {
         if (item == null) return "";
-        if (item.es != null && item.es != "") return item.es;
         var st = (item.type != null) ? item.type.toLowerCase() : "";
-        if (st == "class" || st == "armor") return "ar";
+        if (st == "class") return "ar";
         if (st == "helm") return "he";
         if (st == "cape") return "ba";
+        var es = (item.es != null) ? item.es.toLowerCase() : "";
+        if (es == "ar" || es == "co") return "ar";
+        if (es == "he") return "he";
+        if (es == "ba") return "ba";
         return "Weapon";
     }
 

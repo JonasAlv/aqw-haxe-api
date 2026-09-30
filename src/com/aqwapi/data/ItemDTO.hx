@@ -21,10 +21,32 @@ class ItemDTO {
     @:getter(enhPatternId)
     public function get_enhPatternId_prop():Int { return get_enhPatternId(); }
     public function get_enhPatternId():Int {
-        if (raw == null) return 0;
-        if (Reflect.hasField(raw, "EnhPatternID")) return Std.int(Reflect.field(raw, "EnhPatternID"));
-        if (Reflect.hasField(raw, "enhPID")) return Std.int(Reflect.field(raw, "enhPID"));
-        if (Reflect.hasField(raw, "PatternID")) return Std.int(Reflect.field(raw, "PatternID"));
+        if (raw != null) {
+            if (Reflect.hasField(raw, "EnhPatternID") && Reflect.field(raw, "EnhPatternID") != null) {
+                var v = Std.int(Reflect.field(raw, "EnhPatternID"));
+                if (v > 0) return v;
+            }
+            if (Reflect.hasField(raw, "enhPID") && Reflect.field(raw, "enhPID") != null) {
+                var v = Std.int(Reflect.field(raw, "enhPID"));
+                if (v > 0) return v;
+            }
+            if (Reflect.hasField(raw, "PatternID") && Reflect.field(raw, "PatternID") != null) {
+                var v = Std.int(Reflect.field(raw, "PatternID"));
+                if (v > 0) return v;
+            }
+        }
+        try {
+            var g = Api.game;
+            if (g != null && g.world != null && g.world.invTree != null && itemId > 0) {
+                var tItem:Dynamic = Reflect.field(g.world.invTree, Std.string(itemId));
+                if (tItem != null) {
+                    if (Reflect.hasField(tItem, "EnhPatternID") && Reflect.field(tItem, "EnhPatternID") != null)
+                        return Std.int(Reflect.field(tItem, "EnhPatternID"));
+                    if (Reflect.hasField(tItem, "PatternID") && Reflect.field(tItem, "PatternID") != null)
+                        return Std.int(Reflect.field(tItem, "PatternID"));
+                }
+            }
+        } catch (_:Dynamic) {}
         return 0;
     }
 
@@ -32,10 +54,39 @@ class ItemDTO {
     @:getter(enhLevel)
     public function get_enhLevel_prop():Int { return get_enhLevel(); }
     public function get_enhLevel():Int {
-        if (raw == null) return 0;
-        if (Reflect.hasField(raw, "EnhLvl")) return Std.int(Reflect.field(raw, "EnhLvl"));
-        if (Reflect.hasField(raw, "enhLvl")) return Std.int(Reflect.field(raw, "enhLvl"));
-        if (Reflect.hasField(raw, "iLvl")) return Std.int(Reflect.field(raw, "iLvl"));
+        if (raw != null) {
+            if (Reflect.hasField(raw, "EnhLvl") && Reflect.field(raw, "EnhLvl") != null) {
+                var v = Std.int(Reflect.field(raw, "EnhLvl"));
+                if (v > 0) return v;
+            }
+            if (Reflect.hasField(raw, "enhLvl") && Reflect.field(raw, "enhLvl") != null) {
+                var v = Std.int(Reflect.field(raw, "enhLvl"));
+                if (v > 0) return v;
+            }
+        }
+        try {
+            var g = Api.game;
+            if (g != null && g.world != null && g.world.invTree != null && itemId > 0) {
+                var tItem:Dynamic = Reflect.field(g.world.invTree, Std.string(itemId));
+                if (tItem != null) {
+                    if (Reflect.hasField(tItem, "EnhLvl") && Reflect.field(tItem, "EnhLvl") != null) {
+                        var v = Std.int(Reflect.field(tItem, "EnhLvl"));
+                        if (v > 0) return v;
+                    }
+                    if (Reflect.hasField(tItem, "enhLvl") && Reflect.field(tItem, "enhLvl") != null) {
+                        var v = Std.int(Reflect.field(tItem, "enhLvl"));
+                        if (v > 0) return v;
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        var st = (type != null) ? type.toLowerCase() : "";
+        if (st == "enhancement" || st == "scroll") {
+            if (raw != null && Reflect.hasField(raw, "iLvl") && Reflect.field(raw, "iLvl") != null) {
+                return Std.int(Reflect.field(raw, "iLvl"));
+            }
+        }
         return 0;
     }
 
@@ -43,9 +94,28 @@ class ItemDTO {
     @:getter(procId)
     public function get_procId_prop():Int { return get_procId(); }
     public function get_procId():Int {
-        if (raw == null) return 0;
-        if (Reflect.hasField(raw, "ProcID")) return Std.int(Reflect.field(raw, "ProcID"));
-        if (Reflect.hasField(raw, "procID")) return Std.int(Reflect.field(raw, "procID"));
+        if (raw != null) {
+            if (Reflect.hasField(raw, "ProcID") && Reflect.field(raw, "ProcID") != null) {
+                var v = Std.int(Reflect.field(raw, "ProcID"));
+                if (v > 0) return v;
+            }
+            if (Reflect.hasField(raw, "procID") && Reflect.field(raw, "procID") != null) {
+                var v = Std.int(Reflect.field(raw, "procID"));
+                if (v > 0) return v;
+            }
+        }
+        try {
+            var g = Api.game;
+            if (g != null && g.world != null && g.world.invTree != null && itemId > 0) {
+                var tItem:Dynamic = Reflect.field(g.world.invTree, Std.string(itemId));
+                if (tItem != null) {
+                    if (Reflect.hasField(tItem, "ProcID") && Reflect.field(tItem, "ProcID") != null)
+                        return Std.int(Reflect.field(tItem, "ProcID"));
+                    if (Reflect.hasField(tItem, "procID") && Reflect.field(tItem, "procID") != null)
+                        return Std.int(Reflect.field(tItem, "procID"));
+                }
+            }
+        } catch (_:Dynamic) {}
         return 0;
     }
 
