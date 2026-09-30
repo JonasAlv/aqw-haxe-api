@@ -22,6 +22,7 @@ class ScriptBindings {
 
     public static var shortcuts(default, null):Map<String, Dynamic> = new Map();
     private static var _initialized:Bool = false;
+    private static var _mapItemGrabCount:Map<String, Int> = new Map();
 
     public static inline function hasShortcut(name:String):Bool {
         ensureInitialized();
@@ -535,26 +536,55 @@ class ScriptBindings {
                 Api.quest.accept(questId);
                 return false;
             }
-            if (!Api.quest.canComplete(questId)) {
-                if (Std.isOfType(itemIds, Array)) {
-                    var arr:Array<Dynamic> = cast itemIds;
-                    for (id in arr) {
-                        var mid = ApiUtils.parseInt(id, 0);
-                        if (mid > 0) {
-                            Api.map.getMapItem(mid);
-                            break;
-                        }
-                    }
-                } else {
-                    var mid = ApiUtils.parseInt(itemIds, 0);
-                    if (mid > 0) {
-                        Api.map.getMapItem(mid);
+            if (Api.quest.canComplete(questId)) {
+                Api.quest.ensureComplete(questId);
+                var done = Api.quest.hasBeenCompleted(questId);
+                if (done) _mapItemGrabCount.remove(questId + "_" + Std.string(itemIds));
+                return done;
+            }
+
+            // Check if map item requirements are already satisfied (for hybrid quests)
+            var q = Api.quest.get(questId);
+            var allReqs:Array<Dynamic> = (q != null && q.requirements != null) ? q.requirements : [];
+            var missingReqs = Api.quest.getMissingRequirements(questId);
+
+            var grabKey = questId + "_" + Std.string(itemIds);
+            var currentGrabs = _mapItemGrabCount.exists(grabKey) ? _mapItemGrabCount.get(grabKey) : 0;
+
+            var mapItemNeeded = false;
+            if (allReqs.length > 0) {
+                for (req in missingReqs) {
+                    var reqQty:Int = (req.iQty != null) ? Std.int(req.iQty) : ((req.qty != null) ? Std.int(req.qty) : 1);
+                    if (reqQty == amount) {
+                        mapItemNeeded = true;
+                        break;
                     }
                 }
-                return false;
             }
-            Api.quest.ensureComplete(questId);
-            return Api.quest.hasBeenCompleted(questId);
+
+            // If the map item is satisfied or we have already grabbed it amount times in a hybrid quest:
+            if ((!mapItemNeeded || currentGrabs >= amount) && allReqs.length > 1 && missingReqs.length > 0) {
+                return true; // Map item complete! Allow subsequent kill quest to hunt remaining monster drops
+            }
+
+            _mapItemGrabCount.set(grabKey, currentGrabs + 1);
+
+            if (Std.isOfType(itemIds, Array)) {
+                var arr:Array<Dynamic> = cast itemIds;
+                for (id in arr) {
+                    var mid = ApiUtils.parseInt(id, 0);
+                    if (mid > 0) {
+                        Api.map.getMapItem(mid);
+                        break;
+                    }
+                }
+            } else {
+                var mid = ApiUtils.parseInt(itemIds, 0);
+                if (mid > 0) {
+                    Api.map.getMapItem(mid);
+                }
+            }
+            return false;
         });
 
         bind("storyChainQuest", function(questId:Int, mapName:String = null):Bool {

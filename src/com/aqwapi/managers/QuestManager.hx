@@ -16,6 +16,7 @@ class QuestManager {
     private var _questIDs:Array<Dynamic> = [];
     private var _lastTurnIns:Dynamic = {};
     private var _lastLoadRequests:Map<Int, Float> = new Map<Int, Float>();
+    private var _lastGlobalLoadTime:Float = 0;
     private var _lastAcceptTime:Float = 0;
     private var _lastCompleteTime:Float = 0;
     public static inline var ACTION_COOLDOWN_MS:Int = 1100; // 1000ms AQW server cooldown + 100ms lag compensation
@@ -297,11 +298,17 @@ class QuestManager {
     // ==========================================
 
     public function load(questId:Int):Void {
+        if (questId <= 0 || isLoaded(questId)) return;
         var now:Float = ApiTime.now();
+        if (now - _lastGlobalLoadTime < 1000) {
+            return;
+        }
         if (_lastLoadRequests.exists(questId) && (now - _lastLoadRequests.get(questId)) < 1500) {
             return;
         }
+        _lastGlobalLoadTime = now;
         _lastLoadRequests.set(questId, now);
+        _pauseScriptIfRunning();
         if (_game != null && _game.world != null && _game.world.getQuests != null) {
             try {
                 _game.world.getQuests([questId]);
@@ -327,6 +334,11 @@ class QuestManager {
             }
         }
         if (toLoad.length == 0) return;
+        if (now - _lastGlobalLoadTime < 1000) {
+            return;
+        }
+        _lastGlobalLoadTime = now;
+        _pauseScriptIfRunning();
         if (_game != null && _game.world != null && _game.world.getQuests != null) {
             try {
                 _game.world.getQuests(toLoad);
