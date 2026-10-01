@@ -19,7 +19,7 @@ class TransportAdapter {
         try {
             _game.sfc.addEventListener("onExtensionResponse", handleResponse, false, 0, true);
             _isListening = true;
-            ApiLogger.info("Transport", "TransportAdapter listener attached to sfc");
+            ApiLogger.debug("Transport", "TransportAdapter listener attached to sfc");
         } catch (e:Dynamic) {
             ApiLogger.warn("Transport", "Failed to attach sfc listener: " + e);
         }

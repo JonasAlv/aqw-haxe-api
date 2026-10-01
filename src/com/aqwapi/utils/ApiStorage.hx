@@ -164,7 +164,7 @@ class ApiStorage {
                     var sharedDir:Dynamic = docDir.resolvePath("AQWPocket");
                     if (!sharedDir.exists) sharedDir.createDirectory();
                     _dataDir = sharedDir;
-                    ApiLogger.info("Storage", "Android accessible storage path: " + _dataDir.nativePath);
+                    ApiLogger.debug("Storage", "Android accessible storage path: " + _dataDir.nativePath);
                     return _dataDir;
                 }
             } catch (e:Dynamic) {
@@ -178,7 +178,7 @@ class ApiStorage {
                 var direct:Dynamic = untyped FileClass.applicationStorageDirectory;
                 if (direct != null) {
                     _dataDir = direct;
-                    ApiLogger.info("Storage", "Storage path: " + _dataDir.nativePath);
+                    ApiLogger.debug("Storage", "Storage path: " + _dataDir.nativePath);
                     return _dataDir;
                 }
             } catch (_:Dynamic) {}
@@ -186,7 +186,7 @@ class ApiStorage {
             var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
             if (appStorage != null) {
                 _dataDir = appStorage;
-                ApiLogger.info("Storage", "Storage path: " + _dataDir.nativePath);
+                ApiLogger.debug("Storage", "Storage path: " + _dataDir.nativePath);
                 return _dataDir;
             }
         } catch (e:Dynamic) {
@@ -231,7 +231,7 @@ class ApiStorage {
                         var content = readFileStream(src);
                         if (content != null && StringTools.trim(content).length > 0) {
                             writeFileStream(target, content);
-                            ApiLogger.info("Storage", "Seeded " + fname + " to applicationStorageDirectory");
+                            ApiLogger.debug("Storage", "Seeded " + fname + " to applicationStorageDirectory");
                         }
                     }
                 } catch (e:Dynamic) {
@@ -239,11 +239,15 @@ class ApiStorage {
                 }
             }
 
-            // Ensure scripts folder exists in user storage for custom scripts
+            // Ensure scripts and assets folders exist in user storage
             try {
                 var scriptsDir = dir.resolvePath("scripts");
                 if (!scriptsDir.exists) {
                     scriptsDir.createDirectory();
+                }
+                var assetsDir = dir.resolvePath("assets");
+                if (!assetsDir.exists) {
+                    assetsDir.createDirectory();
                 }
             } catch (e:Dynamic) {}
         }
@@ -366,7 +370,7 @@ class ApiStorage {
                         try { target.parent.createDirectory(); } catch (_:Dynamic) {}
                     }
                     if (writeFileStream(target, content)) {
-                        ApiLogger.info("Storage", "Saved " + clean + " to " + target.nativePath);
+                        ApiLogger.debug("Storage", "Saved " + clean + " to " + target.nativePath);
                         return true;
                     }
                 }

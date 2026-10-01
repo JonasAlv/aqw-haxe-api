@@ -162,6 +162,11 @@ class InventoryManager {
             var targetId:Int = ApiUtils.parseInt(targetName, 0);
             var isIdLookup:Bool = targetId > 0;
             var matches:Bool = isIdLookup ? (itemItemId == targetId) : (itemName == targetName);
+            if (!matches && !isIdLookup && itemName != "" && targetName != "") {
+                var cleanItem = StringTools.replace(itemName, "\"", "");
+                var cleanTarget = StringTools.replace(targetName, "\"", "");
+                matches = (cleanItem == cleanTarget);
+            }
             if (matches) {
                 var uniqueKey:String = itemItemId > 0 ? Std.string(itemItemId) : targetName;
                 if (Reflect.hasField(countedNames, uniqueKey)) return 0;

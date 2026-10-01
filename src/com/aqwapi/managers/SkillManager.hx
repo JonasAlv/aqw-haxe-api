@@ -295,6 +295,29 @@ class SkillManager {
         return modes;
     }
 
+    public static function resolveActiveModeName(className:String, desiredMode:String):String {
+        if (className == null || className == "") return "Base";
+        var availableModes = getAvailableModes(className);
+        if (availableModes == null || availableModes.length == 0) return "Base";
+
+        // If user/script specified a concrete mode (not Auto or Current), check if class supports it
+        if (desiredMode != null && desiredMode != "" && desiredMode.toLowerCase() != "auto" && desiredMode.toLowerCase() != "current") {
+            for (m in availableModes) {
+                if (m != null && m.toLowerCase() == desiredMode.toLowerCase()) {
+                    return m; // return with canonical casing
+                }
+            }
+        }
+
+        // Otherwise (or if class doesn't have the desired mode), return the first available mode of that class
+        for (m in availableModes) {
+            if (m != null && m != "" && m.toLowerCase() != "auto") {
+                return m;
+            }
+        }
+        return (availableModes.length > 0) ? availableModes[0] : "Base";
+    }
+
     public static function registerCustomMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String, stopOnTargetAuras:String = null, resetComboOnTargetChange:Null<Bool> = null):Void {
         if (className == null || className == "" || modeName == null || modeName == "") return;
         if (!_skillsLoaded) ensureLoaded(true);
@@ -769,7 +792,7 @@ class SkillManager {
                     _skillsData = SkillDslParser.parse(rawTxt);
                 }
                 compileSkillsData(_skillsData);
-                if (!silent) ApiLogger.info("Skills", "Loaded skills.json successfully!");
+                if (!silent) ApiLogger.debug("Skills", "Loaded skills.json successfully!");
             } else {
                 _skillsData = {};
             }

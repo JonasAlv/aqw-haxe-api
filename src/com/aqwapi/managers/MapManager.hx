@@ -55,6 +55,10 @@ class MapManager {
         if (!isLoaded) return false;
 
         if (mapName != null && mapName != "") {
+            var mLower = mapName.toLowerCase();
+            if (mLower == "house" || mLower == "myhouse") {
+                return ensureHouse();
+            }
             if (!isMap(mapName)) {
                 var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
                 if (inCombat) {
@@ -80,6 +84,22 @@ class MapManager {
 
     public inline function ensureMap(mapName:String, cell:String = null, pad:String = null):Bool {
         return ensure(mapName, cell, pad);
+    }
+
+    public function ensureHouse():Bool {
+        if (Api.player != null && !Api.player.isAlive) return false;
+        if (!isLoaded) return false;
+        if (isHouse()) return true;
+
+        var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
+        if (inCombat) {
+            if (Api.combat != null) Api.combat.dropCombat();
+            _pauseScriptIfRunning(600);
+            return false;
+        }
+
+        joinHouse();
+        return false;
     }
 
     public inline function ensureCell(cell:String, pad:String = null):Bool {
@@ -117,7 +137,7 @@ class MapManager {
             var now2 = ApiTime.now();
             if (now2 - _lastCombatCooldownLogTime >= 2000) {
                 _lastCombatCooldownLogTime = now2;
-                ApiLogger.info("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining " + mapName + "...");
+                ApiLogger.debug("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining " + mapName + "...");
                 ApiTime.delay(remainingMs, function() {
                     join(mapName, cell, pad, force);
                 });
@@ -177,7 +197,7 @@ class MapManager {
             var now2 = ApiTime.now();
             if (now2 - _lastCombatCooldownLogTime >= 2000) {
                 _lastCombatCooldownLogTime = now2;
-                ApiLogger.info("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining house...");
+                ApiLogger.debug("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining house...");
                 ApiTime.delay(remainingMs, function() {
                     joinHouse(username);
                 });

@@ -130,14 +130,18 @@ class SkillCaster {
 
         // 5. Resource guard (MP cost scaled by class multiplier sta.$cmc)
         var rawMp:Int = actObj.mp != null ? ApiUtils.parseInt(actObj.mp, 0) : 0;
-        if (rawMp > 0 && dl != null) {
-            var cmc:Float = 1.0;
-            if (dl.sta != null && Reflect.field(dl.sta, "$cmc") != null) {
-                cmc = ApiUtils.parseFloat(Reflect.field(dl.sta, "$cmc"), 1.0);
+        if (rawMp > 0) {
+            var curDl:Dynamic = (dl != null) ? dl : ((world != null && world.rootClass != null && world.rootClass.sfc != null && world.uoTreeLeaf != null) ? world.uoTreeLeaf(world.rootClass.sfc.myUserName) : null);
+            if (curDl != null) {
+                var cmc:Float = 1.0;
+                if (curDl.sta != null) {
+                    var rawCmc:Dynamic = Reflect.field(curDl.sta, "$cmc");
+                    if (rawCmc != null) cmc = ApiUtils.parseFloat(rawCmc, 1.0);
+                }
+                var effectiveMpCost:Int = Math.round(rawMp * cmc);
+                var curMp:Int = (curDl.intMP != null) ? Std.int(curDl.intMP) : 0;
+                if (curMp < effectiveMpCost) return SR_RESOURCE;
             }
-            var effectiveMpCost:Int = Math.round(rawMp * cmc);
-            var curMp:Int = (dl.intMP != null) ? Std.int(dl.intMP) : 0;
-            if (curMp < effectiveMpCost) return SR_RESOURCE;
         }
 
         // 6. Infinite range check
@@ -154,5 +158,52 @@ class SkillCaster {
             return SR_RESOURCE;
         }
         return SR_FIRED;
+    }
+
+    /**
+     * Directly fires Auto Attack (skill 0) whenever off cooldown.
+     * Auto Attack is completely independent of GCD and skill rotations.
+     * Hitting with Auto Attack regenerates mana, preventing classes from going OOM.
+     */
+    public static function fireAutoAttack(world:Dynamic, avatar:Dynamic):Bool {
+        if (world == null) return false;
+        var actObj:Dynamic = getSkillAction(0);
+        if (actObj == null || actObj.isOK == false) {
+            if (world.getAutoAttack != null) {
+                try { actObj = world.getAutoAttack(); } catch (_:Dynamic) {}
+            }
+        }
+        if (actObj == null) return false;
+
+        var dl:Dynamic = (avatar != null) ? avatar.dataLeaf : null;
+        if (dl != null && dl.intState == 0) return false;
+
+        var timingReady:Bool = false;
+        try { timingReady = (world.actionTimeCheck(actObj) == true); } catch (_:Dynamic) {}
+        if (!timingReady) return false;
+
+        if (dl != null && dl.auras != null && world.auraCatOf != null) {
+            try {
+                var auras:Array<Dynamic> = cast dl.auras;
+                for (aura in auras) {
+                    var cat:String = world.auraCatOf(aura);
+                    if (cat == "stun" || cat == "stone" || cat == "paralyze" || cat == "disable" || cat == "disabled") {
+                        return false;
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        if (Api.combat != null && Api.combat.infiniteRange) {
+            actObj.range = 20000;
+        }
+
+        try {
+            if (world.testAction != null) {
+                world.testAction(actObj);
+                return true;
+            }
+        } catch (_:Dynamic) {}
+        return false;
     }
 }

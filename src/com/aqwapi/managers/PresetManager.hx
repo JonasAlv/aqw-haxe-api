@@ -61,7 +61,7 @@ class PresetManager {
                 _presets.set(lk, items);
             }
             _loaded = true;
-            ApiLogger.info("Presets", "Loaded " + Lambda.count(_presets) + " item presets successfully.");
+            ApiLogger.debug("Presets", "Loaded " + Lambda.count(_presets) + " item presets successfully.");
         } catch (e:Dynamic) {
             ApiLogger.error("Presets", "Error parsing item_presets.json: " + e);
         }

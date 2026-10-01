@@ -54,6 +54,26 @@ class ApiLogger {
 
     private static var _logFile:Dynamic = null;
     private static var _logFileInitialized:Bool = false;
+    private static var _chatSettingChecked:Bool = false;
+
+    public static function syncChatSetting():Void {
+        try {
+            var hsCls:Dynamic = Type.resolveClass("util.HelperSetting");
+            if (hsCls != null && Reflect.field(hsCls, "getBool") != null) {
+                printToChat = hsCls.getBool("api_chat_logging", true);
+            }
+        } catch (_:Dynamic) {}
+    }
+
+    public static function setChatLogging(enabled:Bool):Void {
+        printToChat = enabled;
+        try {
+            var hsCls:Dynamic = Type.resolveClass("util.HelperSetting");
+            if (hsCls != null && Reflect.field(hsCls, "setBool") != null) {
+                hsCls.setBool("api_chat_logging", enabled);
+            }
+        } catch (_:Dynamic) {}
+    }
 
     private static function _resolveLogFile():Dynamic {
         if (_logFileInitialized) return _logFile;
@@ -65,53 +85,77 @@ class ApiLogger {
             var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
             if (fileCls == null || fsCls == null) return null;
 
-            // Priority 1: applicationStorageDirectory/bot.log (guaranteed writable on all AIR desktop/mobile targets)
+            var testCandidate = function(candidate:Dynamic):Dynamic {
+                if (candidate == null) return null;
+                try {
+                    if (candidate.parent != null && !candidate.parent.exists) {
+                        try { candidate.parent.createDirectory(); } catch (_:Dynamic) {}
+                    }
+                    var fs:Dynamic = Type.createInstance(fsCls, []);
+                    if (fs != null) {
+                        fs.open(candidate, "append");
+                        fs.writeUTFBytes("");
+                        fs.close();
+                        flash.Lib.trace("[ApiLogger] Logging to: " + candidate.nativePath);
+                        return candidate;
+                    }
+                } catch (e:Dynamic) {}
+                return null;
+            };
+
+            // Priority 1: Current working directory assets/api.log (Desktop ADL, build/, or game execution folder)
+            try {
+                if (fileCls.currentDirectory != null) {
+                    var c = testCandidate(fileCls.currentDirectory.resolvePath("assets/api.log"));
+                    if (c != null) { _logFile = c; return _logFile; }
+                }
+            } catch (_:Dynamic) {}
+
+            // Priority 2: applicationDirectory nativePath assets/api.log (Desktop bypass for app:/ URI restriction)
+            try {
+                if (fileCls.applicationDirectory != null) {
+                    var appNative:String = fileCls.applicationDirectory.nativePath;
+                    if (appNative != null && appNative != "") {
+                        var fileInst = Type.createInstance(fileCls, [appNative]);
+                        if (fileInst != null) {
+                            var c = testCandidate(fileInst.resolvePath("assets/api.log"));
+                            if (c != null) { _logFile = c; return _logFile; }
+                        }
+                    }
+                }
+            } catch (_:Dynamic) {}
+
+            // Priority 3: ApiStorage shared directory (Android Documents/AQWPocket/assets/api.log)
+            try {
+                var storageCls:Dynamic = Type.resolveClass("com.aqwapi.utils.ApiStorage");
+                if (storageCls != null && Reflect.field(storageCls, "getDataDirectory") != null) {
+                    var dataDir:Dynamic = storageCls.getDataDirectory();
+                    if (dataDir != null) {
+                        var c = testCandidate(dataDir.resolvePath("assets/api.log"));
+                        if (c != null) { _logFile = c; return _logFile; }
+                        var c2 = testCandidate(dataDir.resolvePath("api.log"));
+                        if (c2 != null) { _logFile = c2; return _logFile; }
+                    }
+                }
+            } catch (_:Dynamic) {}
+
+            // Priority 4: applicationStorageDirectory assets/api.log or api.log (guaranteed writable)
             try {
                 if (fileCls.applicationStorageDirectory != null) {
-                    var candidate = fileCls.applicationStorageDirectory.resolvePath("bot.log");
-                    var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null) {
-                        fs.open(candidate, "append");
-                        fs.writeUTFBytes("");
-                        fs.close();
-                        _logFile = candidate;
-                        flash.Lib.trace("[ApiLogger] Logging to appStorage file: " + candidate.nativePath);
-                        return _logFile;
-                    }
+                    var c = testCandidate(fileCls.applicationStorageDirectory.resolvePath("assets/api.log"));
+                    if (c != null) { _logFile = c; return _logFile; }
+                    var c2 = testCandidate(fileCls.applicationStorageDirectory.resolvePath("api.log"));
+                    if (c2 != null) { _logFile = c2; return _logFile; }
                 }
             } catch (_:Dynamic) {}
 
-            // Priority 2: haxe-workspace/bot.log (applicationDirectory.parent.parent)
-            try {
-                if (fileCls.applicationDirectory != null && 
-                    fileCls.applicationDirectory.parent != null && 
-                    fileCls.applicationDirectory.parent.parent != null) {
-                    var candidate = fileCls.applicationDirectory.parent.parent.resolvePath("bot.log");
-                    var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null) {
-                        fs.open(candidate, "append");
-                        fs.writeUTFBytes("");
-                        fs.close();
-                        _logFile = candidate;
-                        flash.Lib.trace("[ApiLogger] Logging to workspace file: " + candidate.nativePath);
-                        return _logFile;
-                    }
-                }
-            } catch (_:Dynamic) {}
-
-            // Priority 3: userDirectory/bot.log
+            // Priority 5: userDirectory/AQWPocket/assets/api.log
             try {
                 if (fileCls.userDirectory != null) {
-                    var candidate = fileCls.userDirectory.resolvePath("bot.log");
-                    var fs:Dynamic = Type.createInstance(fsCls, []);
-                    if (fs != null) {
-                        fs.open(candidate, "append");
-                        fs.writeUTFBytes("");
-                        fs.close();
-                        _logFile = candidate;
-                        flash.Lib.trace("[ApiLogger] Logging to userDir file: " + candidate.nativePath);
-                        return _logFile;
-                    }
+                    var c = testCandidate(fileCls.userDirectory.resolvePath("AQWPocket/assets/api.log"));
+                    if (c != null) { _logFile = c; return _logFile; }
+                    var c2 = testCandidate(fileCls.userDirectory.resolvePath("api.log"));
+                    if (c2 != null) { _logFile = c2; return _logFile; }
                 }
             } catch (_:Dynamic) {}
         } catch (_:Dynamic) {}
@@ -138,6 +182,11 @@ class ApiLogger {
     }
 
     public static function log(tag:String, msgLevel:Int, message:String):Void {
+        if (!_chatSettingChecked) {
+            _chatSettingChecked = true;
+            syncChatSetting();
+        }
+
         if (msgLevel < level) return;
 
         var levelStr:String = switch (msgLevel) {
@@ -214,6 +263,52 @@ class ApiLogger {
                 #end
             }
         } catch (e:Dynamic) {}
+    }
+
+    public static function readLog(maxBytes:Int = 500000):String {
+        try {
+            var f = _resolveLogFile();
+            if (f != null) {
+                #if flash
+                var fsCls:Dynamic = untyped __global__["flash.filesystem.FileStream"];
+                if (fsCls != null) {
+                    var fs:Dynamic = Type.createInstance(fsCls, []);
+                    if (fs != null && Reflect.field(fs, "open") != null) {
+                        fs.open(f, "read");
+                        var len:Float = fs.bytesAvailable;
+                        if (len <= 0) {
+                            fs.close();
+                            return "";
+                        }
+                        var toRead:Int = (len > maxBytes) ? maxBytes : Std.int(len);
+                        if (len > maxBytes) {
+                            fs.position = len - maxBytes;
+                        }
+                        var text:String = fs.readUTFBytes(toRead);
+                        fs.close();
+                        return text;
+                    }
+                }
+                #end
+            }
+        } catch (e:Dynamic) {}
+        return "";
+    }
+
+    public static function copyToClipboard():Bool {
+        try {
+            var content = readLog();
+            if (content == null || content.length == 0) {
+                return false;
+            }
+            #if flash
+            flash.system.System.setClipboard(content);
+            return true;
+            #else
+            return false;
+            #end
+        } catch (_:Dynamic) {}
+        return false;
     }
 
     public static function pushChat(type:String, text:String, sender:String = "API"):Void {

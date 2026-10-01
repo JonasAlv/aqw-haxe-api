@@ -39,7 +39,7 @@ class BlacklistManager {
             } catch (e:Dynamic) {}
         }
         _loaded = true;
-        ApiLogger.info("Blacklist", "Loaded " + Lambda.count(_list) + " blacklisted items.");
+        ApiLogger.debug("Blacklist", "Loaded " + Lambda.count(_list) + " blacklisted items.");
     }
 
     public function save():Void {

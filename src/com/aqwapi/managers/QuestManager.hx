@@ -477,7 +477,7 @@ class QuestManager {
         }
         var nextId:Int = (next.ItemID != null) ? Std.int(next.ItemID) : ((next.id != null) ? Std.int(next.id) : -1);
         var nextName:String = (next.sName != null) ? Std.string(next.sName) : ((next.name != null) ? Std.string(next.name) : Std.string(nextId));
-        ApiLogger.info("Quest", "Selected reward: " + nextName);
+        ApiLogger.debug("Quest", "Selected reward: " + nextName);
         return ensureComplete(questId, nextId);
     }
 

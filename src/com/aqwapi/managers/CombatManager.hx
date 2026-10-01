@@ -188,7 +188,14 @@ class CombatManager {
         }
 
         CombatEngine.smartClass = confClass;
-        this.mode = confMode;
+        var effClass = (confClass != null && confClass != "" && confClass.toLowerCase() != "current") ? confClass : SkillManager.getCurrentClassName();
+        if (effClass != "") {
+            this.mode = SkillManager.resolveActiveModeName(effClass, confMode);
+            CombatEngine.skillMode = this.mode;
+        } else {
+            this.mode = confMode;
+            CombatEngine.skillMode = confMode;
+        }
 
         if (needsEquip && Api.inventory != null) {
             com.aqwapi.utils.ApiLogger.info("Combat", "Equipping '" + confClass + "' before starting Smart Combat...");
@@ -260,7 +267,7 @@ class CombatManager {
         _huntMonAliveMap = new Map();
     }
 
-    public function hunt(monsterName:String, itemOrCount:Dynamic = null, quantityOrCallback:Dynamic = 1, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
+    public function hunt(monsterName:String, itemOrCount:Dynamic = null, quantityOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
         var targetMMID:Dynamic = null;
         var isKillCount:Bool = false;
         var targetKills:Int = 0;
@@ -291,8 +298,8 @@ class CombatManager {
             if (Std.isOfType(itemOrCount, Int) || Std.isOfType(itemOrCount, Float)) {
                 isKillCount = true;
                 targetKills = Std.int(itemOrCount);
-                if (targetMMID == null && targetQuantity > 1 && !Reflect.isFunction(quantityOrCallback)) {
-                    targetMMID = targetQuantity;
+                if (targetMMID == null && quantityOrCallback != null && !Reflect.isFunction(quantityOrCallback)) {
+                    targetMMID = quantityOrCallback;
                 }
             } else if (Std.isOfType(itemOrCount, Array)) {
                 isArrayItems = true;
@@ -489,8 +496,9 @@ class CombatManager {
                     if (wasAlive && !isAliveNow) {
                         _huntMonAliveMap.set(key, false);
                         _huntCurrentKills++;
-                        ApiLogger.info("Combat", "Hunt kill: " + monsterName + (targetMMID != null ? (" [MMID " + targetMMID + "]") : "") + " (" + _huntCurrentKills + "/" + _huntTargetKills + ")");
+                        ApiLogger.debug("Combat", "Hunt kill: " + monsterName + (targetMMID != null ? (" [MMID " + targetMMID + "]") : "") + " (" + _huntCurrentKills + "/" + _huntTargetKills + ")");
                         if (_huntCurrentKills >= _huntTargetKills) {
+                            ApiLogger.info("Combat", "Hunt complete: " + monsterName + " (" + _huntTargetKills + "/" + _huntTargetKills + ")");
                             CombatEngine.targetName = null;
                             CombatEngine.lockedMMID = null;
                             _huntMonAliveMap = new Map();
@@ -515,8 +523,9 @@ class CombatManager {
                 if (_huntMonAliveMap.get(key) == true && !seenThisTick.exists(key)) {
                     _huntMonAliveMap.set(key, false);
                     _huntCurrentKills++;
-                    ApiLogger.info("Combat", "Hunt kill: " + monsterName + (targetMMID != null ? (" [MMID " + targetMMID + "]") : "") + " (" + _huntCurrentKills + "/" + _huntTargetKills + ")");
+                    ApiLogger.debug("Combat", "Hunt kill: " + monsterName + (targetMMID != null ? (" [MMID " + targetMMID + "]") : "") + " (" + _huntCurrentKills + "/" + _huntTargetKills + ")");
                     if (_huntCurrentKills >= _huntTargetKills) {
+                        ApiLogger.info("Combat", "Hunt complete: " + monsterName + " (" + _huntTargetKills + "/" + _huntTargetKills + ")");
                         CombatEngine.targetName = null;
                         CombatEngine.lockedMMID = null;
                         _huntMonAliveMap = new Map();
@@ -544,7 +553,7 @@ class CombatManager {
         return false;
     }
 
-    public function kill(monsterName:String, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
+    public function kill(monsterName:String, itemOrCount:Dynamic = null, quantity:Dynamic = null, mmid:Dynamic = null):Bool {
         return hunt(monsterName, itemOrCount, quantity, mmid);
     }
 
@@ -617,8 +626,18 @@ class CombatManager {
         else if (type == "boss") { c = CombatEngine.bossClass; m = CombatEngine.bossMode; }
         else if (type == "dodge") { c = CombatEngine.dodgeClass; m = CombatEngine.dodgeMode; }
         else return false;
-        if (c != null && c != "" && c != "Current" && Api.inventory != null) Api.inventory.equip(c);
-        com.aqwapi.modules.CombatEngine.smartClass = (c != null && c != "") ? c : "Current";
+
+        var isCurrent = (c == null || c == "" || c.toLowerCase() == "current");
+        if (!isCurrent && Api.inventory != null) {
+            Api.inventory.equip(c);
+        }
+
+        com.aqwapi.modules.CombatEngine.smartClass = isCurrent ? "Current" : c;
+
+        var effClass = isCurrent ? SkillManager.getCurrentClassName() : c;
+        if (effClass != "") {
+            m = SkillManager.resolveActiveModeName(effClass, m);
+        }
         if (m != null && m != "") com.aqwapi.modules.CombatEngine.skillMode = m;
         return true;
     }

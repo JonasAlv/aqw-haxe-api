@@ -177,11 +177,12 @@ class HScriptEngine {
             return;
         }
 
-        // Truncate bot.log to start fresh on every script run
+        // Truncate api.log to start fresh on every script run
         ApiLogger.clearLog();
 
         isRunning = true;
         waitTimer = 0;
+        ScriptBindings.resetStoryData();
 
         // Save current user settings before overriding
         _savedInfiniteRange = (Api.combat != null) ? Api.combat.infiniteRange : false;
@@ -237,6 +238,7 @@ class HScriptEngine {
         if (Api.inventory != null) {
             Api.inventory.clearBankQueue();
         }
+        ScriptBindings.resetStoryData();
 
         if (_hasOnStop) {
             try {

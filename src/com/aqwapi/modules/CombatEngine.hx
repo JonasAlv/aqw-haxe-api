@@ -68,10 +68,18 @@ class CombatEngine {
         IS_ON = true;
 
         var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : "Current";
-        if (confClass == "Current") {
-            if (skillMode == null || skillMode == "") {
-                skillMode = "Auto";
+        var isCurrentClass = (confClass == "Current");
+        var activeClass = isCurrentClass ? SkillManager.getCurrentClassName() : confClass;
+        if (activeClass == "" && Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null && Api.game.world.myAvatar.objData != null) {
+            if (Api.game.world.myAvatar.objData.strClassName != null) {
+                activeClass = Std.string(Api.game.world.myAvatar.objData.strClassName);
             }
+        }
+
+        if (smart && activeClass != "") {
+            skillMode = SkillManager.resolveActiveModeName(activeClass, skillMode);
+            _lastDetectedClass = activeClass;
+        } else if (confClass == "Current") {
             _lastDetectedClass = "";
         }
 
@@ -90,7 +98,7 @@ class CombatEngine {
 
         if (!silent) {
             if (smart) {
-                var c = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : SkillManager.getCurrentClassName();
+                var c = (activeClass != "") ? activeClass : SkillManager.getCurrentClassName();
                 var took = Math.round(ApiTime.now() - t0);
                 ApiLogger.info("Combat", "Smart combat started in " + took + "ms. Class: '" + c + "', Mode: '" + skillMode + "'");
             } else {
@@ -213,15 +221,17 @@ class CombatEngine {
             if (target.pMC == null || target.dataLeaf == null || target.objData == null) isInvalid = true;
             else if (target.dataLeaf.intHP != null && target.dataLeaf.intHP <= 0) isInvalid = true;
             else if (target.dataLeaf.intState != null && target.dataLeaf.intState == 0) isInvalid = true;
-            else if (targetName != null && targetName != "*" && targetName != "") {
+            else {
                 var ent = new EntityDTO(target);
-                if (ent.name != "" && ent.name.toLowerCase().indexOf(targetName.toLowerCase()) == -1) {
-                    isInvalid = true;
+                if (targetName != null && targetName != "*" && targetName != "") {
+                    if (ent.name != "" && ent.name.toLowerCase().indexOf(targetName.toLowerCase()) == -1) {
+                        isInvalid = true;
+                    }
                 }
-            } else if (lockedMMID != null) {
-                var ent = new EntityDTO(target);
-                if (ent.mapId != lockedMMID) {
-                    isInvalid = true;
+                if (!isInvalid && lockedMMID != null) {
+                    if (ent.mapId != lockedMMID) {
+                        isInvalid = true;
+                    }
                 }
             }
 
@@ -310,11 +320,9 @@ class CombatEngine {
                         try { untyped world.approachTarget(); } catch (_:Dynamic) {}
                     }
                 } else {
-                    // Only initiate Auto Attack if player is not already in combat
-                    var isAAActive:Bool = (avatar.dataLeaf != null && avatar.dataLeaf.intState >= 2);
-                    if (!isAAActive && !SkillCaster.isGcdActive(world)) {
-                        SkillCaster.fireSkill(world, avatar, 0);
-                    }
+                    // Auto Attack (skill 0) is completely independent of GCD and skill rotations.
+                    // Always fire whenever ready (out of CD) to damage target and regenerate mana.
+                    SkillCaster.fireAutoAttack(world, avatar);
                 }
             } catch (_:Dynamic) {}
 
@@ -324,6 +332,16 @@ class CombatEngine {
                 ApiLogger.error("Combat", "Advanced rotation error: " + rotErr);
             }
         } else {
+            try {
+                if (shouldApproachTarget(world)) {
+                    if (world.approachTarget != null) {
+                        try { untyped world.approachTarget(); } catch (_:Dynamic) {}
+                    }
+                } else {
+                    SkillCaster.fireAutoAttack(world, avatar);
+                }
+            } catch (_:Dynamic) {}
+
             runSimpleRotation(world, avatar);
         }
     }
@@ -334,17 +352,9 @@ class CombatEngine {
         var className:String = isCurrentClass ? SkillManager.getCurrentClassName() : confClass;
 
         if (isCurrentClass && className != "") {
-            if (_lastDetectedClass == "") {
+            if (_lastDetectedClass == "" || _lastDetectedClass != className) {
                 _lastDetectedClass = className;
-                if (skillMode == null || skillMode == "") {
-                    skillMode = "Auto";
-                }
-            } else if (_lastDetectedClass != className) {
-                _lastDetectedClass = className;
-                var avail = SkillManager.getAvailableModes(className);
-                if (skillMode != "Auto" && avail.indexOf(skillMode) == -1) {
-                    skillMode = "Auto";
-                }
+                skillMode = SkillManager.resolveActiveModeName(className, skillMode);
                 activeModeConfig = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
             }
         }
