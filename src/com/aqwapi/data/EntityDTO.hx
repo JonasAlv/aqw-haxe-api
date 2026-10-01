@@ -1,6 +1,7 @@
 package com.aqwapi.data;
 
 import com.aqwapi.Api;
+import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 
 class EntityDTO {
@@ -296,7 +297,7 @@ class EntityDTO {
         var ts:Float = (tsVal != null) ? ApiUtils.parseFloat(tsVal, 0.0) : 0.0;
         if (ts <= 0) return dur;
         var tsMs:Float = (ts < 10000000000.0) ? (ts * 1000.0) : ts;
-        var nowMs:Float = Date.now().getTime();
+        var nowMs:Float = ApiTime.epochMs();
         var rem:Float = (tsMs + (dur * 1000.0) - nowMs) / 1000.0;
         return rem > 0 ? rem : 0.0;
     }

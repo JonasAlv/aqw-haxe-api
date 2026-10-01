@@ -584,7 +584,7 @@ class QuestManager {
         if (_game.world.lock != null) {
             try {
                 var lObj:Dynamic = Reflect.field(_game.world.lock, "acceptQuest");
-                if (lObj != null) lObj.ts = Date.now().getTime();
+                if (lObj != null) lObj.ts = ApiTime.epochMs();
             } catch (e:Dynamic) {}
         }
 
@@ -626,7 +626,7 @@ class QuestManager {
         if (_game.world.lock != null) {
             try {
                 var lObj:Dynamic = Reflect.field(_game.world.lock, "tryQuestComplete");
-                if (lObj != null) lObj.ts = Date.now().getTime();
+                if (lObj != null) lObj.ts = ApiTime.epochMs();
             } catch (e:Dynamic) {}
         }
 

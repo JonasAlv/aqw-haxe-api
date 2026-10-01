@@ -2,6 +2,7 @@ package com.aqwapi.managers;
 
 import com.aqwapi.Api;
 import com.aqwapi.Game;
+import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 
 class AuraManager {
@@ -143,7 +144,7 @@ class AuraManager {
                     return;
                 }
                 var tsMs:Float = (ts < 10000000000.0) ? (ts * 1000.0) : ts;
-                var nowMs:Float = Date.now().getTime();
+                var nowMs:Float = ApiTime.epochMs();
                 var rem:Float = (tsMs + (dur * 1000.0) - nowMs) / 1000.0;
                 if (rem > maxRemaining) maxRemaining = rem;
             }

@@ -22,6 +22,31 @@ class ApiTime {
         #end
     }
 
+    /**
+     * Epoch timestamp in milliseconds (wall-clock time).
+     * Works seamlessly in Flash, JS, and Sys targets.
+     */
+    public static inline function epochMs():Float {
+        #if flash
+        return untyped __new__(__global__["Date"]).getTime();
+        #elseif js
+        return js.lib.Date.now();
+        #else
+        return Sys.time() * 1000.0;
+        #end
+    }
+
+    /**
+     * Returns a native Date object representing the current moment.
+     */
+    public static inline function currentDate():Dynamic {
+        #if flash
+        return untyped __new__(__global__["Date"]);
+        #else
+        return Date.now();
+        #end
+    }
+
     public static inline function getTimer():Int {
         #if flash
         return Lib.getTimer();

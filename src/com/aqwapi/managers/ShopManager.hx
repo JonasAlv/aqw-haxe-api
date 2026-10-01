@@ -34,7 +34,7 @@ class ShopManager {
         if (_game.world.lock != null) {
             try {
                 var lObj:Dynamic = Reflect.field(_game.world.lock, "buyItem");
-                if (lObj != null) lObj.ts = Date.now().getTime();
+                if (lObj != null) lObj.ts = com.aqwapi.utils.ApiTime.epochMs();
             } catch (e:Dynamic) {}
         }
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
@@ -81,7 +81,7 @@ class ShopManager {
         if (_game.world.lock != null) {
             try {
                 var lObj:Dynamic = Reflect.field(_game.world.lock, "sellItem");
-                if (lObj != null) lObj.ts = Date.now().getTime();
+                if (lObj != null) lObj.ts = com.aqwapi.utils.ApiTime.epochMs();
             } catch (e:Dynamic) {}
         }
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);

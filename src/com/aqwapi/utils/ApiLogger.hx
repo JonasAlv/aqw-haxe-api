@@ -166,7 +166,7 @@ class ApiLogger {
 
     public static function getTimestamp(full:Bool = true):String {
         try {
-            var d = Date.now();
+            var d:Dynamic = ApiTime.currentDate();
             var h = StringTools.lpad(Std.string(d.getHours()), "0", 2);
             var m = StringTools.lpad(Std.string(d.getMinutes()), "0", 2);
             var s = StringTools.lpad(Std.string(d.getSeconds()), "0", 2);
