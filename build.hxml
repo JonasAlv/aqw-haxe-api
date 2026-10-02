@@ -2,7 +2,6 @@
 -D air
 -swf-version 40
 -debug
--dce no
 -lib hscript
 -resource ../aqw-haxe-ui/loader/assets/skills.json@default_skills
 -resource ../aqw-haxe-ui/loader/assets/userSkills.json@default_user_skills
