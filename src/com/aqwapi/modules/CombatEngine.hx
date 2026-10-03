@@ -44,13 +44,11 @@ class CombatEngine {
     private static var _sequenceStepStartTime:Float = 0;
     private static var _skillIndex:Int = 0;
     private static var _skillWaitStart:Float = 0;
-    private static var _stepFirstFailTime:Float = -1;
     private static var _lastTimeoutSkipLogTime:Float = -10000;
     private static var _lastTargetMMID:String = null;
     private static var _targetChanged:Bool = false;
     private static var _lastDetectedClass:String = "";
     private static var _pausedByTargetAura:Bool = false;
-    private static var _waitUntil:Dynamic = {};
     private static var _lastFallbackWarnTime:Float = 0;
 
     /**
@@ -124,10 +122,9 @@ class CombatEngine {
         _sequenceStepStartTime = ApiTime.now();
         _skillIndex = 0;
         _skillWaitStart = ApiTime.now();
-        _stepFirstFailTime = -1;
         _targetChanged = false;
         _pausedByTargetAura = false;
-        _waitUntil = {};
+        Api.skillLastFired = new Map<Int, Float>();
 
         if (_timer != null && !_timer.running) {
             _timer.start();
@@ -393,7 +390,9 @@ class CombatEngine {
             _lastTargetMMID = curTargetMMID;
             _targetChanged = true;
             _skillWaitStart = ApiTime.now();
-            _stepFirstFailTime = -1;
+            // Drop reactive combat state: a hit resolved against the PREVIOUS monster must
+            // not be able to satisfy an `afterMobAtk` rule on the new one.
+            Api.clearIncomingAttackState();
         }
 
         // Resolve the genuine Auto Attack once per tick and share it with both
@@ -546,7 +545,6 @@ class CombatEngine {
         if (_targetChanged && resetOnTarget) {
             _skillIndex = 0;
             _skillWaitStart = ApiTime.now();
-            _stepFirstFailTime = -1;
             _targetChanged = false;
         }
 
@@ -575,7 +573,6 @@ class CombatEngine {
         if (skillId < 0 || skillId > 5) {
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = ApiTime.now();
-            _stepFirstFailTime = -1;
             return;
         }
 
@@ -584,31 +581,39 @@ class CombatEngine {
         if (actObj == null || actObj.isOK == false) {
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = ApiTime.now();
-            _stepFirstFailTime = -1;
             return;
         }
 
-        var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
+        // Rules are evaluated ONLY when the skill could actually be cast this tick.
+        //
+        // This ordering is deliberate. The GCD is ~1500ms against a 100ms tick, so for 15
+        // ticks after every cast the engine is locked out. Evaluating rules during that
+        // window used to let the `wait(ms)` rule arm its timer on a tick that then returned
+        // at the GCD check without ever casting, permanently skipping the skill - which
+        // silently broke Naval Commander, Legendary/Heroic Naval Commander, The Collector
+        // and Arcane Dark Caster.
+        if (SkillCaster.isGcdActive(world)) return;
+
+        var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId);
         var now:Float = ApiTime.now();
 
-        // If rule condition is not met (e.g. hp < 50%), skip to next skill in combo
+        // Rule conditions are SKIP conditions, not wait conditions. A failing rule moves on
+        // to the next step; `timeout` only caps how long a slot may hold the rotation while
+        // the skill itself is blocked (cooldown / mana) further below.
         if (!rulesPass) {
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
-            _stepFirstFailTime = -1;
             return;
         }
-        _stepFirstFailTime = -1;
-
-        // If game GCD is active, wait without advancing
-        if (SkillCaster.isGcdActive(world)) return;
 
         var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
         if (fireResult == SkillCaster.SR_FIRED) {
+            // Commit the cast. `wait(ms)` budgets are recorded here and nowhere else, so a
+            // wait is never consumed by a tick on which the skill could not be cast.
+            Api.noteSkillFired(skillId, now);
             // Successfully fired, advance to next skill
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
-            _stepFirstFailTime = -1;
             return;
         }
 
@@ -633,7 +638,6 @@ class CombatEngine {
             }
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
-            _stepFirstFailTime = -1;
             return;
         }
 
@@ -641,7 +645,6 @@ class CombatEngine {
         if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
-            _stepFirstFailTime = -1;
             return;
         }
 
@@ -657,8 +660,13 @@ class CombatEngine {
             if (skill == null) continue;
             var skillId:Int = (skill.skillId != null) ? ApiUtils.parseInt(skill.skillId, -1) : ((skill.idx != null) ? ApiUtils.parseInt(skill.idx, -1) : -1);
             if (skillId < 0 || skillId > 5) continue;
-            if (!SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil)) continue;
-            if (SkillCaster.fireSkill(world, avatar, skillId) == SkillCaster.SR_FIRED) return;
+            if (!SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId)) continue;
+            if (SkillCaster.fireSkill(world, avatar, skillId) == SkillCaster.SR_FIRED) {
+                // Commit only on a real cast, so a `wait(ms)` budget is never consumed by a
+                // skill that merely passed its rules and then failed on cooldown or mana.
+                Api.noteSkillFired(skillId, now);
+                return;
+            }
         }
     }
 

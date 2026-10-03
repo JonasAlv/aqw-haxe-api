@@ -204,7 +204,60 @@ class SkillDslParser {
             };
         }
 
-        // 2. Target Health: target:hp, tgt:hp, target_hp, target.hp, mon:hp, target:health
+        // 2. Target crowd control: targetCC / targetcc / mobCC, optionally negated with !
+        // True while the CURRENT target is hard-CC'd (stun/stone/paralyze/disable).
+        if (lower == "targetcc" || lower == "targetstun" || lower == "mobcc") {
+            return { type: "TargetCC", negate: false };
+        }
+        if (lower == "!targetcc" || lower == "!targetstun" || lower == "!mobcc") {
+            return { type: "TargetCC", negate: true };
+        }
+
+        // 3. Predictive counter: mobAtkIn:500 / mobAtkIn(500)
+        // True when the monster's LEARNED attack cadence says a swing is due within the
+        // window. Suppressed (treated as false) until the predictor has enough samples and
+        // a tight enough spread, so this silently degrades to normal priority execution
+        // rather than committing a dodge weave to an unreliable rhythm.
+        if (StringTools.startsWith(lower, "mobatkin")) {
+            var cleanIn:String = StringTools.replace(lower, "(", ":");
+            cleanIn = StringTools.replace(cleanIn, ")", "");
+            var inParts:Array<String> = cleanIn.split(":");
+            var inWin:Int = 500;
+            if (inParts.length > 1) inWin = ApiUtils.parseInt(StringTools.trim(inParts[1]), 500);
+            return { type: "MobAtkIn", window: inWin };
+        }
+
+        // 4. Reactive counter, against the server's own action resolution:
+        //   afterMobAtk:<windowMs>[:any|evaded][:<minDamage>]
+        //   afterMobAtk(<windowMs>, any, <minDamage>)
+        // Default requires an EVADED outcome (miss/dodge/parry). ":any" also accepts hits,
+        // and a trailing number only reacts when the hit did at least that much damage.
+        // Only meaningful in UseIfAvailable - in WaitForCooldown a failing rule advances
+        // the combo index and skips the step entirely.
+        if (StringTools.startsWith(lower, "aftermobatk") || StringTools.startsWith(lower, "mobatk")) {
+            // Normalise every accepted separator to a colon so a single split handles both
+            // forms: "aftermobatk(2000, any, 200)" and "aftermobatk:2000:any:200".
+            var cleanRule:String = lower;
+            for (sep in ["(", ")", ","]) cleanRule = StringTools.replace(cleanRule, sep, ":");
+            var parts:Array<String> = cleanRule.split(":");
+
+            var windowMs:Int = 1000;
+            var evadedOnly:Bool = true;
+            var minDmg:Int = 0;
+
+            if (parts.length > 1) windowMs = ApiUtils.parseInt(StringTools.trim(parts[1]), 1000);
+            if (parts.length > 2) evadedOnly = (StringTools.trim(parts[2]) != "any");
+            if (parts.length > 3) minDmg = ApiUtils.parseInt(StringTools.trim(parts[3]), 0);
+
+            return {
+                type: "AfterMobAtk",
+                window: windowMs,
+                evadedOnly: evadedOnly,
+                minDmg: minDmg
+            };
+        }
+
+        // 3. Target Health: target:hp, tgt:hp, target_hp, target.hp, mon:hp, target:health
         if (StringTools.startsWith(lower, "target:hp") || StringTools.startsWith(lower, "tgt:hp") ||
             StringTools.startsWith(lower, "target_hp") || StringTools.startsWith(lower, "target.hp") ||
             StringTools.startsWith(lower, "tgt_hp") || StringTools.startsWith(lower, "mon:hp") ||

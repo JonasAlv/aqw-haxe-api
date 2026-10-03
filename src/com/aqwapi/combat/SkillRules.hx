@@ -6,7 +6,7 @@ import com.aqwapi.utils.ApiUtils;
 
 class SkillRules {
 
-    public static function evaluateSkillRules(skill:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int, waitUntil:Dynamic):Bool {
+    public static function evaluateSkillRules(skill:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int):Bool {
         if (skill == null || skill.rules == null) return true;
         var rules:Dynamic = skill.rules;
         if (!Std.isOfType(rules, Array)) return true;
@@ -19,7 +19,7 @@ class SkillRules {
         if (multiAuraOp == "OR") {
             var anyPassed:Bool = false;
             for (rule in arr) {
-                if (evaluateRule(rule, world, avatar, target, pStats, skillId, waitUntil)) {
+                if (evaluateRule(rule, world, avatar, target, pStats, skillId)) {
                     anyPassed = true;
                     break;
                 }
@@ -27,28 +27,81 @@ class SkillRules {
             return anyPassed;
         } else {
             for (rule in arr) {
-                if (!evaluateRule(rule, world, avatar, target, pStats, skillId, waitUntil)) return false;
+                if (!evaluateRule(rule, world, avatar, target, pStats, skillId)) return false;
             }
             return true;
         }
     }
 
-    public static function evaluateRule(rule:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, pStats:Dynamic, skillId:Int, waitUntil:Dynamic):Bool {
+    public static function evaluateRule(rule:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, pStats:Dynamic, skillId:Int):Bool {
         if (rule == null) return true;
         switch (Std.string(rule.type)) {
             case "None":
                 return true;
 
-            case "Wait":
-                var wKey:String = "s" + skillId;
-                var now:Float = ApiTime.now();
-                var timeout:Float = rule.timeout != null ? ApiUtils.parseInt(rule.timeout, 0) : 0;
-                var waitVal:Null<Float> = (waitUntil != null) ? Reflect.field(waitUntil, wKey) : null;
-                if (waitVal == null || now >= waitVal) {
-                    if (waitUntil != null) Reflect.setField(waitUntil, wKey, now + timeout);
-                    return true;
+            case "TargetCC":
+                // True while the current target is hard crowd-controlled. Uses the same
+                // authoritative aura-category signal as the player CC guard, so the two
+                // can never disagree about what counts as CC.
+                var targetCc:Bool = hasHardCc(target, world);
+                return (rule.negate == true) ? !targetCc : targetCc;
+
+            case "MobAtkIn":
+                // Predictive: fires only when the learned cadence says a swing is imminent.
+                // A null prediction means the predictor has too few samples or the spread is
+                // too wide, which returns false so ordinary priority execution takes over.
+                var mobWin:Float = (rule.window != null) ? ApiUtils.parseFloat(rule.window, 500.0) : 500.0;
+                var eta:Null<Float> = AttackCadence.timeUntilNext(ApiTime.now());
+                if (eta == null) {
+                    AttackCadence.warnUnstableOnce();
+                    return false;
                 }
-                return false;
+                return eta <= mobWin;
+
+            case "Wait":
+                // READ-ONLY. Previously this armed a timestamp as a side effect of being
+                // evaluated, which meant a skill could burn its whole wait budget without
+                // ever being cast - most visibly when the GCD returned between evaluation
+                // and the cast. The budget is now committed by Api.noteSkillFired only on
+                // a real SR_FIRED.
+                var waitMs:Float = (rule.timeout != null) ? ApiUtils.parseFloat(rule.timeout, 0.0) : 0.0;
+                if (waitMs <= 0) return true;
+                if (!Api.skillLastFired.exists(skillId)) return true;
+                return (ApiTime.now() - Api.skillLastFired.get(skillId)) >= waitMs;
+
+            case "AfterMobAtk":
+                // Reactive counter. Only usable in `UseIfAvailable` mode - in
+                // WaitForCooldown a failing rule advances _skillIndex and skips the step.
+                if (Api.lastIncomingAttackAt <= 0) return false;
+
+                var sinceAttack:Float = ApiTime.now() - Api.lastIncomingAttackAt;
+                var winMs:Float = (rule.window != null) ? ApiUtils.parseFloat(rule.window, 1000.0) : 1000.0;
+                if (sinceAttack > winMs) return false;
+
+                // Ignore hits that came from something other than the current target.
+                if (target != null && Api.lastIncomingAttackerMMID != "") {
+                    var curMMID:String = null;
+                    if (target.dataLeaf != null && target.dataLeaf.MonMapID != null) curMMID = Std.string(target.dataLeaf.MonMapID);
+                    else if (target.objData != null && target.objData.MonMapID != null) curMMID = Std.string(target.objData.MonMapID);
+                    if (curMMID != null && curMMID != Api.lastIncomingAttackerMMID) return false;
+                }
+
+                // Damage gate: only react when the hit actually hurt.
+                var minDmg:Int = (rule.minDmg != null) ? ApiUtils.parseInt(rule.minDmg, 0) : 0;
+                if (minDmg > 0 && Api.lastIncomingAttackHp < minDmg) return false;
+
+                // Default to requiring an evaded outcome. Coerce defensively because a rule
+                // authored through the UI/JSON may carry the flag as a string or int.
+                var evadedOnly:Bool = true;
+                if (rule.evadedOnly != null) {
+                    var raw:Dynamic = rule.evadedOnly;
+                    evadedOnly = !(raw == false || raw == 0 || raw == "false" || raw == "0");
+                }
+                if (evadedOnly) {
+                    var t:String = Api.lastIncomingAttackType;
+                    if (t != "miss" && t != "dodge" && t != "parry") return false;
+                }
+                return true;
 
             case "Health":
                 var hp:Float = getStat(pStats, avatar, "HP");
@@ -146,6 +199,45 @@ class SkillRules {
     public static function getPlayerStats(world:Dynamic, avatar:Dynamic):Dynamic {
         try { if (world.uoTreeLeaf != null && avatar.pnm != null) return world.uoTreeLeaf(avatar.pnm); } catch (_:Dynamic) {}
         return null;
+    }
+
+    /**
+     * True when the given entity is hard crowd-controlled.
+     *
+     * Reads aura CATEGORIES via the client's own `auraCatOf`, which normalises the server-sent
+     * `aura.cat` field. The five literals below are the complete set the client itself
+     * compares against when deciding whether an action is blocked.
+     */
+    public static function hasHardCc(entity:Dynamic, world:Dynamic):Bool {
+        if (entity == null || world == null || world.auraCatOf == null) return false;
+        var auras:Dynamic = null;
+        try {
+            if (entity.dataLeaf != null) auras = entity.dataLeaf.auras;
+        } catch (_:Dynamic) {}
+        if (auras == null) return false;
+        try {
+            if (Std.isOfType(auras, Array)) {
+                for (aura in (cast auras : Array<Dynamic>)) {
+                    if (hasCcCategory(aura, world)) return true;
+                }
+            } else {
+                for (k in Reflect.fields(auras)) {
+                    if (hasCcCategory(Reflect.field(auras, k), world)) return true;
+                }
+            }
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    private static function hasCcCategory(aura:Dynamic, world:Dynamic):Bool {
+        if (aura == null) return false;
+        try {
+            var cat:String = world.auraCatOf(aura);
+            if (cat == null || cat == "") return false;
+            cat = cat.toLowerCase();
+            return cat == "stun" || cat == "stone" || cat == "paralyze" || cat == "disable" || cat == "disabled";
+        } catch (_:Dynamic) {}
+        return false;
     }
 
     public static function getStat(pStats:Dynamic, avatar:Dynamic, stat:String):Float {

@@ -171,6 +171,57 @@ class Api {
     public static var transport(default, null):TransportAdapter;
     public static var hscript(default, null):HScriptEngine;
 
+    // ---------------------------------------------------------------------------
+    // Reactive combat state - populated by TransportAdapter from the server's
+    // authoritative action-result packets (sar / sars / ct).
+    //
+    // `lastIncomingAttackAt` uses the MONOTONIC clock (ApiTime.now(), ms since app start),
+    // because it is only ever differenced against other ApiTime.now() readings inside rule
+    // evaluation. Do not compare it against world.GCDTS, which is epoch.
+    // ---------------------------------------------------------------------------
+
+/** Monotonic timestamp of the most recent action that resolved against the player. 0 = none seen. */
+public static var lastIncomingAttackAt:Float = 0;
+    /** Resolution outcome: "hit", "crit", "miss", "dodge", "parry", "block" or "none". */
+public static var lastIncomingAttackType:String = "";
+    /** MonMapID of the attacker when it was a monster ("m:<id>" stripped), else "". */
+public static var lastIncomingAttackerMMID:String = "";
+    /**
+     * Damage taken in that resolution, always >= 0. The wire field is negative for HEALING,
+     * so negative values are clamped to 0 rather than made absolute - a heal landing on the
+     * player is not a damaging attack and must not read as one.
+     */
+public static var lastIncomingAttackHp:Int = 0;
+
+    /**
+     * Monotonic timestamp of the last time each skill index actually FIRED, keyed by skill
+     * index (1-5). Backs the `wait(ms)` DSL rule.
+     *
+     * This lives on Api rather than on CombatEngine so SkillRules can read it without
+     * importing CombatEngine, which already imports SkillRules - keeping the dependency
+     * one-directional.
+     */
+public static var skillLastFired:Map<Int, Float> = new Map<Int, Float>();
+
+    /** Clears reactive combat state. Called when the target changes so a stale hit from a
+     *  dead monster cannot satisfy an `afterMobAtk` rule. */
+public static function clearIncomingAttackState():Void {
+        lastIncomingAttackAt = 0;
+        lastIncomingAttackType = "";
+        lastIncomingAttackerMMID = "";
+        lastIncomingAttackHp = 0;
+        // Cadence is per-monster. A new target has a different swing rhythm, so the learned
+        // mean must not carry over.
+        com.aqwapi.combat.AttackCadence.reset();
+    }
+
+    /** Records a successful cast. Only ever called on SR_FIRED, so a `wait(ms)` budget is
+     *  never consumed by a tick on which the skill could not actually be cast. */
+public static function noteSkillFired(skillId:Int, at:Float):Void {
+        if (skillId <= 0) return;
+        skillLastFired.set(skillId, at);
+    }
+
     static function __init__():Void {
         ensureMathShims();
     }

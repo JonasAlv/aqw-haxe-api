@@ -1,6 +1,7 @@
 package com.aqwapi.combat;
 
 import com.aqwapi.Api;
+import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 
 class SkillCaster {
@@ -10,14 +11,26 @@ class SkillCaster {
 
     /**
      * Checks if the game's native GCD is active.
+     *
+     * The real fields are `GCD` (haste-adjusted duration, ms) and `GCDTS` (timestamp of the
+     * last GCD application) - see World.as `globalCoolDownExcept`, which is the only writer
+     * of GCDTS. There is no `gcdTimer` and `GCD` is an int, not a Timer, so an earlier
+     * `world.GCD.running` / `world.gcdTimer.running` probe could never succeed.
+     *
+     * CLOCK DOMAIN: GCDTS is `new Date().getTime()` (epoch wall clock), so this MUST be
+     * compared against `ApiTime.epochMs()` and never `ApiTime.now()` (which is monotonic,
+     * ms since app start). Mixing the two yields a hugely negative delta that is always
+     * "under" the GCD, permanently reporting GCD active and freezing every rotation.
      */
     public static function isGcdActive(world:Dynamic):Bool {
         if (world == null) return false;
         try {
-            if (world.GCD != null && world.GCD.running) return true;
-        } catch (_:Dynamic) {}
-        try {
-            if (world.gcdTimer != null && world.gcdTimer.running) return true;
+            if (world.GCDTS != null && world.GCD != null) {
+                var nowMs:Float = ApiTime.epochMs();
+                var gcdTs:Float = ApiUtils.parseFloat(world.GCDTS, 0.0);
+                var gcd:Float = ApiUtils.parseFloat(world.GCD, 1500.0);
+                if (gcd > 0 && nowMs - gcdTs < gcd) return true;
+            }
         } catch (_:Dynamic) {}
         return false;
     }
