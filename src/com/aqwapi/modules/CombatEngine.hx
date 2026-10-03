@@ -45,6 +45,7 @@ class CombatEngine {
     private static var _skillIndex:Int = 0;
     private static var _skillWaitStart:Float = 0;
     private static var _stepFirstFailTime:Float = -1;
+    private static var _lastTimeoutSkipLogTime:Float = -10000;
     private static var _lastTargetMMID:String = null;
     private static var _targetChanged:Bool = false;
     private static var _lastDetectedClass:String = "";
@@ -452,9 +453,21 @@ class CombatEngine {
         // In WaitForCooldown mode, we MUST wait for the skill to become ready!
         var elapsedWait:Float = now - _skillWaitStart;
 
-        // Explicit timeout configured by user (must be > 1500ms since GCD alone is 1500ms).
-        // Timeouts <= 1500 (such as 0 or legacy 100 default) mean wait indefinitely.
-        if (skillTimeout > 1500 && elapsedWait >= skillTimeout) {
+        // Safety cap on how long one slot may hold the rotation while the skill is not
+        // ready. `_skillWaitStart` is set when the slot is entered, which normally happens
+        // right after a successful cast while the GCD is still running - so the GCD is
+        // consumed first and `timeout` is effectively "GCD + timeout". A slot entered via a
+        // skip (failed rules / missing action) has no GCD pending and gets the full budget.
+        //
+        // Semantics: timeout > 0 is a real cap in ms; 0 or absent means wait indefinitely,
+        // which is the safe guard for rotations that must never drop a proc.
+        if (skillTimeout > 0 && elapsedWait >= skillTimeout) {
+            if (now - _lastTimeoutSkipLogTime > 3000) {
+                _lastTimeoutSkipLogTime = now;
+                ApiLogger.warn("Combat", "WaitForCooldown: slot " + _skillIndex + " (skill " + skillId
+                    + ") still blocked after " + Std.string(Math.round(elapsedWait)) + "ms, skipping (timeout "
+                    + Std.string(Math.round(skillTimeout)) + "ms).");
+            }
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
             _stepFirstFailTime = -1;

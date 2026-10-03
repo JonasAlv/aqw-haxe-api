@@ -47,7 +47,7 @@ class SkillDslParser {
                     }
                     currentData = {
                         skillUseMode: "WaitForCooldown",
-                        skillTimeout: 100,
+                        skillTimeout: 0,
                         skills: [],
                         combo: ""
                     };
@@ -76,7 +76,9 @@ class SkillDslParser {
 
                 case "timeout", "skilltimeout":
                     var pTo:Null<Int> = Std.parseInt(val);
-                    currentData.skillTimeout = (pTo != null) ? pTo : 100;
+                    // 0 (or an unparseable value) means "wait indefinitely", matching the
+                    // runtime gate in CombatEngine.runWaitForCooldown.
+                    currentData.skillTimeout = (pTo != null) ? pTo : 0;
 
                 case "stopontargetauras", "stop_on_target_auras", "stopauras":
                     currentData.stopOnTargetAuras = val;
