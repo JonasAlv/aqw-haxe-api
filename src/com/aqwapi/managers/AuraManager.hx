@@ -111,6 +111,86 @@ class AuraManager {
      *  inside the class - Haxe rejects `\!` and friends in a `~/../` literal. */
     private static var TRAILING_PUNCT = ~/[!.*?\s]+$/;
 
+    /**
+     * Every active aura on an entity, for the editor's aura picker.
+ *
+     * Returns one entry per distinct aura name with its highest stack count and longest
+     * remaining time. Expired entries are skipped, matching getStacks/getRemaining, so what the
+     * picker offers is exactly what a rule referencing that name would resolve against.
+     *
+     * @param target "self" for the player, anything else for the current target.
+     */
+    public function listAuras(target:String = "self", ?customWorld:Dynamic, ?customAvatar:Dynamic, ?customTarget:Dynamic):Array<Dynamic> {
+        var auras = getRawAuras(target, customWorld, customAvatar, customTarget);
+        var out:Array<Dynamic> = [];
+        if (auras == null) return out;
+
+        var byName:Map<String, Dynamic> = new Map();
+
+        var collect = function(a:Dynamic):Void {
+            if (a == null) return;
+            if (a.e == 1 || a.e == "1" || a.e == true) return;
+            var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : ((a.sName != null) ? Std.string(a.sName) : ""));
+            if (name == "") return;
+
+            var val:Float = 1.0;
+            if (a.val != null) val = ApiUtils.parseFloat(a.val, 1.0);
+            else if (a.value != null) val = ApiUtils.parseFloat(a.value, 1.0);
+            else if (a.stack != null) val = ApiUtils.parseFloat(a.stack, 1.0);
+
+            var remaining:Float = 0.0;
+            var dur:Float = (a.dur != null) ? ApiUtils.parseFloat(a.dur, 0.0) : 0.0;
+            if (dur > 0) {
+                var ts:Float = (a.ts != null) ? ApiUtils.parseFloat(a.ts, 0.0) : 0.0;
+                if (ts <= 0) {
+                    remaining = dur;
+                } else {
+                    var tsMs:Float = (ts < 10000000000.0) ? (ts * 1000.0) : ts;
+                    var rem:Float = (tsMs + (dur * 1000.0) - ApiTime.epochMs()) / 1000.0;
+                    if (rem > 0) remaining = rem;
+                }
+            }
+
+            var cat:String = null;
+            try {
+                var g = _g();
+                var w = (customWorld != null) ? customWorld : ((g != null) ? g.world : null);
+                if (w != null && w.auraCatOf != null) cat = w.auraCatOf(a);
+            } catch (_:Dynamic) {}
+
+            var existing:Dynamic = byName.get(normalizeAuraName(name));
+            if (existing == null) {
+                existing = {name: name, stacks: val, remainingSec: remaining, category: cat};
+                byName.set(normalizeAuraName(name), existing);
+                out.push(existing);
+            } else {
+                if (val > existing.stacks) existing.stacks = val;
+                if (remaining > existing.remainingSec) existing.remainingSec = remaining;
+                if (existing.category == null) existing.category = cat;
+            }
+        };
+
+        try {
+            if (Std.isOfType(auras, Array)) {
+                for (a in (cast auras : Array<Dynamic>)) collect(a);
+            } else {
+                for (k in Reflect.fields(auras)) collect(Reflect.field(auras, k));
+            }
+        } catch (_:Dynamic) {}
+
+        try {
+            out.sort(function(a:Dynamic, b:Dynamic):Int {
+                var an:String = Std.string(a.name).toLowerCase();
+                var bn:String = Std.string(b.name).toLowerCase();
+                if (an < bn) return -1;
+                if (an > bn) return 1;
+                return 0;
+            });
+        } catch (_:Dynamic) {}
+
+        return out;
+    }
+
     public function getStacks(auraName:String, target:String = "player", ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):Float {
         if (auraName == null || auraName == "") return 0.0;
         var auras = getRawAuras(target, world, avatar, targetObj);

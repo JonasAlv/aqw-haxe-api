@@ -96,6 +96,234 @@ class SkillDslParser {
         return result;
     }
 
+    /**
+     * Every distinct aura name a combo already references, in first-seen order.
+     *
+     * The editor's aura picker offers the auras that are active RIGHT NOW, which cannot express
+     * the common case of `aura(self:Tracer Rounds)` written while the buff is down. Feeding these
+     * back into the picker keeps a name selectable once it has been used.
+     */
+    public static function collectAuraNames(comboStr:String):Array<String> {
+        var out:Array<String> = [];
+        if (comboStr == null || comboStr.length == 0) return out;
+
+        var steps:Array<Dynamic> = parseCombo(comboStr);
+        for (step in steps) {
+            var rules:Array<Dynamic> = (step != null && step.rules != null) ? cast step.rules : [];
+            for (rule in rules) {
+                if (rule == null) continue;
+                var type:String = Std.string(rule.type);
+                if (type != "Aura" && type != "MultiAura" && type != "AuraTime"
+                    && type != "AuraRemaining" && type != "AuraTimer") continue;
+                var name:String = (rule.auraName != null) ? Std.string(rule.auraName) : "";
+                if (name == "" || name.toLowerCase() == "name") continue;
+                var exists = false;
+                for (e in out) {
+                    if (e == name) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) out.push(name);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Checks a combo string WITHOUT saving it, reporting everything that would be silently
+     * mangled by parseCombo.
+     *
+     * This exists because the parser's failure mode is silence: an unrecognised condition is
+     * dropped, a non-numeric step becomes skill 1, and an empty rule list means the step fires
+     * unconditionally. All three used to surface as a green "Saved" toast and then simply never
+     * work.
+     *
+     * Only `Diagnostic.ERROR` blocks a save. Warnings describe configs that parse but almost
+     * certainly do not mean what the author intended.
+     */
+    public static function validate(comboStr:String):Array<Diagnostic> {
+        var out:Array<Diagnostic> = [];
+
+        if (comboStr == null || StringTools.trim(comboStr).length == 0) {
+            out.push(new Diagnostic(Diagnostic.ERROR, "Combo is empty.", -1, ""));
+            return out;
+        }
+
+        // `|` is only meaningful INSIDE brackets, where it means OR. Outside them it is not a
+        // step separator - the step delimiter is `>`. Catch the common mistake of writing
+        // "1[...] | 2[...]", which parseCombo folds into a single malformed step.
+        var outsidePipe = findOutsideBrackets(comboStr, "|");
+        if (outsidePipe != null) {
+            out.push(new Diagnostic(Diagnostic.ERROR,
+                "'|' does not separate steps - use '>'. Steps are joined with '>' (a '|' inside brackets is OR).",
+                -1, outsidePipe));
+        }
+
+        var tokens:Array<String> = splitCombo(comboStr);
+        var stepCount = 0;
+        for (i in 0...tokens.length) {
+            var part:String = StringTools.trim(tokens[i]);
+            if (part.length == 0) continue;
+            stepCount++;
+            validateStep(part, i, out);
+        }
+
+        if (stepCount == 0) {
+            out.push(new Diagnostic(Diagnostic.ERROR, "No skill steps found.", -1, comboStr));
+        }
+
+        return out;
+    }
+
+    /** First occurrence of `needle` outside any `[...]`, or null. */
+    private static function findOutsideBrackets(text:String, needle:String):Null<String> {
+        var depth = 0;
+        for (i in 0...text.length) {
+            var c = text.charAt(i);
+            if (c == "[") depth++;
+            else if (c == "]") { if (depth > 0) depth--; }
+            else if (depth == 0 && c == needle) return StringTools.trim(text.substr(0, i + 1));
+        }
+        return null;
+    }
+
+    private static function validateStep(part:String, index:Int, out:Array<Diagnostic>):Void {
+        var bracketStart:Int = part.indexOf("[");
+        var bracketEnd:Int = part.lastIndexOf("]");
+
+        if (bracketStart == -1 || bracketEnd <= bracketStart) {
+            if (bracketStart != -1 || bracketEnd != -1) {
+                out.push(new Diagnostic(Diagnostic.ERROR, "Unbalanced brackets.", index, part));
+                return;
+            }
+            // Bare step: parseCombo silently substitutes skill 1 for anything non-numeric.
+            if (Std.parseInt(part) == null) {
+                out.push(new Diagnostic(Diagnostic.ERROR,
+                    "'" + part + "' is not a skill id - it would be saved as skill 1.", index, part));
+            }
+            return;
+        }
+
+        var sidStr:String = StringTools.trim(part.substring(0, bracketStart));
+        if (sidStr.length == 0) {
+            out.push(new Diagnostic(Diagnostic.ERROR, "Missing skill id before '['.", index, part));
+        } else if (Std.parseInt(sidStr) == null) {
+            out.push(new Diagnostic(Diagnostic.ERROR,
+                "'" + sidStr + "' is not a skill id - it would be saved as skill 1.", index, part));
+        }
+
+        var inner:String = part.substring(bracketStart + 1, bracketEnd);
+        if (StringTools.trim(inner).length == 0) {
+            out.push(new Diagnostic(Diagnostic.ERROR,
+                "Empty brackets - this step will fire unconditionally.", index, part));
+            return;
+        }
+
+        // Trailing junk after the closing bracket is dropped by parseCombo without complaint.
+        var trailing:String = StringTools.trim(part.substring(bracketEnd + 1));
+        if (trailing.length > 0) {
+            out.push(new Diagnostic(Diagnostic.WARNING,
+                "Ignoring text after the closing bracket: '" + trailing + "'", index, part));
+        }
+
+        var isOr = inner.indexOf("|") != -1;
+        var rawRules:Array<String> = inner.split(isOr ? "|" : "&");
+        var recognised = 0;
+        for (rr in rawRules) {
+            var raw:String = StringTools.trim(rr);
+            if (raw.length == 0) continue;
+
+            var rule:Dynamic = parseRule(raw);
+            if (rule == null) {
+                out.push(new Diagnostic(Diagnostic.ERROR,
+                    "Unrecognised condition '" + raw + "' - it would be ignored.", index, part));
+                continue;
+            }
+            recognised++;
+            validateRule(rule, raw, index, out);
+        }
+
+        if (recognised == 0) {
+            out.push(new Diagnostic(Diagnostic.ERROR,
+                "Every condition was dropped - this step will fire UNCONDITIONALLY.", index, part));
+        } else if (rawRules.length > 1 && recognised == 1) {
+            out.push(new Diagnostic(Diagnostic.WARNING,
+                (isOr ? "Only one of the OR-ed conditions is valid - the others were dropped, "
+                      : "Only one of the AND-ed conditions is valid - the others were dropped, ")
+                    + "so this step behaves as if it had a single condition.", index, part));
+        }
+    }
+
+    private static function validateRule(rule:Dynamic, raw:String, index:Int, out:Array<Diagnostic>):Void {
+        var type:String = Std.string(rule.type);
+
+        switch (type) {
+            case "Aura", "MultiAura", "AuraTime", "AuraRemaining", "AuraTimer":
+                var auraName:String = (rule.auraName != null) ? Std.string(rule.auraName) : "";
+                if (auraName.length == 0) {
+                    out.push(new Diagnostic(Diagnostic.ERROR, "Aura condition has no aura name.", index, raw));
+                } else if (auraName.toLowerCase() == "name") {
+                    // The editor's macro buttons literally insert "aura(self:Name)".
+                    out.push(new Diagnostic(Diagnostic.WARNING,
+                        "'Name' is a placeholder, not a real aura - it will never match.", index, raw));
+                }
+                if (type == "Aura" || type == "MultiAura") {
+                    var thr:Float = ApiUtils.parseFloat(rule.value, 0);
+                    var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "greater";
+                    if (thr < 0) {
+                        out.push(new Diagnostic(Diagnostic.WARNING,
+                            "Stack threshold " + thr + " can never be satisfied.", index, raw));
+                    }
+                }
+
+            case "Health", "Mana", "TargetHealth", "PartyHealth":
+                var value:Float = ApiUtils.parseFloat(rule.value, 0);
+                var comp2:String = (rule.comparison != null) ? Std.string(rule.comparison) : "greater";
+                var isPct:Bool = (rule.isPercentage == true);
+
+                // The parser refuses to treat anything over 100 as a percentage, even when the
+                // author wrote a '%'. Worth saying out loud, because "hp > 150%" silently
+                // becomes raw "hp > 150".
+                if (isPct) {
+                    if (comp2 == "greater" && value > 100) {
+                        out.push(new Diagnostic(Diagnostic.WARNING,
+                            "A percentage above 100 can never be reached.", index, raw));
+                    } else if (comp2 == "less" && value < 0) {
+                        out.push(new Diagnostic(Diagnostic.WARNING,
+                            "A negative threshold can never be reached.", index, raw));
+                    }
+                } else if (value < 0) {
+                    out.push(new Diagnostic(Diagnostic.WARNING,
+                        "A negative threshold can never be reached.", index, raw));
+                }
+
+                if (raw.indexOf("%") != -1 && value > 100) {
+                    out.push(new Diagnostic(Diagnostic.WARNING,
+                        "'" + raw + "' was read as a RAW value (" + value + "), not a percentage - "
+                        + "values over 100 are never treated as percentages.", index, raw));
+                }
+
+            case "Wait":
+                if (ApiUtils.parseFloat(rule.timeout, 0) <= 0) {
+                    out.push(new Diagnostic(Diagnostic.WARNING,
+                        "wait(0) imposes no delay.", index, raw));
+                }
+
+            case "MobAtkIn":
+                if (ApiUtils.parseFloat(rule.window, 500) < 100) {
+                    out.push(new Diagnostic(Diagnostic.WARNING,
+                        "A window under 100ms will almost never line up with an attack.", index, raw));
+                }
+
+            case "AfterMobAtk":
+                if (ApiUtils.parseFloat(rule.window, 1000) <= 0) {
+                    out.push(new Diagnostic(Diagnostic.WARNING,
+                        "A zero-length window can never match a fresh attack.", index, raw));
+                }
+        }
+    }
+
     public static function parseCombo(comboStr:String):Array<Dynamic> {
         var skills:Array<Dynamic> = [];
         if (comboStr == null || comboStr.length == 0) return skills;

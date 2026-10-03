@@ -7,6 +7,7 @@ import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiStorage;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.utils.Diagnostic;
 import com.aqwapi.utils.SkillDslParser;
 
 class SkillManager {
@@ -269,6 +270,71 @@ class SkillManager {
         });
         _cachedKnownClasses = list;
         return list.copy();
+    }
+
+    /**
+     * The skills currently on the action bar, as {id, name, ref} entries for slots 1..5.
+ *
+     * Slot 0 is Auto Attack and is deliberately excluded - the rotation DSL never needs it, and
+     * including it invites the exact confusion getAutoAttackAction exists to prevent.
+ *
+     * The display name is read defensively because the client exposes it under different
+     * fields depending on build; when none is present the entry still reports its id and the
+     * actionMap ref, so the picker degrades to "slot N" rather than becoming useless.
+     */
+    public static function getEquippedSkills():Array<Dynamic> {
+        var out:Array<Dynamic> = [];
+        if (Api.game == null || Api.game.world == null) return out;
+        var world:Dynamic = Api.game.world;
+
+        for (idx in 1...6) {
+            var ref:String = null;
+            try {
+                if (world.actionMap != null && world.actionMap[idx] != null) ref = Std.string(world.actionMap[idx]);
+            } catch (_:Dynamic) {}
+
+            var act:Dynamic = null;
+            try {
+                act = com.aqwapi.combat.SkillCaster.getSkillAction(idx);
+            } catch (_:Dynamic) {}
+
+            var name:String = null;
+            if (act != null) {
+                for (field in ["nam", "name", "sName", "actName", "label"]) {
+                    try {
+                        var v:Dynamic = Reflect.field(act, field);
+                        if (v != null && v != "") {
+                            name = Std.string(v);
+                            break;
+                        }
+                    } catch (_:Dynamic) {}
+                }
+            }
+            // The icon carries the tooltip text when the action object does not.
+            if (name == null) {
+                try {
+                    var icon:Dynamic = com.aqwapi.combat.SkillCaster.getIcon(idx);
+                    if (icon != null) {
+                        for (field in ["nam", "name", "sName", "label"]) {
+                            var v:Dynamic = Reflect.field(icon, field);
+                            if (v != null && v != "") {
+                                name = Std.string(v);
+                                break;
+                            }
+                        }
+                    }
+                } catch (_:Dynamic) {}
+            }
+
+            out.push({
+                id: idx,
+                name: name,
+                ref: ref,
+                // Human label for the picker; never null.
+                label: (name != null) ? (idx + " - " + name) : (idx + " - " + ((ref != null) ? ref : "slot " + idx))
+            });
+        }
+        return out;
     }
 
     public static function getAvailableModes(className:String):Array<String> {
@@ -655,6 +721,14 @@ class SkillManager {
         return null;
     }
 
+    /**
+     * Diagnostics from the most recent saveMode call. Empty when the last save was clean.
+     *
+     * Exposed so callers that do not pre-validate (the HScript surface, and the editor's
+     * post-save refresh) can still surface WHY a save was rejected.
+     */
+    public static var lastDiagnostics(default, null):Array<Diagnostic> = [];
+
     public static function saveMode(className:String, modeName:String, skillUseMode:String, timeout:Int, combo:String, stopOnTargetAuras:String = null, resetComboOnTargetChange:Null<Bool> = null):Bool {
         if (className == null || className == "" || modeName == null || modeName == "") return false;
         var resolvedClass = resolveClassName(className);
@@ -662,6 +736,20 @@ class SkillManager {
         var trimmedMode = StringTools.trim(modeName);
         if (trimmedClass == "" || trimmedClass.toLowerCase() == "current") return false;
         if (trimmedMode == "" || trimmedMode == "[+ New Mode]") return false;
+
+        // Refuse configs whose conditions the parser would silently drop. Previously a typo'd
+        // rule saved fine and then never fired, with no error at any point.
+        lastDiagnostics = SkillDslParser.validate(combo);
+        var hasError = false;
+        for (d in lastDiagnostics) {
+            if (d.isError()) {
+                hasError = true;
+                ApiLogger.error("Skills", "Rejected save of [" + trimmedClass + " : " + trimmedMode + "] - " + Std.string(d));
+            } else {
+                ApiLogger.warn("Skills", "[" + trimmedClass + " : " + trimmedMode + "] " + Std.string(d));
+            }
+        }
+        if (hasError) return false;
 
         try {
             var data:Dynamic = readUserSkillsObject();
