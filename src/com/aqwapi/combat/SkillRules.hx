@@ -6,6 +6,14 @@ import com.aqwapi.utils.ApiUtils;
 
 class SkillRules {
 
+    /**
+     * Evaluates a combo step's rules.
+     *
+     * The step is compiled to a typed RuleGroup once (see RuleCompiler.compile) and cached on the
+     * step, so the per-tick path is a walk over typed Conditions instead of a switch over a
+     * stringly-typed `Dynamic`. `evaluateRule` below is retained as the reference oracle the
+     * typed path is checked against in tests/test-equivalence.
+     */
     public static function evaluateSkillRules(skill:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int):Bool {
         if (skill == null || skill.rules == null) return true;
         var rules:Dynamic = skill.rules;
@@ -13,26 +21,30 @@ class SkillRules {
         var arr:Array<Dynamic> = cast rules;
         if (arr.length == 0) return true;
 
-        var pStats:Dynamic = getPlayerStats(world, avatar);
-        var multiAuraOp:String = (skill.multiAuraOperator != null) ? Std.string(skill.multiAuraOperator).toUpperCase() : "AND";
+        var group:RuleGroup = RuleCompiler.compile(skill);
+        if (group == null || group.isEmpty()) return true;
 
-        if (multiAuraOp == "OR") {
-            var anyPassed:Bool = false;
-            for (rule in arr) {
-                if (evaluateRule(rule, world, avatar, target, pStats, skillId)) {
-                    anyPassed = true;
-                    break;
-                }
-            }
-            return anyPassed;
-        } else {
-            for (rule in arr) {
-                if (!evaluateRule(rule, world, avatar, target, pStats, skillId)) return false;
-            }
-            return true;
-        }
+        return group.evaluate(liveContext(world, avatar, target, skillId));
     }
 
+    /**
+     * Snapshots the live Api statics into a SignalContext.
+     *
+     * This is the single point where the rule layer touches global state, which is what keeps
+     * SignalRegistry free of it and therefore testable off-Flash.
+     */
+    public static function liveContext(world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int):SignalContext {
+        var ctx = new SignalContext(world, avatar, target, EntityProbe.getPlayerStats(world, avatar), skillId);
+        ctx.aura = Api.aura;
+        ctx.skillLastFired = Api.skillLastFired;
+        ctx.lastIncomingAttackAt = Api.lastIncomingAttackAt;
+        ctx.lastIncomingAttackType = Api.lastIncomingAttackType;
+        ctx.lastIncomingAttackHp = Api.lastIncomingAttackHp;
+        ctx.lastIncomingAttackerMMID = Api.lastIncomingAttackerMMID;
+        return ctx;
+    }
+
+    /** LEGACY REFERENCE IMPLEMENTATION. Superseeded by RuleCompiler + SignalRegistry. */
     public static function evaluateRule(rule:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, pStats:Dynamic, skillId:Int):Bool {
         if (rule == null) return true;
         switch (Std.string(rule.type)) {
@@ -197,8 +209,7 @@ class SkillRules {
     }
 
     public static function getPlayerStats(world:Dynamic, avatar:Dynamic):Dynamic {
-        try { if (world.uoTreeLeaf != null && avatar.pnm != null) return world.uoTreeLeaf(avatar.pnm); } catch (_:Dynamic) {}
-        return null;
+        return EntityProbe.getPlayerStats(world, avatar);
     }
 
     /**
@@ -209,45 +220,10 @@ class SkillRules {
      * compares against when deciding whether an action is blocked.
      */
     public static function hasHardCc(entity:Dynamic, world:Dynamic):Bool {
-        if (entity == null || world == null || world.auraCatOf == null) return false;
-        var auras:Dynamic = null;
-        try {
-            if (entity.dataLeaf != null) auras = entity.dataLeaf.auras;
-        } catch (_:Dynamic) {}
-        if (auras == null) return false;
-        try {
-            if (Std.isOfType(auras, Array)) {
-                for (aura in (cast auras : Array<Dynamic>)) {
-                    if (hasCcCategory(aura, world)) return true;
-                }
-            } else {
-                for (k in Reflect.fields(auras)) {
-                    if (hasCcCategory(Reflect.field(auras, k), world)) return true;
-                }
-            }
-        } catch (_:Dynamic) {}
-        return false;
-    }
-
-    private static function hasCcCategory(aura:Dynamic, world:Dynamic):Bool {
-        if (aura == null) return false;
-        try {
-            var cat:String = world.auraCatOf(aura);
-            if (cat == null || cat == "") return false;
-            cat = cat.toLowerCase();
-            return cat == "stun" || cat == "stone" || cat == "paralyze" || cat == "disable" || cat == "disabled";
-        } catch (_:Dynamic) {}
-        return false;
+        return EntityProbe.hasHardCc(entity, world);
     }
 
     public static function getStat(pStats:Dynamic, avatar:Dynamic, stat:String):Float {
-        var dl:Dynamic = (avatar != null) ? avatar.dataLeaf : null;
-        switch (stat) {
-            case "HP":    return (dl != null && dl.intHP != null) ? dl.intHP : ((pStats != null && pStats.intHP != null) ? pStats.intHP : 0);
-            case "MaxHP": return (dl != null && dl.intHPMax != null && dl.intHPMax > 0) ? dl.intHPMax : ((pStats != null && pStats.intHPMax != null && pStats.intHPMax > 0) ? pStats.intHPMax : 100);
-            case "MP":    return (dl != null && dl.intMP != null) ? dl.intMP : ((pStats != null && pStats.intMP != null) ? pStats.intMP : 0);
-            case "MaxMP": return (dl != null && dl.intMPMax != null && dl.intMPMax > 0) ? dl.intMPMax : ((pStats != null && pStats.intMPMax != null && pStats.intMPMax > 0) ? pStats.intMPMax : 100);
-        }
-        return 0;
+        return EntityProbe.getStat(pStats, avatar, stat);
     }
 }
