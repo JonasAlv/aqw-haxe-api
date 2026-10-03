@@ -124,7 +124,15 @@ class SkillDslParser {
                     var rTrimmed:String = StringTools.trim(rr);
                     if (rTrimmed.length == 0) continue;
                     var rObj:Dynamic = parseRule(rTrimmed);
-                    if (rObj != null) ruleObjs.push(rObj);
+                    if (rObj != null) {
+                        ruleObjs.push(rObj);
+                    } else {
+                        // parseRule returns null for anything it does not recognise. Dropping
+                        // it silently made a typo'd condition vanish and the surrounding
+                        // bracket fire far more often than it was written to.
+                        ApiLogger.warn("Skills", "Unrecognised condition '" + rTrimmed
+                            + "' in combo '" + comboStr + "' - ignored.");
+                    }
                 }
 
                 var skillObj:Dynamic = { skillId: sid };

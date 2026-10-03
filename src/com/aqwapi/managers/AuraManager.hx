@@ -91,19 +91,43 @@ class AuraManager {
     /**
      * Returns the stack count of the specified aura.
      */
+/**
+     * Normalises an aura name for lookup.
+     *
+     * The raw compare is an exact lowercased match, which makes a hand-written config
+     * silently useless the moment it disagrees with the game by punctuation - e.g.
+     * `aura(self:Rounds Empty!)` never matched, so the bracket degraded to `0 <= 1`
+     * and always passed. Trim and drop trailing punctuation so a cosmetic typo
+     * degrades to a match instead of a dead condition.
+     */
+    private static function normalizeAuraName(n:String):String {
+        if (n == null) return "";
+        var s:String = StringTools.trim(n).toLowerCase();
+        while (s.length > 0) {
+            var last:String = s.charAt(s.length - 1);
+            if (last == "!" || last == "." || last == " ") {
+                s = s.substr(0, s.length - 1);
+            } else {
+                break;
+            }
+        }
+        return s;
+    }
+
     public function getStacks(auraName:String, target:String = "player", ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):Float {
         if (auraName == null || auraName == "") return 0.0;
         var auras = getRawAuras(target, world, avatar, targetObj);
         if (auras == null) return 0.0;
 
-        var search:String = auraName.toLowerCase();
+        var search:String = normalizeAuraName(auraName);
+        if (search == "") return 0.0;
         var maxVal:Float = 0.0;
 
         var processAura = function(a:Dynamic):Void {
             if (a == null) return;
             if (a.e == 1 || a.e == "1" || a.e == true) return;
             var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : ((a.sName != null) ? Std.string(a.sName) : ""));
-            if (name != "" && name.toLowerCase() == search) {
+            if (name != "" && normalizeAuraName(name) == search) {
                 var val:Float = 1.0;
                 if (a.val != null) val = ApiUtils.parseFloat(a.val, 1.0);
                 else if (a.value != null) val = ApiUtils.parseFloat(a.value, 1.0);
@@ -128,14 +152,15 @@ class AuraManager {
         var auras = getRawAuras(target, world, avatar, targetObj);
         if (auras == null) return 0.0;
 
-        var search:String = auraName.toLowerCase();
+var search:String = normalizeAuraName(auraName);
+        if (search == "") return 0.0;
         var maxRemaining:Float = 0.0;
 
         var processAura = function(a:Dynamic):Void {
             if (a == null) return;
             if (a.e == 1 || a.e == "1" || a.e == true) return;
             var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : ((a.sName != null) ? Std.string(a.sName) : ""));
-            if (name != "" && name.toLowerCase() == search) {
+            if (name != "" && normalizeAuraName(name) == search) {
                 var dur:Float = (a.dur != null) ? ApiUtils.parseFloat(a.dur, 0.0) : 0.0;
                 if (dur <= 0) return;
                 var ts:Float = (a.ts != null) ? ApiUtils.parseFloat(a.ts, 0.0) : 0.0;
