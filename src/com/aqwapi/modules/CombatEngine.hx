@@ -53,6 +53,42 @@ class CombatEngine {
     private static var _waitUntil:Dynamic = {};
     private static var _lastFallbackWarnTime:Float = 0;
 
+    /**
+     * Monster MapIDs temporarily excluded from target acquisition, mapped to the monotonic
+     * timestamp at which the exclusion expires. Populated when a target is dropped for
+     * carrying a forbidden reflect/shield aura - without this the engine re-acquires the
+     * same monster on the very next tick and spins in a drop/acquire loop at 10Hz.
+     */
+    private static var _temporaryIgnore:Map<String, Float> = new Map<String, Float>();
+    private static inline var TEMP_IGNORE_MS:Float = 4000;
+
+    /** True while `mmid` is inside its penalty box. `exists` is checked first because Flash is
+     *  a static target where `Float` cannot be null. */
+    private static function isTemporarilyIgnored(mmid:String):Bool {
+        if (mmid == null || mmid == "" || _temporaryIgnore == null) return false;
+        if (!_temporaryIgnore.exists(mmid)) return false;
+        if (ApiTime.now() < _temporaryIgnore.get(mmid)) return true;
+        _temporaryIgnore.remove(mmid);
+        return false;
+    }
+
+    private static function ignoreTemporarily(mmid:String, ms:Float = TEMP_IGNORE_MS):Void {
+        if (mmid == null || mmid == "") return;
+        _temporaryIgnore.set(mmid, ApiTime.now() + ms);
+        pruneTemporaryIgnore();
+    }
+
+    /** Keeps the map bounded - without this every distinct monster ever dropped stays
+     *  resident for the lifetime of the session. `keys()` returns a copy, so removing
+     *  during the walk is safe. */
+    private static function pruneTemporaryIgnore():Void {
+        if (_temporaryIgnore == null) return;
+        var now:Float = ApiTime.now();
+        for (mmid in _temporaryIgnore.keys()) {
+            if (now >= _temporaryIgnore.get(mmid)) _temporaryIgnore.remove(mmid);
+        }
+    }
+
     public static function init():Void {
         SkillManager.ensureLoaded(true);
         if (_timer == null) {
@@ -111,6 +147,7 @@ class CombatEngine {
 
     public static function stop():Void {
         IS_ON = false;
+        _temporaryIgnore = new Map<String, Float>();
         if (_timer != null && _timer.running) {
             _timer.stop();
         }
@@ -152,33 +189,25 @@ class CombatEngine {
         _sequenceStepStartTime = ApiTime.now();
     }
 
-    public static function shouldApproachTarget(world:Dynamic):Bool {
+    public static function shouldApproachTarget(world:Dynamic, aaAct:Dynamic = null):Bool {
         if (world == null) return false;
         if (Api.combat != null && Api.combat.infiniteRange) return false;
 
         var isAaClose:Bool = false;
         var isAaInfinite:Bool = false;
 
-        // Auto Attack (slot 0)
+        // Auto Attack - always the verified AA action, never action bar slot 0 (which may
+        // hold a real skill on some classes and would report a meaningless range).
         try {
-            var aaAct:Dynamic = SkillCaster.getSkillAction(0);
-            if (aaAct == null && world.getAutoAttack != null) {
-                try { aaAct = world.getAutoAttack(); } catch (_:Dynamic) {}
-            }
-            if (aaAct == null && world.actions != null && world.actions.active != null) {
-                try {
-                    var actList:Array<Dynamic> = cast world.actions.active;
-                    if (actList != null && actList.length > 0) aaAct = actList[0];
-                } catch (_:Dynamic) {}
-            }
-            if (aaAct != null && aaAct.range != null) {
-                var aaR:Float = ApiUtils.parseFloat(aaAct.range, 301);
+            var act:Dynamic = (aaAct != null) ? aaAct : SkillCaster.getAutoAttackAction(world);
+            if (act != null && act.range != null) {
+                var aaR:Float = ApiUtils.parseFloat(act.range, 301);
                 if (aaR >= 20000) isAaInfinite = true;
                 else if (aaR > 0 && aaR <= 301) isAaClose = true;
             }
         } catch (_:Dynamic) {}
 
-        // Active Skills (slots 1 to 4)
+        // Active Skills (slots 1 to 5)
         var hasCloseSkill:Bool = false;
         var hasInfiniteSkill:Bool = false;
 
@@ -206,6 +235,69 @@ class CombatEngine {
         if (isAaInfinite || hasInfiniteSkill) return false;
         if (isAaClose || hasCloseSkill) return true;
         return false;
+    }
+
+    /**
+     * True when the player cannot act at all: dead, or hard crowd-controlled.
+     *
+     * Deliberately NOT keyed on `intState == 2`. Nothing in this codebase corroborates
+     * that mapping - `EntityDTO` and `SkillCaster.fireSkill` both gate on aura
+     * *categories* - and treating a common state value as "stunned" would freeze the
+     * rotation during ordinary movement.
+     *
+     * Uses `world.auraCatOf`, the same authoritative mechanism SkillCaster.fireSkill
+     * uses for its CC guard, so the two can never disagree. Cached per tick because
+     * both rotation entry points call this and a stun does not expire mid-tick.
+     */
+    private static function isDisabled(avatar:Dynamic, world:Dynamic):Bool {
+        if (avatar == null || avatar.dataLeaf == null) return false;
+
+        var now:Float = ApiTime.now();
+        if (now < _ccCheckValidUntil) return _ccCheckResult;
+        _ccCheckValidUntil = now + CC_CHECK_CACHE_MS;
+
+        _ccCheckResult = false;
+        if (avatar.dataLeaf.intState == 0) {
+            _ccCheckResult = true;
+            return true;
+        }
+        if (avatar.dataLeaf.auras != null && world != null && world.auraCatOf != null) {
+            try {
+                var auras:Array<Dynamic> = cast avatar.dataLeaf.auras;
+                for (aura in auras) {
+                    if (aura == null) continue;
+                    var cat:String = world.auraCatOf(aura);
+                    if (cat == null) continue;
+                    cat = cat.toLowerCase();
+                    if (cat == "stun" || cat == "stone" || cat == "paralyze" || cat == "disable" || cat == "disabled") {
+                        _ccCheckResult = true;
+                        return true;
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+        return false;
+    }
+
+    private static var _ccCheckResult:Bool = false;
+    private static var _ccCheckValidUntil:Float = 0;
+    private static inline var CC_CHECK_CACHE_MS:Float = 50;
+
+    /**
+     * True when the resolved Auto Attack is a genuine, mana-free basic attack.
+     *
+     * Guards the background AA fire on classes that put a real (MP-costing, GCD-bound)
+     * skill in action bar slot 0. `aaAct` comes from `SkillCaster.getAutoAttackAction`,
+     * so it is already the verified AA action - never slot 0 - and the `mp` check is only
+     * a second line of defence against a mis-resolved action.
+     */
+    private static function isFreeAutoAttack(aaAct:Dynamic):Bool {
+        if (aaAct == null) return false;
+        if (aaAct.isOK == false) return false;
+        try {
+            if (aaAct.mp != null) return ApiUtils.parseInt(aaAct.mp, 0) <= 0;
+        } catch (_:Dynamic) {}
+        return true;
     }
 
     private static function onTick(e:TimerEvent):Void {
@@ -254,6 +346,7 @@ class CombatEngine {
                     var raw = monsterTarget.raw;
                     if (raw == null || raw.pMC == null || raw.objData == null || raw.dataLeaf == null) continue;
                     if (lockedMMID != null && monsterTarget.mapId != lockedMMID) continue;
+                    if (isTemporarilyIgnored(monsterTarget.mapId)) continue;
                     if (targetName != null && targetName != "*" && monsterTarget.name.toLowerCase().indexOf(targetName.toLowerCase()) == -1) continue;
                     if (world.setTarget != null) {
                         world.setTarget(monsterTarget.raw);
@@ -271,7 +364,11 @@ class CombatEngine {
                         if (anyMon != null && anyMon.pMC != null && anyMon.objData != null && anyMon.dataLeaf != null) {
                             var monHp:Int = (anyMon.dataLeaf.intHP != null) ? Std.int(anyMon.dataLeaf.intHP) : 1;
                             var monState:Int = (anyMon.dataLeaf.intState != null) ? Std.int(anyMon.dataLeaf.intState) : 1;
-                            if (monHp > 0 && monState != 0) {
+                            var anyMMID:String = (anyMon.dataLeaf.MonMapID != null) ? Std.string(anyMon.dataLeaf.MonMapID) : null;
+                            // Must honour the penalty box too, otherwise world.getMonster
+                            // hands back the shielded monster we just dropped.
+                            if (isTemporarilyIgnored(anyMMID)) anyMon = null;
+                            if (anyMon != null && monHp > 0 && monState != 0) {
                                 if (world.setTarget != null) {
                                     world.setTarget(anyMon);
                                     target = anyMon;
@@ -299,16 +396,40 @@ class CombatEngine {
             _stepFirstFailTime = -1;
         }
 
+        // Resolve the genuine Auto Attack once per tick and share it with both
+        // shouldApproachTarget and fireAutoAttack, instead of each re-resolving.
+        var aaAct:Dynamic = null;
+        try { aaAct = SkillCaster.getAutoAttackAction(world); } catch (_:Dynamic) {}
+
         if (isSmart) {
             var activeModeConfig = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
             if (Api.aura.shouldStopForTargetAuras(globalStopOnTargetAuras, activeModeConfig, world, avatar, target)) {
                 if (!_pausedByTargetAura) {
                     _pausedByTargetAura = true;
-                    ApiLogger.warn("Combat", "Target has forbidden reflect/shield aura, pausing combat!");
+                    ApiLogger.warn("Combat", "Target has forbidden reflect/shield aura, dropping target!");
                 }
                 if (world.cancelAutoAttack != null) {
                     try { world.cancelAutoAttack(); } catch (_:Dynamic) {}
                 }
+                // Drop the target. Returning early without clearing it leaves the same
+                // monster re-validated (and re-blocked) every tick - a soft lock that
+                // never reaches target acquisition.
+                //
+                // The penalty box is what makes the drop stick: BOTH acquisition paths
+                // below must refuse this MMID, otherwise the same monster is re-acquired
+                // on the next tick and the engine cycles at 10Hz.
+                var dropMMID:String = null;
+                try {
+                    if (target != null && target.dataLeaf != null && target.dataLeaf.MonMapID != null) dropMMID = Std.string(target.dataLeaf.MonMapID);
+                    else if (target != null && target.objData != null && target.objData.MonMapID != null) dropMMID = Std.string(target.objData.MonMapID);
+                } catch (_:Dynamic) {}
+                ignoreTemporarily(dropMMID);
+                if (world.cancelTarget != null) {
+                    try { world.cancelTarget(); } catch (_:Dynamic) {}
+                }
+                try { avatar.target = null; } catch (_:Dynamic) {}
+                target = null;
+                _targetChanged = true;
                 return;
             } else if (_pausedByTargetAura) {
                 _pausedByTargetAura = false;
@@ -316,14 +437,22 @@ class CombatEngine {
             }
 
             try {
-                if (shouldApproachTarget(world)) {
+                if (shouldApproachTarget(world, aaAct)) {
                     if (world.approachTarget != null) {
                         try { untyped world.approachTarget(); } catch (_:Dynamic) {}
                     }
+                    // Auto Attack is GCD-independent, so it can still land while closing
+                    // distance. Without this the bot walks and fires nothing whenever the
+                    // whole rotation is blocked.
+                    if (isFreeAutoAttack(aaAct)) {
+                        SkillCaster.fireAutoAttack(world, avatar, aaAct);
+                    }
                 } else {
-                    // Auto Attack (skill 0) is completely independent of GCD and skill rotations.
+                    // Auto Attack is completely independent of GCD and skill rotations.
                     // Always fire whenever ready (out of CD) to damage target and regenerate mana.
-                    SkillCaster.fireAutoAttack(world, avatar);
+                    if (isFreeAutoAttack(aaAct)) {
+                        SkillCaster.fireAutoAttack(world, avatar, aaAct);
+                    }
                 }
             } catch (_:Dynamic) {}
 
@@ -334,12 +463,17 @@ class CombatEngine {
             }
         } else {
             try {
-                if (shouldApproachTarget(world)) {
+                if (shouldApproachTarget(world, aaAct)) {
                     if (world.approachTarget != null) {
                         try { untyped world.approachTarget(); } catch (_:Dynamic) {}
                     }
+                    if (isFreeAutoAttack(aaAct)) {
+                        SkillCaster.fireAutoAttack(world, avatar, aaAct);
+                    }
                 } else {
-                    SkillCaster.fireAutoAttack(world, avatar);
+                    if (isFreeAutoAttack(aaAct)) {
+                        SkillCaster.fireAutoAttack(world, avatar, aaAct);
+                    }
                 }
             } catch (_:Dynamic) {}
 
@@ -355,12 +489,32 @@ class CombatEngine {
         if (isCurrentClass && className != "") {
             if (_lastDetectedClass == "" || _lastDetectedClass != className) {
                 _lastDetectedClass = className;
-                skillMode = SkillManager.resolveActiveModeName(className, skillMode);
-                activeModeConfig = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
+                // Resolve into a LOCAL. `skillMode` is global state that the UI and
+                // HScriptEngine snapshot/restore, so writing the auto-detected mode back
+                // into it would clobber the user's explicit preference.
+                var activeModeStr:String = SkillManager.resolveActiveModeName(className, skillMode);
+                activeModeConfig = SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, activeModeStr);
             }
         }
 
-        var modeConfig:Dynamic = (activeModeConfig != null) ? activeModeConfig : SkillManager.resolveActiveModeConfig(world, avatar, target, smartClass, skillMode);
+        // A forced smartClass that does not match what the player is wearing makes the
+        // rotation meaningless - skill slot N resolves to a different skill entirely.
+        // Fall back to the equipped class's own rotation instead of firing the wrong one.
+        if (!isCurrentClass && className != SkillManager.getCurrentClassName()) {
+            var equipped:String = SkillManager.getCurrentClassName();
+            var mismatchNow = ApiTime.now();
+            if (mismatchNow - _lastFallbackWarnTime > 3000) {
+                _lastFallbackWarnTime = mismatchNow;
+                ApiLogger.warn("Combat", "Class mismatch! smartClass is set to '" + className + "' but player is wearing '"
+                    + equipped + "'. Using the equipped class's rotation instead.");
+            }
+            confClass = "Current";
+            isCurrentClass = true;
+            className = equipped;
+            activeModeConfig = SkillManager.resolveActiveModeConfig(world, avatar, target, "Current", skillMode);
+        }
+
+        var modeConfig:Dynamic = (activeModeConfig != null) ? activeModeConfig : SkillManager.resolveActiveModeConfig(world, avatar, target, confClass, skillMode);
         if (modeConfig == null) {
             var now = ApiTime.now();
             if (now - _lastFallbackWarnTime > 3000) {
@@ -404,6 +558,15 @@ class CombatEngine {
     }
 
     private static function runWaitForCooldown(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float):Void {
+        // Player is dead or crowd-controlled. Do nothing at all - crucially, do NOT
+        // evaluate rules (a rule failure advances the combo index) and do NOT let the
+        // per-slot `skillTimeout` elapse while we are unable to act, which would make the
+        // rotation skip a step the moment CC wears off.
+        if (isDisabled(avatar, world)) {
+            _skillWaitStart = ApiTime.now();
+            return;
+        }
+
         if (_skillIndex >= skills.length) _skillIndex = 0;
         var skill:Dynamic = skills[_skillIndex];
         if (skill == null) { _skillIndex = 0; return; }
@@ -486,6 +649,7 @@ class CombatEngine {
     }
 
     private static function runUseIfAvailable(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>):Void {
+        if (isDisabled(avatar, world)) return;
         if (SkillCaster.isGcdActive(world)) return;
         var now:Float = ApiTime.now();
 

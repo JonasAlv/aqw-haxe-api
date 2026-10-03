@@ -66,6 +66,93 @@ class SkillCaster {
     }
 
     /**
+     * Resolves the genuine Auto Attack action without ever trusting action bar slot 0.
+     *
+     * `getSkillAction(0)` reads `world.actionMap[0]` first, which is correct for the vast
+     * majority of classes (that ref is "aa") but hijacks the real skill on classes that put
+     * an actual skill in slot 0. This resolver deliberately skips `actionMap` and
+     * `actions.active` entirely so auto attack stays auto attack for every class.
+     *
+     * Resolution order:
+     *   1. `world.getAutoAttack()` - the game's own accessor, authoritative and unaffected
+     *      by actionMap layout
+     *   2. `world.getActionByRef("aa")` - canonical AA ref
+     *   3. `actBar` child "i1" - the leftmost action bar icon is always the AA icon
+     */
+    public static function getAutoAttackAction(world:Dynamic):Dynamic {
+        if (world == null) return null;
+
+        try {
+            if (world.getAutoAttack != null) {
+                var act:Dynamic = world.getAutoAttack();
+                if (act != null) return act;
+            }
+        } catch (_:Dynamic) {}
+
+        try {
+            if (world.getActionByRef != null) {
+                var act:Dynamic = world.getActionByRef("aa");
+                if (act != null) return act;
+            }
+        } catch (_:Dynamic) {}
+
+        var icon:Dynamic = getIcon(0);
+        if (icon != null && icon.actObj != null) return icon.actObj;
+        return null;
+    }
+
+    /**
+     * True when action bar slot 0 holds a REAL skill rather than the Auto Attack.
+     *
+     * Decided by action REF NAME where available, since refs are stable strings while action
+     * object identity is not guaranteed across the game's several accessors. Falls back to
+     * identity comparison against `getAutoAttackAction` when `actionMap` is unavailable.
+     */
+    public static function slotZeroIsRealSkill(world:Dynamic):Bool {
+        try {
+            if (world != null && world.actionMap != null && world.actionMap[0] != null) {
+                var ref:String = Std.string(world.actionMap[0]).toLowerCase();
+                if (ref != "") {
+                    return ref != "aa" && ref != "autoattack" && ref != "auto";
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        var aa:Dynamic = getAutoAttackAction(world);
+        if (aa == null) return false;
+        var slot0:Dynamic = getSkillAction(0);
+        if (slot0 == null) return false;
+        if (slot0 == aa) return false;
+        if (Reflect.compareMethods(slot0, aa)) return false;
+        return true;
+    }
+
+    /**
+     * Applies the infinite-range override to an action and returns the original range so the
+     * caller can restore it. Returns -1 when the action has no readable range.
+     *
+     * Without the restore, a permanent `range = 20000` leaks into `shouldApproachTarget`,
+     * which reads slot 0's range to decide between approaching and attacking - making the bot
+     * never approach even when the real Auto Attack is melee.
+     */
+    public static function applyInfiniteRange(actObj:Dynamic):Float {
+        if (actObj == null) return -1;
+        var previous:Float = -1;
+        try {
+            if (actObj.range != null) previous = ApiUtils.parseFloat(actObj.range, -1);
+            actObj.range = 20000;
+        } catch (_:Dynamic) {}
+        return previous;
+    }
+
+    public static function restoreRange(actObj:Dynamic, previous:Float):Void {
+        if (actObj == null || previous < 0) return;
+        try {
+            actObj.range = previous;
+        } catch (_:Dynamic) {}
+    }
+
+    /**
      * Checks if skill `idx` can currently fire (not resource blocked or on CD).
      * Non-mutating check without executing world.testAction.
      */
@@ -161,19 +248,19 @@ class SkillCaster {
     }
 
     /**
-     * Directly fires Auto Attack (skill 0) whenever off cooldown.
+     * Directly fires Auto Attack whenever off cooldown.
      * Auto Attack is completely independent of GCD and skill rotations.
      * Hitting with Auto Attack regenerates mana, preventing classes from going OOM.
+     *
+     * `aaAct` may be supplied by the caller (CombatEngine resolves it once per tick and
+     * threads it through). When null it is resolved here via `getAutoAttackAction`, which
+     * never reads action bar slot 0 - so a class with a real skill in slot 0 still gets its
+     * Auto Attack fired instead of having that skill spammed off cooldown.
      */
-    public static function fireAutoAttack(world:Dynamic, avatar:Dynamic):Bool {
+    public static function fireAutoAttack(world:Dynamic, avatar:Dynamic, aaAct:Dynamic = null):Bool {
         if (world == null) return false;
-        var actObj:Dynamic = getSkillAction(0);
-        if (actObj == null || actObj.isOK == false) {
-            if (world.getAutoAttack != null) {
-                try { actObj = world.getAutoAttack(); } catch (_:Dynamic) {}
-            }
-        }
-        if (actObj == null) return false;
+        var actObj:Dynamic = (aaAct != null) ? aaAct : getAutoAttackAction(world);
+        if (actObj == null || actObj.isOK == false) return false;
 
         var dl:Dynamic = (avatar != null) ? avatar.dataLeaf : null;
         if (dl != null && dl.intState == 0) return false;
@@ -194,16 +281,20 @@ class SkillCaster {
             } catch (_:Dynamic) {}
         }
 
+        var prevRange:Float = -1;
         if (Api.combat != null && Api.combat.infiniteRange) {
-            actObj.range = 20000;
+            prevRange = applyInfiniteRange(actObj);
         }
 
+        var fired:Bool = false;
         try {
             if (world.testAction != null) {
                 world.testAction(actObj);
-                return true;
+                fired = true;
             }
         } catch (_:Dynamic) {}
-        return false;
+
+        restoreRange(actObj, prevRange);
+        return fired;
     }
 }

@@ -49,6 +49,7 @@ class SkillManager {
 
     private static var _cachedCurrentClassName:String = "";
     private static var _lastCurrentClassCheck:Float = 0;
+    private static var _slotZeroWarned:Map<String, Bool> = new Map<String, Bool>();
 
     public static function invalidateCurrentClass():Void {
         _lastCurrentClassCheck = 0;
@@ -142,6 +143,7 @@ class SkillManager {
         _skillsDataClean = new Map<String, Dynamic>();
         _classConfigCache = new Map<String, Dynamic>();
         _cachedKnownClasses = null;
+        _slotZeroWarned = new Map<String, Bool>();
 
         var cleanList:Array<{ clean:String, len:Int, key:String }> = [];
         if (_skillsData != null) {
@@ -927,9 +929,46 @@ class SkillManager {
                     modeConfig.skills = SkillDslParser.parseCombo(Std.string(modeConfig.combo));
                 }
             }
+            warnIfComboUsesRealSkillSlotZero(className, skillMode, modeConfig, world);
         }
 
         return modeConfig;
+    }
+
+    /**
+     * Some classes put an actual skill in action bar slot 0 instead of the Auto Attack.
+     * A rotation that fires slot 0 on such a class double-fires that skill against the
+     * Auto Attack path, so warn once per class+mode instead of failing silently.
+     */
+    private static function warnIfComboUsesRealSkillSlotZero(className:String, skillMode:String, modeConfig:Dynamic, world:Dynamic):Void {
+        if (world == null) return;
+        var skills:Array<Dynamic> = null;
+        try {
+            if (modeConfig.skills != null && Std.isOfType(modeConfig.skills, Array)) skills = cast modeConfig.skills;
+        } catch (_:Dynamic) {}
+        if (skills == null || skills.length == 0) return;
+
+        var usesSlotZero:Bool = false;
+        for (skill in skills) {
+            if (skill == null) continue;
+            var sid:Int = (skill.skillId != null) ? ApiUtils.parseInt(skill.skillId, -1) : ((skill.idx != null) ? ApiUtils.parseInt(skill.idx, -1) : -1);
+            if (sid == 0) {
+                usesSlotZero = true;
+                break;
+            }
+        }
+        if (!usesSlotZero) return;
+
+        var realSkill:Bool = false;
+        try { realSkill = com.aqwapi.combat.SkillCaster.slotZeroIsRealSkill(world); } catch (_:Dynamic) {}
+        if (!realSkill) return;
+
+        var warnKey:String = cleanClassName(className) + "|" + Std.string(skillMode);
+        if (_slotZeroWarned.exists(warnKey)) return;
+        _slotZeroWarned.set(warnKey, true);
+        ApiLogger.warn("Skills", "Rotation for class '" + className + "' mode '" + skillMode
+            + "' fires slot 0, but this class has a real skill there rather than the Auto Attack. "
+            + "That step will double-fire the skill; use slot 1-5 for real skills.");
     }
 
     private static function findTargetClassKey(data:Dynamic, className:String):String {

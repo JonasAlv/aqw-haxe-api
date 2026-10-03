@@ -103,16 +103,13 @@ class AuraManager {
     private static function normalizeAuraName(n:String):String {
         if (n == null) return "";
         var s:String = StringTools.trim(n).toLowerCase();
-        while (s.length > 0) {
-            var last:String = s.charAt(s.length - 1);
-            if (last == "!" || last == "." || last == " ") {
-                s = s.substr(0, s.length - 1);
-            } else {
-                break;
-            }
-        }
-        return s;
+        return TRAILING_PUNCT.replace(s, "");
     }
+
+    /** Trailing `!` `.` `*` `?` and any whitespace. Anchored at the end so internal
+     *  spaces inside multi-word aura names survive intact. Note: no backslash escapes
+     *  inside the class - Haxe rejects `\!` and friends in a `~/../` literal. */
+    private static var TRAILING_PUNCT = ~/[!.*?\s]+$/;
 
     public function getStacks(auraName:String, target:String = "player", ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):Float {
         if (auraName == null || auraName == "") return 0.0;
