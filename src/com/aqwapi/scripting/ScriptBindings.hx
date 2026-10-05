@@ -657,6 +657,17 @@ class ScriptBindings {
         bind("isEquipped", function(itemName:String):Bool {
             return Api.inventory != null ? Api.inventory.isEquipped(itemName) : false;
         });
+
+        // Enhancement operations
+        bind("enhanceEquipped", function(?type:Dynamic, ?cSpecial:Dynamic, ?hSpecial:Dynamic, ?wSpecial:Dynamic, ?onComplete:Dynamic):Void {
+            Api.enhanceEquipped(type, cSpecial, hSpecial, wSpecial, onComplete);
+        });
+        bind("smartEnhance", function(?className:Dynamic, ?force:Dynamic, ?onComplete:Dynamic):Void {
+            Api.smartEnhance(className, force, onComplete);
+        });
+        bind("enhanceItem", function(?itemOrName:Dynamic, ?type:Dynamic, ?cSpecial:Dynamic, ?hSpecial:Dynamic, ?wSpecial:Dynamic, ?onComplete:Dynamic):Void {
+            Api.enhanceItem(itemOrName, type, cSpecial, hSpecial, wSpecial, onComplete);
+        });
     }
 
     private static function registerDropShortcuts():Void {
