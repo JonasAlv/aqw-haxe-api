@@ -7,6 +7,21 @@ import com.aqwapi.Game;
 import flash.events.TimerEvent;
 import flash.utils.Timer;
 
+/**
+ * Handles shop loading, inventory browsing, and rate-limited buy/sell operations.
+ *
+ * Upstream AS3 Architecture:
+ *  - Loading Shops: `world.sendLoadShopRequest(shopId)` requests shop data from server.
+ *  - Shop State: When loaded, items are stored in `world.shopinfo.items`.
+ *  - Wire Packets:
+ *      * Buy: `%xt%zm%buyItem%roomId%itemId%shopId%shopItemId%`
+ *      * Sell: `%xt%zm%sellItem%roomId%itemId%charItemId%`
+ *
+ * Paced Purchase Queue:
+ *  - The server drops or kicks for rapid repeated purchases inside ~1000ms.
+ *  - `buyItem()` provides a single throttled call, while `buyItems()` queues
+ *    batch purchases and dispatches them with `ApiTimings.SHOP_BUY_MS` pacing.
+ */
 class ShopManager {
     private var _game:Game;
     private var _lastShopLoadTime:Float = 0;

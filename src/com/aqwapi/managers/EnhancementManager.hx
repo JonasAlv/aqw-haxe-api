@@ -22,6 +22,25 @@ private typedef EnhanceTask = {
     var targetMap:String;
 };
 
+/**
+ * Automates item enhancements for weapons, capes, helms, and class armors.
+ *
+ * Supported Patterns & Forge Integration:
+ *  - Standard Enhancements: Fighter, Thief, Wizard, Lucky, Healer, SpellBreaker.
+ *  - Forge Special Enhancements:
+ *      * Weapons: Lacerate, Smite, Valiance, Arcana's Concerto, Acheron, Elysium, Praxis, Dauntless, Ravenous.
+ *      * Capes: Absolution, Vainglory, Avarice, Penitence, Lament.
+ *      * Helms: Forge, Anima, Pneuma, Examen.
+ *  - Bitmask & Slot Verification:
+ *      * Forge quest completions are tracked via player quest data slots (`slot` and `value`).
+ *      * Allows instantaneous offline and online verification without redundant server queries.
+ *
+ * Travel & Restoration Choreography:
+ *  - Enhancing requires traveling to specific enhancement shops (e.g. `forge`, `trainers`).
+ *  - Records `_originMap`, `_originCell`, `_originPad` before departure, loads the shop,
+ *    applies the enhancement packet `%xt%zm%enhanceItem%...%`, and returns the player
+ *    to their exact starting position once completed.
+ */
 class EnhancementManager {
     private var _game:Game;
     private var _timer:Timer;

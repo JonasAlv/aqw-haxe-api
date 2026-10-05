@@ -4,6 +4,29 @@ import com.aqwapi.data.EntityDTO;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.Game;
 
+/**
+ * Handles monster queries, cell population scanning, and entity resolution.
+ *
+ * Upstream AS3 Entity Architecture:
+ *  - Live Monsters: In active cells, spawned monsters exist as `Avatar` instances in
+ *    `world.monsters` or accessible via the native function `world.getMonster(MonMapID)`.
+ *    Their MovieClip (`pMC`) must be attached to the display list to be targetable.
+ *  - Off-screen / Static Definitions:
+ *      * `world.monTree`: Maps MonMapID (string/int) to static monster definition objects (`mondef`),
+ *        containing base stats, original name, level, max HP, and cell placement even if despawned.
+ *      * `world.getMonstersByCell(cellName)`: Native AQW method returning an array of monster
+ *        objects registered for a specific cell in the current map.
+ *
+ * Multi-Tier Resolution Strategy:
+ *  1. `world.getMonster(idInt)`: Directly fetches the live `Avatar` instance with active `pMC`.
+ *  2. `world.monsters` iteration: Scans all currently instantiated avatars in the world.
+ *  3. `world.monTree` fallback: Resolves metadata and expected spawn cell even if the monster
+ *     is dead or not currently rendered in the active viewport.
+ *
+ * EntityDTO Abstraction:
+ *  - Normalizes dynamic Flash fields (`MonMapID`, `sName`, `intHP`, `intHPMax`, `intState`)
+ *    into a typed, safe wrapper with null-safety and boolean state properties (`alive`, `hasTarget`).
+ */
 class MonsterManager {
     private var _game:Game;
 

@@ -6,6 +6,27 @@ import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.Api;
 import com.aqwapi.Game;
 
+/**
+ * High-level combat manager orchestrating targeting, hunting loops, and attack automation.
+ *
+ * Architecture and Target Lock:
+ *  - Integrates directly with `CombatEngine` (the low-level tick-based skill rotator)
+ *    and `ActionFeed` (the high-priority packet-level counter/reactive trigger engine).
+ *  - Target Resolution:
+ *      1. Wildcard/any: Selects first living monster in player's current cell (`world.strFrame`).
+ *      2. MonMapID integer: Directly targets via `world.getMonster(idInt)`.
+ *      3. Name/MMID search via `MonsterManager.findByName()` and `findByMapId()`.
+ *  - Hunting Lifecycle (`hunt` / `kill`):
+ *      * Tracks required kills or specific item drop quotas (`hasItem(itemName, qty)`).
+ *      * Automatically navigates player to cells where target monsters spawn (`getMonsterCells()`).
+ *      * Safely cleans up `CombatEngine.targetName`, `CombatEngine.lockedMMID`, and kill trackers
+ *        when a hunt completes or `stopCombat()` / `resetHunt()` is called.
+ *      * Allows seamless transitions between different hunt targets without filter leakage.
+ *
+ * Range & Magnet Hacks:
+ *  - `infiniteRange`: Patches `world.actions.active[*].range = 20000` to bypass distance checks.
+ *  - `magnetize`: Snaps target monster's `pMC.x` and `pMC.y` to the player's position on tick.
+ */
 class CombatManager {
     private var _game:Game;
 

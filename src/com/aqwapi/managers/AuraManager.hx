@@ -5,6 +5,27 @@ import com.aqwapi.Game;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 
+/**
+ * Inspects, parses, and monitors buff and debuff auras on both player and monsters.
+ *
+ * Upstream AS3 Storage Architecture:
+ *  - Player Auras:
+ *      1. `world.uoTree[avatar.pnm.toLowerCase()].auras`: Primary table on user object tree.
+ *      2. `world.uoTreeLeaf(avatar.pnm).auras`: Native getter fallback.
+ *      3. `avatar.auras` / `avatar.dataLeaf.auras`: Direct avatar fields.
+ *  - Monster Auras:
+ *      1. `world.monTree[MonMapID].auras`: Primary monster aura table.
+ *      2. `target.auras` / `target.dataLeaf.auras`: Active target avatar fallbacks.
+ *  - Aura Data Structure:
+ *      * `nam`: Aura name string.
+ *      * `dur`: Duration in seconds.
+ *      * `ts`: Start timestamp (milliseconds).
+ *      * `val`: Current stack count.
+ *      * Expiration calculation: `ApiTime.now() - ts <= dur * 1000`.
+ *
+ * Immobilisation & Status Queries:
+ *  - Evaluates crowd-control effects (stun, freeze, petrify) to inform combat rotation logic.
+ */
 class AuraManager {
     private var _game:Game;
 

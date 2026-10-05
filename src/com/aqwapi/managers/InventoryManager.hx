@@ -12,6 +12,25 @@ import com.aqwapi.Game;
 import flash.utils.Timer;
 import flash.events.TimerEvent;
 
+/**
+ * Central manager for player inventory, bank, equipment, and house storage.
+ *
+ * Upstream AS3 Data Structures:
+ *  - Bag Items: Array of dynamic item objects in `world.myAvatar.items`.
+ *  - Bank Items: Array of dynamic item objects in `world.bank.items`.
+ *  - Item Dictionaries: `world.invTree` maps ItemID to full item metadata (name, type, coins, etc.).
+ *  - Item DTO: Normalizes dynamic AS3 item fields (`ItemID`, `sName`, `sType`, `iQty`, `bEquip`, `bCoins`).
+ *
+ * Equipment & Cosmetic Swapping:
+ *  - `bEquip`: 1 if item is actively equipped for combat stats.
+ *  - `bWear`: 1 if item is cosmetically displayed (show helm/cape/armor).
+ *  - Equip Swapping: Sends `%xt%zm%equipItem%...%`.
+ *
+ * Bank Transfers & Pacing:
+ *  - Bank and bag transfers enforce `ApiTimings.BANK_ACTION_MS` (1100ms) cooldowns
+ *    to prevent server rate-limiting and transaction rollbacks.
+ *  - Queued batch transfers (`bankToInv`, `invToBank`) pace operations sequentially.
+ */
 class InventoryManager {
     private var _game:Game;
 

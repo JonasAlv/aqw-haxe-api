@@ -7,6 +7,39 @@ import com.aqwapi.net.TransportAdapter;
 import com.aqwapi.scripting.HScriptEngine;
 import com.aqwapi.utils.ApiLogger;
 
+/**
+ * Global static facade and primary entry point for the AQW Haxe API.
+ *
+ * Architecture and Runtime Lifecycle:
+ *  - Injection & Boot: `Api.init(gameReference)` is invoked by `Pocket.as` / `ModBootstrap.as`
+ *    once the Flash ApplicationDomain has loaded and the main root `Game.as` instance is live.
+ *  - Subsystem Registration: Centralizes and exposes specialized domain managers:
+ *      * player: Local avatar state, vital stats (HP, MP), combat state, coordinates.
+ *      * map: World travel, room/cell jumping, zone load verification, stealth combat drop.
+ *      * combat: Hunting loops, target acquisition, kill quotas, skill rotation coordination.
+ *      * quest: Quest accept/complete queues, objective tree parsing, reward handling.
+ *      * monster: Entity discovery, cell population queries, live Avatar vs monTree resolution.
+ *      * inventory: Bank/bag transfers, item equipping, cosmetic swapping, house items.
+ *      * drop: SmartFox packet interception, priority drop filtering, auto-looting.
+ *      * shop: Shop loading, rate-limited purchases, buy/sell queues.
+ *      * skills: Class config management, auto-mode selection, rule parsing.
+ *      * aura: Player and monster buff/debuff inspection across uoTree and monTree.
+ *      * enhancement: Automated Forge and standard item enhancement workflows.
+ *      * script: HScript runtime integration and user automation scripts.
+ *
+ * Dual Accessors Pattern:
+ *  - In Haxe compiled to ActionScript 3 bytecode (SWC), Flash properties are exposed
+ *    using `@:getter(...)` for native AS3 property syntax (`api.player.hp`), while
+ *    explicit `get_*()` methods are maintained for HScript and dynamic reflection (`Reflect.field`).
+ *
+ * Subsystem Startup Sequence:
+ *  1. `ensureMathShims()`: Patches global AS3 `Math.isNaN` and `Math.isFinite` if absent.
+ *  2. `preloadAssets()`: Preloads embedded skill rotations, Forge quest metadata, and LocalStorage.
+ *  3. `ActionFeed.install()`: Hooks into SmartFoxClient `onExtensionResponse` at priority 100
+ *     to capture combat action resolutions (`sar`/`sars`) before the game client processes them.
+ *  4. Manager instantiation with the root `Game` reference.
+ *  5. Background adapters (`TransportAdapter`, `DropManager`) are started.
+ */
 class Api {
     public static var dispatcher(default, null):EventDispatcher = new EventDispatcher();
     public static var logger:Class<ApiLogger> = ApiLogger;
@@ -175,6 +208,11 @@ class Api {
         ensureMathShims();
     }
 
+    /**
+     * Patches global ActionScript 3 Math object with standard ES5 isNaN and isFinite shims.
+     * Required because some Flash runtimes lack Math.isNaN/Math.isFinite, which causes
+     * subtle runtime reference exceptions in Haxe-generated numerical validations.
+     */
     public static function ensureMathShims():Void {
         #if flash
         try {
@@ -197,6 +235,10 @@ class Api {
         com.aqwapi.utils.ApiStorage.ensureFiles();
     }
 
+    /**
+     * Preloads persistent local storage, skill rotation datasets, and initializes
+     * the CombatEngine before game interaction begins.
+     */
     public static function preloadAssets():Void {
         ensureMathShims();
         ensureStorage();
@@ -219,6 +261,10 @@ class Api {
         }
     }
 
+    /**
+     * Master initialization entry point called by the mod loader when Game.as is ready.
+     * Hooks packet listeners, wires all domain managers, and starts background adapters.
+     */
     public static function init(gameReference:Game):Void {
         ensureMathShims();
         preloadAssets();
