@@ -131,10 +131,19 @@ class ScriptBindings {
         bind("cell", function():String {
             return Api.player != null ? Api.player.cell : "";
         });
+        bind("getCell", function():String {
+            return Api.player != null ? Api.player.cell : "";
+        });
         bind("pad", function():String {
             return Api.player != null ? Api.player.pad : "";
         });
+        bind("getPad", function():String {
+            return Api.player != null ? Api.player.pad : "";
+        });
         bind("mapName", function():String {
+            return Api.map != null ? Api.map.name : "";
+        });
+        bind("getMapName", function():String {
             return Api.map != null ? Api.map.name : "";
         });
         bind("isCell", function(cellName:String):Bool {
@@ -803,17 +812,84 @@ class ScriptBindings {
     // -------------------------------------------------------------------------
 
     private static function registerPlayerStatusShortcuts():Void {
+        // Level & Identity
         bind("level", function():Int {
             return Api.player != null ? Api.player.level : 0;
+        });
+        bind("getLevel", function():Int {
+            return Api.player != null ? Api.player.level : 0;
+        });
+        bind("username", function():String {
+            return Api.player != null ? Api.player.username : "";
+        });
+        bind("getUsername", function():String {
+            return Api.player != null ? Api.player.username : "";
         });
         bind("isMember", function():Bool {
             return Api.player != null && Api.player.isMember;
         });
+
+        // Health & Vitality
+        bind("hp", function():Int {
+            return Api.player != null ? Api.player.hp : 0;
+        });
+        bind("getHp", function():Int {
+            return Api.player != null ? Api.player.hp : 0;
+        });
+        bind("maxHp", function():Int {
+            return Api.player != null ? Api.player.maxHp : 100;
+        });
+        bind("getMaxHp", function():Int {
+            return Api.player != null ? Api.player.maxHp : 100;
+        });
+        bind("isAlive", function():Bool {
+            return Api.player != null && Api.player.isAlive;
+        });
+
+        // Mana
+        bind("mp", function():Int {
+            return Api.player != null ? Api.player.mp : 0;
+        });
+        bind("getMp", function():Int {
+            return Api.player != null ? Api.player.mp : 0;
+        });
+        bind("maxMp", function():Int {
+            return Api.player != null ? Api.player.maxMp : 100;
+        });
+        bind("getMaxMp", function():Int {
+            return Api.player != null ? Api.player.maxMp : 100;
+        });
+
+        // Gold & Economy
+        bind("gold", function():Int {
+            return Api.player != null ? Api.player.gold : 0;
+        });
+        bind("getGold", function():Int {
+            return Api.player != null ? Api.player.gold : 0;
+        });
+
+        // Combat State
+        bind("isInCombat", function():Bool {
+            return Api.player != null && Api.player.isInCombat;
+        });
+
+        // Factions
         bind("factionRank", function(name:String):Int {
             return Api.player != null ? Api.player.getFactionRank(name) : 0;
         });
         bind("getFactionRank", function(name:String):Int {
             return Api.player != null ? Api.player.getFactionRank(name) : 0;
+        });
+
+        // Auras on Player
+        bind("hasAura", function(name:String):Bool {
+            return Api.player != null && Api.player.hasAura(name);
+        });
+        bind("getAuraStacks", function(name:String):Float {
+            return Api.player != null ? Api.player.getAuraStacks(name) : 0.0;
+        });
+        bind("getAuraRemaining", function(name:String):Float {
+            return Api.player != null ? Api.player.getAuraRemaining(name) : 0.0;
         });
     }
 
