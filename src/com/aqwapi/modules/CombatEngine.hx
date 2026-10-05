@@ -133,6 +133,8 @@ class CombatEngine {
     
     public static function stop():Void {
         IS_ON = false;
+        targetName = null;
+        lockedMMID = null;
         _temporaryIgnore = new Map<String, Float>();
         if (_timer != null && _timer.running) {
             _timer.stop();
@@ -146,13 +148,23 @@ class CombatEngine {
     }
     
     public static function toggleSmart():Void {
-        if (IS_ON && isSmart) stop();
-        else start(true);
+        if (IS_ON && isSmart) {
+            stop();
+        } else {
+            targetName = null;
+            lockedMMID = null;
+            start(true);
+        }
     }
     
     public static function toggleCustom():Void {
-        if (IS_ON && !isSmart) stop();
-        else start(false);
+        if (IS_ON && !isSmart) {
+            stop();
+        } else {
+            targetName = null;
+            lockedMMID = null;
+            start(false);
+        }
     }
     
     public static function setCustomRotation(rotation:Array<Int>, mode:String = "auto"):Void {

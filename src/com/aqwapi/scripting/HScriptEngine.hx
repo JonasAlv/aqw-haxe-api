@@ -231,6 +231,8 @@ class HScriptEngine {
         } else {
             CombatEngine.stop();
         }
+        com.aqwapi.modules.CombatEngine.targetName = null;
+        com.aqwapi.modules.CombatEngine.lockedMMID = null;
         if (Api.quest != null) {
             Api.quest.stopAuto();
             Api.quest.clearQueue();

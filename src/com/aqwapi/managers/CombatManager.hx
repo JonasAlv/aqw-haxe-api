@@ -179,6 +179,10 @@ class CombatManager {
     public function startSmart():Void { CombatEngine.start(true, false); }
 
     public function startSmartStandalone(confClass:String = "Current", confMode:String = "Auto"):Void {
+        resetHunt();
+        CombatEngine.targetName = null;
+        CombatEngine.lockedMMID = null;
+
         var needsEquip:Bool = false;
         if (confClass != null && confClass != "" && confClass.toLowerCase() != "current") {
             var curClass = SkillManager.getCurrentClassName();
@@ -230,6 +234,8 @@ class CombatManager {
         dropCombat();
         lastCombatExitTime = com.aqwapi.utils.ApiTime.now();
         resetHunt();
+        CombatEngine.targetName = null;
+        CombatEngine.lockedMMID = null;
     }
 
     public inline function endCombat():Void {
@@ -265,6 +271,8 @@ class CombatManager {
         _activeHuntKey = null;
         _completedHunts = new Map();
         _huntMonAliveMap = new Map();
+        CombatEngine.targetName = null;
+        CombatEngine.lockedMMID = null;
     }
 
     public function hunt(monsterName:String, itemOrCount:Dynamic = null, quantityOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
@@ -387,10 +395,6 @@ class CombatManager {
                 return true;
             }
             if (_huntMonster != huntKey || _huntTargetKills != targetKills) {
-                // If another hunt is currently active and not yet finished, yield
-                if (_activeHuntKey != null && _activeHuntKey != huntKey) {
-                    return false;
-                }
                 _huntMonster = huntKey;
                 _activeHuntKey = huntKey;
                 _huntTargetKills = targetKills;
@@ -418,10 +422,6 @@ class CombatManager {
         var isBoundedHunt:Bool = (isKillCount && targetKills > 0) || (isArrayItems && itemList.length > 0) || (!isKillCount && !isArrayItems && itemOrCount != null && Std.string(itemOrCount) != "");
 
         if (isBoundedHunt) {
-            // If another hunt task is currently running, don't interrupt it
-            if (_activeHuntKey != null && _activeHuntKey != huntKey) {
-                return false;
-            }
             _activeHuntKey = huntKey;
         } else {
             // Unbounded hunt: hunting a monster directly without a completion count
