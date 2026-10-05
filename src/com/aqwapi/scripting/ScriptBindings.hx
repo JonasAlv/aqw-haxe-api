@@ -759,6 +759,20 @@ class ScriptBindings {
             return com.aqwapi.utils.ApiTimings.describe();
         });
 
+        // Verbose diagnostics for the packet hit feed. Off by default - see ApiLogger.diagnostics for
+        // why they exist. Turn on when a [counter] rule seems to be silently failing.
+        bind("setDiagnostics", function(enabled:Bool = true):Bool {
+            com.aqwapi.utils.ApiLogger.diagnostics = enabled;
+            if (enabled) {
+                ApiLogger.info("HScript", "Diagnostics ON: packet-shape probes, hit-feed counters and"
+                    + " hard-lock notices will be logged every few seconds.");
+            }
+            return com.aqwapi.utils.ApiLogger.diagnostics;
+        });
+        bind("getDiagnostics", function():Bool {
+            return com.aqwapi.utils.ApiLogger.diagnostics;
+        });
+
         // Reset-on-target-change, readable at runtime. The UI writes it, but a script that suspects
         // the rotation is resuming instead of restarting needs to confirm the mode actually has it on.
         bind("getResetOnTargetChange", function(className:String = null, modeName:String = null):Dynamic {
@@ -820,10 +834,37 @@ class ScriptBindings {
         bind("msg", function(msg:Dynamic):Void {
             var str = Std.string(msg);
             ApiLogger.info("Script", str);
-            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, str));
+            com.aqwapi.feedback.ApiFeedback.card(str);
         });
+        // Routed through ApiFeedback so a notification is always accompanied by a log line, making
+        // on-screen cards traceable in api.log instead of being a separate stream.
         bind("notify", function(msg:Dynamic):Void {
-            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, Std.string(msg)));
+            com.aqwapi.feedback.ApiFeedback.notify(Std.string(msg));
+        });
+        bind("notifyCard", function(msg:Dynamic):Void {
+            com.aqwapi.feedback.ApiFeedback.card(Std.string(msg));
+        });
+        bind("notifySticky", function(id:String, msg:Dynamic):Void {
+            com.aqwapi.feedback.ApiFeedback.sticky(id, Std.string(msg));
+        });
+        bind("removeStickyNotification", function(id:String):Void {
+            com.aqwapi.feedback.ApiFeedback.removeSticky(id);
+        });
+        bind("logToScreen", function(msg:Dynamic):Void {
+            com.aqwapi.feedback.ApiFeedback.logToScreen(com.aqwapi.utils.ApiLogger.LEVEL_INFO, "Script", Std.string(msg));
+        });
+        bind("setMirrorLogs", function(enabled:Bool = true):Bool {
+            com.aqwapi.feedback.ApiFeedback.mirrorLogs = enabled;
+            return com.aqwapi.feedback.ApiFeedback.mirrorLogs;
+        });
+        bind("clearStickyNotifications", function():Void {
+            com.aqwapi.feedback.ApiFeedback.clearSticky();
+        });
+        bind("getStickyNotifications", function():Array<Dynamic> {
+            return com.aqwapi.feedback.ApiFeedback.stickyIds();
+        });
+        bind("feedbackConfig", function():Dynamic {
+            return com.aqwapi.feedback.ApiFeedback.config();
         });
         bind("clearLog", function():Void {
             ApiLogger.clearLog();

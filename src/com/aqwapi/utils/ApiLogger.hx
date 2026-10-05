@@ -17,6 +17,29 @@ class ApiLogger {
 
     public static var onLog:String->Int->String->Void = null;
 
+    /**
+     * Verbose diagnostics, off by default.
+     *
+     * This exists because the packet-level hit feed is genuinely hard to debug blind: every failure
+     * mode we hit (wrong command field, wrong payload shape, records being wiped, the lock latching
+     * open) looked identical from the outside - no error, just a `[counter]` that silently never
+     * fired. The diagnostics that surfaced them were a per-tick counter dump, a one-line packet-shape
+     * dump and a repeating hard-lock notice, none of which belong in a shipping log.
+     *
+     * So they are kept, but off. Turn on with `setDiagnostics(true)` from a script, or
+     * `ApiLogger.diagnostics = true` from code, when something looks wrong and you need the detail.
+     */
+    public static var diagnostics:Bool = false;
+
+    /**
+     * Logs only when diagnostics are enabled. Use for high-frequency or shape-probing output that is
+     * useful while debugging but noise in normal play.
+     */
+    public static function diag(tag:String, message:String):Void {
+        if (!diagnostics) return;
+        info(tag, message);
+    }
+
 
     private static var _traceInited:Bool = initTrace();
     private static function initTrace():Bool {
@@ -267,6 +290,11 @@ class ApiLogger {
     }
 
     private static function write(tag:String, msgLevel:Int, message:String):Void {
+        // Single choke point every emitted line passes through, so offering the log stream to the UI
+        // as notification requests needs exactly one hook instead of one per sink. Gated by a boolean
+        // in ApiFeedback, so the default cost is one check. API-side policy; the UI decides how to draw.
+        com.aqwapi.feedback.ApiFeedback.onLogLine(tag, msgLevel, message);
+
         var levelStr:String = switch (msgLevel) {
             case LEVEL_DEBUG: "DEBUG";
             case LEVEL_INFO:  "INFO";

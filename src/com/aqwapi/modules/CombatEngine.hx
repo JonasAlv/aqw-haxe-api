@@ -790,7 +790,7 @@ class CombatEngine {
             if (target != null && SkillRules.hasHardLockRule(skill)) {
                 if (now - _lastHardLockLogTime > ApiTimings.WARN_THROTTLE_MS) {
                     _lastHardLockLogTime = now;
-                    ApiLogger.info("Combat", "Hard lock: holding slot " + _skillIndex + " (skill " + skillId
+                    ApiLogger.diag("Combat", "Hard lock: holding slot " + _skillIndex + " (skill " + skillId
                         + ") until the target lands an attack. Waiting " + Std.string(Math.round(now - _skillWaitStart)) + "ms.");
                 }
                 return;

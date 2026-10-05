@@ -123,7 +123,7 @@ class ActionFeed {
         var now:Float = ApiTime.now();
         if (now - _lastSummaryAt < 15000) return;
         _lastSummaryAt = now;
-        ApiLogger.info("ActionFeed", "Stats: packets=" + packetsSeen + " hitsOnUs=" + resultsSeen + " ticks=" + _ticksWithResults + " totalHits=" + _tickResults + " buffer=" + _records.length + " resets=" + resets + " lockOpen=" + hasAnyForTarget(-1e30) + " consumed=" + _consumedSeq + "/" + _seq + " cmds=" + cmdSummary());
+        ApiLogger.diag("ActionFeed", "Stats: packets=" + packetsSeen + " hitsOnUs=" + resultsSeen + " ticks=" + _ticksWithResults + " totalHits=" + _tickResults + " buffer=" + _records.length + " resets=" + resets + " lockOpen=" + hasAnyForTarget(-1e30) + " consumed=" + _consumedSeq + "/" + _seq + " cmds=" + cmdSummary());
     }
 
     private static function cmdSummary():String {
@@ -190,7 +190,7 @@ class ActionFeed {
 
             if (!_sawAnyPacket) {
                 _sawAnyPacket = true;
-                ApiLogger.info("ActionFeed", "First packet: cmd='" + cmd + "' via " + via + " keys=" + fieldList(d));
+                ApiLogger.diag("ActionFeed", "First packet: cmd='" + cmd + "' via " + via + " keys=" + fieldList(d));
             }
 
             if (cmd == "sar") {
@@ -280,7 +280,7 @@ class ActionFeed {
         if (d == null) return;
         if (_shapesSeen.exists(cmd)) return;
         _shapesSeen.set(cmd, true);
-        ApiLogger.info("ActionFeed", "Shape '" + cmd + "' result keys=[" + fieldList(d) + "]");
+        ApiLogger.diag("ActionFeed", "Shape '" + cmd + "' result keys=[" + fieldList(d) + "]");
     }
 
     private static inline function record(attacker:String, type:String, hp:Int):Void {
@@ -289,7 +289,7 @@ class ActionFeed {
         while (_records.length > MAX_RECORDS) _records.pop();
         if (!_announced) {
             _announced = true;
-            ApiLogger.info("ActionFeed", "First action on us: attacker=" + attacker + " type=" + type + " hp=" + hp);
+            ApiLogger.diag("ActionFeed", "First action on us: attacker=" + attacker + " type=" + type + " hp=" + hp);
         }
     }
 
