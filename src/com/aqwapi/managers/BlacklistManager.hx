@@ -3,15 +3,6 @@ package com.aqwapi.managers;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiStorage;
 
-/**
- * Persists and checks blacklisted items to prevent unwanted drops from cluttering bag space.
- *
- * Architecture:
- *  - Storage: Saved to LocalStorage as `api_blacklist.json`.
- *  - Matching: Case-insensitive and whitespace-trimmed string matching.
- *  - Drop Interception: Queried synchronously by `DropManager` inside the `dropItem` packet
- *    handler before deciding whether to send `%xt%zm%getDrop%` or reject the item.
- */
 class BlacklistManager {
     private static var _instance:BlacklistManager;
     public static var instance(get, never):BlacklistManager;

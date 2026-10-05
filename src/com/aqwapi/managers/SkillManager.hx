@@ -9,19 +9,6 @@ import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.SkillDslParser;
 
-/**
- * Manages class configurations, combat mode presets, and DSL skill rotation rules.
- *
- * Architecture and Datastores:
- *  - Bundled Presets: Embedded default skills dataset (`DefaultSkillsData`).
- *  - User Overrides: Custom rotations persisted in `user_skills.json`.
- *  - Class Name Resolution:
- *      * Strips armor parentheticals (e.g. "Void Highlord (IoDA)" -> "voidhighlord").
- *      * Normalizes variant names (e.g. "ArchPaladin", "Legion Revenant").
- *  - Mode Selection:
- *      * Manages named rotation modes per class (e.g. "Solo", "Farm", "Defense").
- *      * Resolves active mode rules into declarative DSL tokens (`[hp<50]`, `[aura:...]`, `[counter]`).
- */
 class SkillManager {
     private var _game:Game;
 

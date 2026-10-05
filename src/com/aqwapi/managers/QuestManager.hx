@@ -12,27 +12,6 @@ import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.Game;
 
-/**
- * Manages quest loading, acceptance, turn-in queues, and objective progress tracking.
- *
- * Upstream AS3 Architecture:
- *  - Quests in AQW are cached on the client inside `world.questTree` (keyed by QuestID).
- *  - Uncached quests must be loaded from the server via `%xt%zm%getQuests%...%` before
- *    their requirements, turn-in items, and rewards can be inspected.
- *  - Quest State:
- *      * `qData.status == "p"`: In progress / accepted.
- *      * `qData.status == "c"`: Can complete / all objectives met.
- *      * `world.isQuestInProgress(id)`: Native client check.
- *
- * Safe Action Queue & Pacing:
- *  - AQW servers enforce a strict 1000ms cooldown on quest turn-ins and accepts.
- *    Sending requests faster triggers anti-bot server kicks or silent packet drops.
- *  - `_actionQueue` paces `accept` and `complete` operations sequentially, enforcing
- *    `ApiTimings.QUEST_ACTION_MS` (1100ms) spacing between network dispatches.
- *  - Rewards Resolution:
- *      * Automatically resolves reward ItemID from item name or ID when turning in quests
- *        with multiple reward choices.
- */
 class QuestManager {
     private var _game:Game;
     private var _timer:Timer;

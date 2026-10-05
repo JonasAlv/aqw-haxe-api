@@ -7,25 +7,6 @@ import com.aqwapi.Game;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiLogger;
 
-/**
- * Orchestrates map travel, cell jumping, room synchronization, and zone transitions.
- *
- * Upstream AS3 Architecture:
- *  - Map travel is initiated via `world.sendLoadRoomRequest(mapName, cell, pad)`.
- *  - Intra-map cell jumps use `world.moveToCell(cell, pad)`.
- *  - Current map name is read from `world.curMap` or `world.strMapName`.
- *  - Cell navigation references MovieClip frame labels in the map's SWF (`world.map.currentLabels`).
- *
- * Deterministic State Progression & Anti-Desync:
- *  - Map Transition Cooldowns: AQW server enforces an ~800ms-1200ms cooldown on `cmd: "moveToCell"`
- *    and map load requests. `ApiTimings.MAP_JOIN_MS` (1200ms) and `ApiTimings.MAP_JUMP_MS` (800ms)
- *    prevent packet drops or rate-limit kicks.
- *  - Combat Drop Before Travel: AQW prohibits room transfers while in active combat (`intState == 2`).
- *    `ensure()` and `ensureHouse()` detect active combat and automatically issue `Api.combat.dropCombat()`
- *    (or cell reload) and briefly yield to let the server clear combat state before attempting travel.
- *  - Pad Fallback: When jumping to a cell without specifying a pad, `getValidPad()` inspects
- *    the map MovieClip's frame labels or defaults to "Spawn" / "Left" / "Right".
- */
 class MapManager {
     private var _game:Game;
     private var _lastJoinTime:Float = 0;

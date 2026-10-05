@@ -4,24 +4,6 @@ import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.Game;
 
-/**
- * Intercepts, tracks, filters, and loots item drops from the SmartFox packet stream.
- *
- * Upstream AS3 Wire Protocol & UI:
- *  - Server sends drop packets: `cmd: "dropItem"` containing nested item maps.
- *  - Pickup confirmation packet: `cmd: "getDrop"` returning `ItemID`.
- *  - Native Drop UIs:
- *      * `cDropsUI`: Modern Custom Drops UI, tracks pending drops in `cDropsUI.invTree`.
- *      * `ui.dropStack`: Classic drop notification MovieClip container on the game stage.
- *
- * Priority Listener & Anti-Desync:
- *  - Registers on `sfc` (`onExtensionResponse`) with priority -10 so the native client
- *    populates `world.invTree` and initializes the drop before the bot reads or loots it.
- *  - Rate-Limited Pickup: `sendGetDrop()` enforces a 1500ms cooldown per item ID to prevent
- *    spamming `%xt%zm%getDrop%` packets which can trigger disconnects.
- *  - Automatic Blacklist / Whitelist Filtering: Respects `BlacklistManager`, `acceptACs`,
- *    and script target drop tables.
- */
 class DropManager {
     private var _game:Game;
     public var pendingDrops:Array<Dynamic> = [];

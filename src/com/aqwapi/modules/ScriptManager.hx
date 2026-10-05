@@ -4,14 +4,6 @@ import com.aqwapi.Api;
 import com.aqwapi.scripting.HScriptEngine;
 import com.aqwapi.utils.ApiStorage;
 
-/**
- * High-level script file manager handling script enumeration, reading, saving, and execution.
- *
- * Architecture:
- *  - Script Discovery: Scans both bundled scripts and user-created scripts via `ApiStorage`.
- *  - Script Execution: Delegates parsing and running of `.hxs` scripts to `HScriptEngine.SINGLETON`.
- *  - Save/Delete Guard: Protects bundled read-only scripts by cloning edits to `_Edited` files.
- */
 class ScriptManager {
     private static var _instance:ScriptManager;
     public static var SINGLETON(get, never):ScriptManager;

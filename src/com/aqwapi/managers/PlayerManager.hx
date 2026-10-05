@@ -4,32 +4,6 @@ import com.aqwapi.Api;
 import com.aqwapi.data.EntityDTO;
 import com.aqwapi.Game;
 
-/**
- * Manages local player state, vital statistics, coordinates, and entity flags.
- *
- * Upstream AS3 Architecture:
- *  - The player's runtime entity is stored at `Game.world.myAvatar` (Avatar.as).
- *  - Vital statistics (HP, MP, Level, State, Gold) reside inside `myAvatar.dataLeaf`,
- *    which is populated directly from server sync packets (`uotls`, `stu`, etc.).
- *  - Entity State Codes (`intState`):
- *      * 0: Dead / Ghost state (`isAlive == false`).
- *      * 1: Idle / Out of Combat.
- *      * 2: In Combat.
- *  - In-Combat Detection:
- *      * Evaluated via `dataLeaf.intState >= 2` or `intCombatOn == 1` on either
- *        `dataLeaf` or the avatar movieclip directly.
- *  - Username and Identity:
- *      * Primary: `dataLeaf.strUsername` or `objData.strUsername`.
- *      * Fallback: SmartFoxClient connection username (`game.sfc.myUserName`).
- *  - Spatial Coordinates:
- *      * Current cell name is stored at `Game.world.strFrame`.
- *      * Current pad name is stored at `Game.world.strPad`.
- *
- * Dual Accessors Pattern:
- *  - Properties implement both Flash native getters (`@:getter(prop)`) and explicit
- *    Haxe/HScript accessors (`get_prop()`) to ensure consistent performance whether called
- *    from typed ActionScript or interpreted HScript bots.
- */
 class PlayerManager {
 
     private var _game:Game;

@@ -14,20 +14,6 @@ import hscript.Interp;
 import hscript.Parser;
 import hscript.Printer;
 
-/**
- * Interpreter runtime executing user automation scripts written in HScript.
- *
- * Architecture and Event Loop:
- *  - Uses an extended `ScriptInterp` configured with `allowTypes`, `allowJSON`, and `allowMetadata`.
- *  - Runs on a periodic timer tick (`tickInterval` = 100ms):
- *      * Evaluates `waitTimer` to support non-blocking asynchronous pauses (`sleep()`).
- *      * Calls `onTick()` script callbacks when defined.
- *  - Script Bindings:
- *      * Exposes top-level bot functions, managers, and utility DSL helpers via `ScriptBindings`.
- *  - Event Hooking:
- *      * Forwards game events (`onPacket`, `onZoneEntered`, `onQuestUpdated`, `onInventoryChanged`)
- *        to script functions if declared.
- */
 class HScriptEngine {
     private var _parser:Parser;
     private var _interp:Interp;

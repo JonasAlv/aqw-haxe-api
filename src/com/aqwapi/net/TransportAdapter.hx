@@ -5,23 +5,6 @@ import com.aqwapi.Api;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.Game;
 
-/**
- * Network adapter bridging the AQW SmartFoxClient packet stream to high-level API events.
- *
- * Upstream AS3 Network Architecture:
- *  - Game communicates with the server via SmartFoxClient (`game.sfc`).
- *  - Inbound Packets: Received via the `"onExtensionResponse"` event on `sfc`.
- *      * Carries `event.params.type` ("json" or "str") and data payloads.
- *  - Outbound Packets: Sent via `sfc.sendString("%xt%...")` or `sendXtMessage(...)`.
- *
- * Event Translation:
- *  - Decodes low-level wire commands into strongly-typed `GameEvent` dispatches:
- *      * `dropItem` -> `GameEvent.DROP_RECEIVED`
- *      * `equipItem` -> `GameEvent.EQUIP_ITEM`
- *      * `loadBank` -> `GameEvent.LOAD_BANK`
- *      * `updateQuest` -> `GameEvent.UPDATE_QUEST`
- *      * `buyItem` -> `GameEvent.BUY_ITEM`
- */
 class TransportAdapter {
     private var _game:Game;
     private var _isListening:Bool = false;

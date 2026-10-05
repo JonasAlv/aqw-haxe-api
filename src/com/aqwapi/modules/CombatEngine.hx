@@ -14,26 +14,6 @@ import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.SkillDslParser;
 
-/**
- * Low-level combat execution engine driving tick-based skill rotations, target validation,
- * rule evaluation, and defensive reactions.
- *
- * Architecture and Execution Model:
- *  - Operates on a high-frequency tick timer (`ApiTimings.COMBAT_TICK_MS` = 150ms).
- *  - Synchronization with Global Cooldown (GCD):
- *      * AQW enforces a client-side and server-side global cooldown (~1000ms-1500ms).
- *      * Casts are gated by `world.actions.active[*].cd` and the last cast timestamp.
- *  - Modes of Operation:
- *      * Smart Mode (`isSmart = true`): Evaluates declarative DSL rules from `SkillManager`
- *        (HP/MP thresholds, aura stacks, counter windows, target HP).
- *      * Custom Mode: Executes user-defined sequence of skill indices (`1` to `5`).
- *  - Target Locking & Validation:
- *      * `targetName` and `lockedMMID` restrict targeting to specific mobs during scripts/hunts.
- *      * Validates targets every tick (`isTargetValid()`), dropping targets that die, leave the cell,
- *        or match global stop-on-aura conditions (e.g. damage-reflect shields).
- *  - Reactive Counter Windows:
- *      * Integrated with `ActionFeed` to trigger skills immediately following incoming enemy attacks.
- */
 class CombatEngine {
     private static var _timer:Timer;
     public static var IS_ON:Bool = false;

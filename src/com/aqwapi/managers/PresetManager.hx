@@ -4,15 +4,6 @@ import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiStorage;
 import haxe.Json;
 
-/**
- * Manages named collections of inventory items (e.g. "Nulgath", "Legion", "Dailies").
- *
- * Persistence & Resolution:
- *  - Primary Source: User-defined presets stored in LocalStorage (`item_presets.json`).
- *  - Fallback: Pre-bundled defaults compiled into the SWF via `haxe.Resource`.
- *  - Case-Insensitive Lookup: Normalizes preset names while preserving original display labels.
- *  - Used by `InventoryManager` for batch banking/unbanking (`bankPreset`, `unbankPreset`).
- */
 class PresetManager {
     public static var instance(get, null):PresetManager;
     private static var _instance:PresetManager = null;
