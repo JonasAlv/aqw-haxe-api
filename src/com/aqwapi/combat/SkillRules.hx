@@ -6,6 +6,32 @@ import com.aqwapi.utils.ApiUtils;
 
 class SkillRules {
 
+    /**
+     * Whether this slot carries a window-less counter rule, which makes it a hard lock.
+     *
+     * The rotation asks the rules "pass or not", and a plain false is indistinguishable from "this
+     * skill is not ready right now". For `[counter]` those are not the same thing: the slot must not be
+     * stepped over at all, it has to wait. The rotation uses this to tell the two apart and stay put
+     * instead of advancing.
+     *
+     * A counter with an explicit window (`[counter <= 1500]`) is an ordinary timed gate and does NOT
+     * hard lock, so the normal skip behaviour still applies to it.
+     */
+    public static function hasHardLockRule(skill:Dynamic):Bool {
+        if (skill == null || !Std.isOfType(skill.rules, Array)) return false;
+        var rules:Array<Dynamic> = cast skill.rules;
+        for (r in rules) {
+            if (r == null) continue;
+            var t:String = (r.type != null) ? Std.string(r.type).toLowerCase() : "";
+            if (t != "counter" && t != "targetaction" && t != "hit") continue;
+            // A count form is a hard lock too: it waits for N attacks, so the slot must not be skipped.
+            if (r.count != null && Std.int(r.count) > 0) return true;
+            var v:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0) : 0;
+            if (v <= 0) return true;
+        }
+        return false;
+    }
+
     public static function evaluateSkillRules(skill:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int, waitUntil:Dynamic):Bool {
         if (skill == null || skill.rules == null) return true;
         var rules:Dynamic = skill.rules;
@@ -97,6 +123,33 @@ class SkillRules {
                 var remainingSec:Float = Api.aura.getRemaining(auraName, auraTarget, world, avatar, target);
                 var threshold:Float = ApiUtils.parseFloat(rule.value, 0);
                 return compare(remainingSec, threshold, Std.string(rule.comparison));
+
+            case "Counter", "TargetAction", "Hit":
+                // The server resolved one of the target's attacks against us and we are inside the
+                // reaction window. Driven by the hit packet rather than our HP delta or the mob's
+                // animation, so a dodged or missed swing still counts - a riposte has to answer every
+                // attack, not only the ones that connected.
+                //
+                // With no window the rule is a HARD LOCK: it passes as soon as the target has ever hit
+                // us and never expires, so the rotation cannot time out and skip the slot. That is the
+                // difference between `[counter]` and `[counter <= 1500]`.
+                var cRaw:Float = (rule.value != null) ? ApiUtils.parseFloat(rule.value, 0) : 0;
+                var cType:String = (rule.actionType != null) ? Std.string(rule.actionType) : null;
+                var cCount:Int = (rule.count != null) ? Std.int(rule.count) : 0;
+                if (cCount > 0) {
+                    // `[counter xN]` - a hard lock that waits for N resolved attacks rather than one.
+                    // A count and a window are alternative forms; if both are somehow present the count
+                    // governs, because "wait for N" is the stricter condition.
+                    var cutoff:Float = com.aqwapi.modules.CombatEngine.counterArmCutoff();
+                    return com.aqwapi.modules.ActionFeed.unconsumedCountForTarget(cutoff, cType) >= cCount;
+                }
+                if (cRaw <= 0) {
+                    // Hard lock: no time limit, just "has a fresh attack landed since we were ready
+                    // for one". The arm cutoff stops a hit that lands in the same instant as our own
+                    // cast from consuming the riposte immediately.
+                    return com.aqwapi.modules.ActionFeed.hasAnyForTarget(com.aqwapi.modules.CombatEngine.counterArmCutoff());
+                }
+                return com.aqwapi.modules.CombatEngine.targetActionFresh(cRaw, cType);
 
             case "Aura", "MultiAura":
                 var auraName:String = (rule.auraName != null) ? Std.string(rule.auraName) : "";

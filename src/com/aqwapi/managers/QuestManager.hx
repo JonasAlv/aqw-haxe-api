@@ -1,5 +1,7 @@
 package com.aqwapi.managers;
 
+import com.aqwapi.utils.ApiTimings;
+
 import flash.utils.Timer;
 import flash.events.TimerEvent;
 import com.aqwapi.events.ApiEvent;
@@ -19,7 +21,6 @@ class QuestManager {
     private var _lastGlobalLoadTime:Float = 0;
     private var _lastAcceptTime:Float = 0;
     private var _lastCompleteTime:Float = 0;
-    public static inline var ACTION_COOLDOWN_MS:Int = 1100; // 1000ms AQW server cooldown + 100ms lag compensation
     private var _actionQueue:Array<{type:String, questId:Int, itemId:Int}> = [];
     private var _queueTimer:Timer = null;
     private var _lastActionTime:Float = 0;
@@ -304,7 +305,7 @@ class QuestManager {
     public function load(questId:Int):Void {
         if (questId <= 0 || isLoaded(questId)) return;
         var now:Float = ApiTime.now();
-        if (now - _lastGlobalLoadTime < 1000) {
+        if (now - _lastGlobalLoadTime < ApiTimings.QUEST_DATA_LOAD_MS) {
             return;
         }
         if (_lastLoadRequests.exists(questId) && (now - _lastLoadRequests.get(questId)) < 1500) {
@@ -338,7 +339,7 @@ class QuestManager {
             }
         }
         if (toLoad.length == 0) return;
-        if (now - _lastGlobalLoadTime < 1000) {
+        if (now - _lastGlobalLoadTime < ApiTimings.QUEST_DATA_LOAD_MS) {
             return;
         }
         _lastGlobalLoadTime = now;
@@ -520,7 +521,7 @@ class QuestManager {
         try {
             var engine = com.aqwapi.scripting.HScriptEngine.SINGLETON;
             if (engine != null && engine.isRunning) {
-                engine.sleep(ACTION_COOLDOWN_MS);
+                engine.sleep(ApiTimings.QUEST_ACTION_MS);
             }
         } catch (_:Dynamic) {}
     }
@@ -531,8 +532,8 @@ class QuestManager {
 
         var now = ApiTime.now();
         var elapsed = now - _lastActionTime;
-        if (elapsed < ACTION_COOLDOWN_MS) {
-            var waitMs = Std.int(ACTION_COOLDOWN_MS - elapsed);
+        if (elapsed < ApiTimings.QUEST_ACTION_MS) {
+            var waitMs = Std.int(ApiTimings.QUEST_ACTION_MS - elapsed);
             if (waitMs < 20) waitMs = 20;
             if (_queueTimer != null) {
                 _queueTimer.stop();
@@ -560,7 +561,7 @@ class QuestManager {
                 _queueTimer.stop();
                 _queueTimer.removeEventListener(TimerEvent.TIMER, onQueueTimer);
             }
-            _queueTimer = new Timer(ACTION_COOLDOWN_MS, 1);
+            _queueTimer = new Timer(ApiTimings.QUEST_ACTION_MS, 1);
             _queueTimer.addEventListener(TimerEvent.TIMER, onQueueTimer, false, 0, true);
             _queueTimer.start();
         }
@@ -618,7 +619,7 @@ class QuestManager {
 
         var now = ApiTime.now();
         var lastQTurnIn:Float = Reflect.hasField(_lastTurnIns, Std.string(questId)) ? Reflect.field(_lastTurnIns, Std.string(questId)) : 0.0;
-        if (now - lastQTurnIn < ACTION_COOLDOWN_MS) return;
+        if (now - lastQTurnIn < ApiTimings.QUEST_ACTION_MS) return;
         Reflect.setField(_lastTurnIns, Std.string(questId), now);
 
         _lastCompleteTime = now;
@@ -901,7 +902,7 @@ class QuestManager {
             loadMultiple(qidsToLoad);
 
             _lastTurnIns = {};
-            _timer = new Timer(800);
+            _timer = new Timer(ApiTimings.QUEST_REFRESH_MS);
             _timer.addEventListener(TimerEvent.TIMER, onAutoTick, false, 0, true);
             _timer.start();
             Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "Auto Quest started: " + autoQuestString));

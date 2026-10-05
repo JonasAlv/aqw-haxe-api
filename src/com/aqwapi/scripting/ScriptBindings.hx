@@ -713,6 +713,75 @@ class ScriptBindings {
         bind("isUnbanking", function():Bool {
             return Api.inventory != null && Api.inventory.isUnbanking;
         });
+
+        // Temp items (quest items) live in avatar.tempitems, a separate array from both the
+        // inventory and the bank, so the inventory readers above never see them.
+        bind("getTempItems", function():Array<Dynamic> {
+            return Api.inventory != null ? cast Api.inventory.getTempItems() : [];
+        });
+        bind("getTempQuantity", function(itemNameOrId:String):Int {
+            return Api.inventory != null ? Api.inventory.getTempQuantity(itemNameOrId) : 0;
+        });
+        bind("hasTempItem", function(itemNameOrId:String, quantity:Int = 1):Bool {
+            return Api.inventory != null && Api.inventory.hasTempItem(itemNameOrId, quantity);
+        });
+
+        // Container lookup across temp / inventory / house / bank.
+        bind("getItemLocation", function(itemNameOrId:String):String {
+            return Api.inventory != null ? Api.inventory.getItemLocation(itemNameOrId) : "";
+        });
+        bind("findItem", function(itemNameOrId:String):Dynamic {
+            return Api.inventory != null ? Api.inventory.findItem(itemNameOrId) : null;
+        });
+        bind("getBankQuantity", function(itemNameOrId:String):Int {
+            return Api.inventory != null ? Api.inventory.getBankQuantity(itemNameOrId) : 0;
+        });
+        // Backpack-only counterpart to getTempQuantity/getBankQuantity. Deliberately NOT a total:
+        // getQuestQuantity is the de-duplicated cross-container reading.
+        bind("getInventoryQuantity", function(itemNameOrId:String):Int {
+            return Api.inventory != null ? Api.inventory.getQuantity(itemNameOrId) : 0;
+        });
+        bind("isQuestAccepted", function(questId:Int):Bool {
+            return Api.quest != null && Api.quest.isAccepted(questId);
+        });
+
+        // Rate limits, read straight from ApiTimings so scripts cannot drift from what the engine
+        // enforces. These are NOT tuning knobs for scripts - the SERVER-LIMITED ones encode AQW's
+        // cooldowns plus a lag margin, and calling faster than that makes the server drop the action.
+        // Change a value in utils/ApiTimings.hx and it applies everywhere, including here.
+        bind("questActionCooldownMs", function():Int {
+            return Std.int(com.aqwapi.utils.ApiTimings.QUEST_ACTION_MS);
+        });
+        bind("rateLimit", function():Dynamic {
+            return com.aqwapi.utils.ApiTimings.all();
+        });
+        bind("rateLimitDump", function():String {
+            return com.aqwapi.utils.ApiTimings.describe();
+        });
+
+        // Reset-on-target-change, readable at runtime. The UI writes it, but a script that suspects
+        // the rotation is resuming instead of restarting needs to confirm the mode actually has it on.
+        bind("getResetOnTargetChange", function(className:String = null, modeName:String = null):Dynamic {
+            if (Api.quest == null && Api.combat == null) return null;
+            var cls = (className != null && className != "") ? className : com.aqwapi.managers.SkillManager.getCurrentClassName();
+            var mode = (modeName != null && modeName != "" && modeName != "Auto") ? modeName : com.aqwapi.modules.CombatEngine.skillMode;
+            if (cls == null || cls == "" || mode == null || mode == "") return null;
+            var d = com.aqwapi.managers.SkillManager.getModeDetails(cls, mode);
+            if (d == null) return null;
+            return (d.resetComboOnTargetChange == true);
+        });
+
+        // Bulk purchasing. buyItem() drops calls made within 1s of each other, so buying several
+        // different items in one tick would silently lose all but the first; buyItems() queues them.
+        bind("buyItems", function(items:Array<Dynamic>, gapMs:Int = 1000):Int {
+            return Api.shop != null ? Api.shop.buyItems(items, gapMs) : 0;
+        });
+        bind("getPendingBuyCount", function():Int {
+            return Api.shop != null ? Api.shop.getPendingBuyCount() : 0;
+        });
+        bind("clearBuyQueue", function():Void {
+            if (Api.shop != null) Api.shop.clearBuyQueue();
+        });
     }
 
     // -------------------------------------------------------------------------

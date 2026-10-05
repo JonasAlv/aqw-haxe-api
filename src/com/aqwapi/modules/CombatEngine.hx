@@ -1,5 +1,7 @@
 package com.aqwapi.modules;
 
+import com.aqwapi.utils.ApiTimings;
+
 import flash.events.TimerEvent;
 import flash.utils.Timer;
 import com.aqwapi.Api;
@@ -42,6 +44,7 @@ class CombatEngine {
     private static var _skillWaitStart:Float = 0;
     private static var _stepFirstFailTime:Float = -1;
     private static var _lastTimeoutSkipLogTime:Float = -10000;
+    private static var _lastHardLockLogTime:Float = -10000;
     private static var _lastTargetMMID:String = null;
     private static var _targetChanged:Bool = false;
     private static var _lastDetectedClass:String = "";
@@ -50,7 +53,6 @@ class CombatEngine {
     private static var _lastFallbackWarnTime:Float = 0;
     
     private static var _temporaryIgnore:Map<String, Float> = new Map<String, Float>();
-    private static inline var TEMP_IGNORE_MS:Float = 4000;
 
     private static function isTemporarilyIgnored(mmid:String):Bool {
         if (mmid == null || mmid == "" || _temporaryIgnore == null) return false;
@@ -60,7 +62,7 @@ class CombatEngine {
         return false;
     }
     
-    private static function ignoreTemporarily(mmid:String, ms:Float = TEMP_IGNORE_MS):Void {
+    private static function ignoreTemporarily(mmid:String, ms:Float = ApiTimings.TEMP_IGNORE_MS):Void {
         if (mmid == null || mmid == "") return;
         _temporaryIgnore.set(mmid, ApiTime.now() + ms);
         pruneTemporaryIgnore();
@@ -77,7 +79,7 @@ class CombatEngine {
     public static function init():Void {
         SkillManager.ensureLoaded(true);
         if (_timer == null) {
-            _timer = new Timer(100);
+            _timer = new Timer(ApiTimings.COMBAT_TICK_MS);
             _timer.addEventListener(TimerEvent.TIMER, onTick);
         }
     }
@@ -112,6 +114,7 @@ class CombatEngine {
         _lastCastAt = -10000;
         _lastSkillAt = -10000;
         _avatarBusyAnim = false;
+        ActionFeed.reset();
         _waitUntil = {};
         if (_timer != null && !_timer.running) {
             _timer.start();
@@ -222,7 +225,6 @@ class CombatEngine {
      * Both used to be able to fire inside the same 100 ms tick, doubling the rate at which the
      * game spawned and tore down spell effects.
      */
-    private static inline var MIN_CAST_GAP_MS:Float = 200;
 
     /**
      * Client side Global Cooldown gate for rotation skills, taken from `World.GCD` (1500 ms).
@@ -237,13 +239,13 @@ class CombatEngine {
      * at, and it leaves the mechanic itself untouched.
      */
     private static function skillGapMs():Float {
-        var g:Float = MIN_CAST_GAP_MS;
+        var g:Float = ApiTimings.MIN_CAST_GAP_MS;
         try {
             if (Api.game != null && Api.game.world != null && Api.game.world.GCD != null) {
                 g = ApiUtils.parseInt(Api.game.world.GCD, 0);
             }
         } catch (_:Dynamic) {}
-        return (g > MIN_CAST_GAP_MS) ? g : MIN_CAST_GAP_MS;
+        return (g > ApiTimings.MIN_CAST_GAP_MS) ? g : ApiTimings.MIN_CAST_GAP_MS;
     }
 
     /** Gate for rotation skills: never out of step with the game's Global Cooldown. */
@@ -286,7 +288,81 @@ class CombatEngine {
 
     public static inline function castGateOpen():Bool {
         if (_avatarBusyAnim) return false;
-        return (ApiTime.now() - _lastCastAt) >= MIN_CAST_GAP_MS;
+        return (ApiTime.now() - _lastCastAt) >= ApiTimings.MIN_CAST_GAP_MS;
+    }
+
+    // -------------------------------------------------------------------------
+    // Target action counter (the `[counter]` DSL rule)
+    // -------------------------------------------------------------------------
+
+    /**
+     * How long a target action stays "fresh" when a rule does not say. Long enough to cover one
+     * swing plus the reaction window, short enough that `[counter]` does not stay true across a lull.
+     */
+
+    /**
+     * Stamps when the target resolved an attack against us, so `[counter]` can gate a riposte on it.
+     *
+     * Detection is the server's own hit packet rather than the target's animation. Reading
+     * `pMC.mcChar.currentLabel` against `world.combatAnims` was implemented first and never fired in a
+     * live fight: monster attack animations are not in that list, so the gate stayed false while the
+     * mob hit repeatedly. `ActionFeed` hooks the extension-response dispatcher instead, which is where
+     * the resolution actually arrives.
+     *
+     * Deliberately dodge-agnostic: the window opens on a dodged or missed swing as well as a landed
+     * one, because a riposte has to answer every attack, not only the ones that connected.
+     */
+    private static var _feedTargetId:String = null;
+
+    /**
+     * Earliest attack timestamp a window-less `[counter]` will accept.
+     *
+     * Set a fixed delay after our last cast, so a mob swinging in the same instant we cast the arm
+     * skill does not immediately spend the riposte. Tunable via `ApiTimings.COUNTER_ARM_DELAY_MS`.
+     */
+    public static function counterArmCutoff():Float {
+        if (_lastCastAt < -1000) return -1e30;   // nothing cast yet: accept everything
+        return _lastCastAt + ApiTimings.COUNTER_ARM_DELAY_MS;
+    }
+
+    private static function noteTargetAction(world:Dynamic, target:Dynamic):Void {
+        ActionFeed.install();
+        // Keyed on the target's stable identity (MonMapID / UserID), NOT the target object. The game
+        // replaces the target wrapper as its state updates, so keying on the object made every
+        // replacement look like a new mob and cleared the buffer constantly - seen live as `buffer=0`
+        // and `consumed=0/93` with 93 hits recorded. Losing the target entirely still clears it.
+        // Stable identity when we can resolve one; fall back to the object only when we cannot,
+        // otherwise two different mobs with no readable id would look identical.
+        var tag:String = (target == null) ? null : ActionFeed.targetIdentity();
+        var id:String = (tag != null) ? tag : ("obj:" + Std.string(target));
+        if (_feedTargetId != id) {
+            _feedTargetId = id;
+            ActionFeed.reset();
+        }
+    }
+
+    /**
+     * Whether the target acted on us within `windowMs`, used by the `[counter]` rule.
+     *
+     * `typeFilter` narrows to a single resolution type ("miss", "dodge", "crit", ...); null or empty
+     * accepts every one.
+     *
+     * Reports `-1` while there is no target at all, so a riposte can never fire at thin air after the
+     * mob dies or drops.
+     */
+    public static function targetActionAgeMs(?windowMs:Float, ?typeFilter:String):Float {
+        if ((Api.game == null || Api.game.world == null)) return -1;
+        try {
+            if (Api.game.world.myAvatar == null || Api.game.world.myAvatar.target == null) return -1;
+        } catch (_:Dynamic) {
+            return -1;
+        }
+        var window:Float = (windowMs != null && windowMs > 0) ? windowMs : ApiTimings.COUNTER_WINDOW_MS;
+        return ActionFeed.lastActionAgeMs(window, typeFilter);
+    }
+
+    public static inline function targetActionFresh(?windowMs:Float, ?typeFilter:String):Bool {
+        return targetActionAgeMs(windowMs, typeFilter) >= 0;
     }
 
     public static inline function noteCast():Void {
@@ -308,7 +384,7 @@ class CombatEngine {
         if (avatar == null || avatar.dataLeaf == null) return false;
         var now:Float = ApiTime.now();
         if (now < _ccCheckValidUntil) return _ccCheckResult;
-        _ccCheckValidUntil = now + CC_CHECK_CACHE_MS;
+        _ccCheckValidUntil = now + ApiTimings.CC_CHECK_CACHE_MS;
         _ccCheckResult = false;
         if (avatar.dataLeaf.intState == 0) {
             _ccCheckResult = true;
@@ -334,7 +410,6 @@ class CombatEngine {
     
     private static var _ccCheckResult:Bool = false;
     private static var _ccCheckValidUntil:Float = 0;
-    private static inline var CC_CHECK_CACHE_MS:Float = 50;
     
     private static function isFreeAutoAttack(aaAct:Dynamic):Bool {
         if (aaAct == null) return false;
@@ -437,6 +512,7 @@ class CombatEngine {
         if (avatar.dataLeaf != null && avatar.dataLeaf.intState == 0) return;
         _avatarBusyAnim = avatarInCombatAnim(world, avatar);
         var target:Dynamic = avatar.target;
+        noteTargetAction(world, target);
         if (target != null) {
             var isInvalid:Bool = false;
             if (target.pMC == null || target.dataLeaf == null || target.objData == null) isInvalid = true;
@@ -509,6 +585,32 @@ class CombatEngine {
         var curTargetMMID:String = null;
         if (target.dataLeaf != null && target.dataLeaf.MonMapID != null) curTargetMMID = Std.string(target.dataLeaf.MonMapID);
         else if (target.objData != null && target.objData.MonMapID != null) curTargetMMID = Std.string(target.objData.MonMapID);
+
+        // A mob that dies while still being referenced keeps the SAME MonMapID, so the identity check
+        // below never fires for it. That left reset-on-target-change dead exactly in the case it exists
+        // for: kill a mob, pick up the next one, and the rotation carried on from wherever it was
+        // instead of restarting - while the engine also kept trying to fight a corpse. Treat "no longer
+        // alive" as a target change in its own right.
+        var tgtHp:Int = 1;
+        var tgtState:Int = 1;
+        try {
+            if (target.dataLeaf != null) {
+                if (target.dataLeaf.intHP != null) tgtHp = Std.int(target.dataLeaf.intHP);
+                if (target.dataLeaf.intState != null) tgtState = Std.int(target.dataLeaf.intState);
+            }
+        } catch (_:Dynamic) {}
+        if (tgtHp <= 0 || tgtState == 0) {
+            _lastTargetMMID = null;
+            _targetChanged = true;
+            _skillWaitStart = ApiTime.now();
+            _stepFirstFailTime = -1;
+            if (world.cancelTarget != null) {
+                try { world.cancelTarget(); } catch (_:Dynamic) {}
+            }
+            try { avatar.target = null; } catch (_:Dynamic) {}
+            return;
+        }
+
         if (curTargetMMID != null && curTargetMMID != _lastTargetMMID) {
             _lastTargetMMID = curTargetMMID;
             _targetChanged = true;
@@ -596,7 +698,7 @@ class CombatEngine {
         if (!isCurrentClass && className != SkillManager.getCurrentClassName()) {
             var equipped:String = SkillManager.getCurrentClassName();
             var mismatchNow = ApiTime.now();
-            if (mismatchNow - _lastFallbackWarnTime > 3000) {
+            if (mismatchNow - _lastFallbackWarnTime > ApiTimings.WARN_THROTTLE_MS) {
                 _lastFallbackWarnTime = mismatchNow;
                 ApiLogger.warn("Combat", "Class mismatch! smartClass is set to '" + className + "' but player is wearing '"
                     + equipped + "'. Using the equipped class's rotation instead.");
@@ -609,7 +711,7 @@ class CombatEngine {
         var modeConfig:Dynamic = (activeModeConfig != null) ? activeModeConfig : SkillManager.resolveActiveModeConfig(world, avatar, target, confClass, skillMode);
         if (modeConfig == null) {
             var now = ApiTime.now();
-            if (now - _lastFallbackWarnTime > 3000) {
+            if (now - _lastFallbackWarnTime > ApiTimings.WARN_THROTTLE_MS) {
                 _lastFallbackWarnTime = now;
                 ApiLogger.warn("Combat", "Smart Combat: mode config not found for class '" + className + "' mode '" + skillMode + "'. Falling back to custom rotation.");
             }
@@ -629,6 +731,10 @@ class CombatEngine {
         var resetOnTarget:Bool = (modeConfig.resetComboOnTargetChange == true || modeConfig.resetOnTarget == true);
         if (_targetChanged) {
             if (resetOnTarget) {
+                // Logged because this path is otherwise invisible: a restart and a resume look
+                // identical from the outside until you notice the wrong skill coming out.
+                ApiLogger.info("Combat", "Reset on target change: restarting combo from slot 0 (class '"
+                    + className + "', mode '" + skillMode + "', " + skills.length + " slots).");
                 _skillIndex = 0;
                 _skillWaitStart = ApiTime.now();
                 _stepFirstFailTime = -1;
@@ -637,7 +743,7 @@ class CombatEngine {
         }
         if (skills.length == 0) {
             var now = ApiTime.now();
-            if (now - _lastFallbackWarnTime > 3000) {
+            if (now - _lastFallbackWarnTime > ApiTimings.WARN_THROTTLE_MS) {
                 _lastFallbackWarnTime = now;
                 ApiLogger.warn("Combat", "Smart Combat: combo skills empty for class '" + className + "'. Falling back to custom rotation.");
             }
@@ -677,6 +783,18 @@ class CombatEngine {
         var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
         var now:Float = ApiTime.now();
         if (!rulesPass) {
+            // A window-less `[counter]` is a hard lock: the slot is not "not ready", it is waiting for
+            // the mob to actually attack. Advancing here is what made riposte skills get skipped
+            // mid-combo, so stay put and retry next tick instead.
+            // Guarded on `target` so losing the mob releases the lock rather than deadlocking forever.
+            if (target != null && SkillRules.hasHardLockRule(skill)) {
+                if (now - _lastHardLockLogTime > ApiTimings.WARN_THROTTLE_MS) {
+                    _lastHardLockLogTime = now;
+                    ApiLogger.info("Combat", "Hard lock: holding slot " + _skillIndex + " (skill " + skillId
+                        + ") until the target lands an attack. Waiting " + Std.string(Math.round(now - _skillWaitStart)) + "ms.");
+                }
+                return;
+            }
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
             _stepFirstFailTime = -1;
@@ -687,6 +805,12 @@ class CombatEngine {
         var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
         if (fireResult == SkillCaster.SR_FIRED) {
             noteSkillCast();
+            // A hard-locked `[counter]` is edge-triggered: this riposte answers the attack we just saw,
+            // so mark that attack spent. Without this the very next `[counter]` slot in the rotation
+            // would pass immediately on the same attack and the skills would chain with no mob hit in
+            // between. Only hard locks consume - a timed `[counter <= 1.5s]` is a freshness check and
+            // is meant to stay passable for its whole window.
+            if (SkillRules.hasHardLockRule(skill)) ActionFeed.consumeForTarget();
             _skillIndex = (_skillIndex + 1) % skills.length;
             _skillWaitStart = now;
             _stepFirstFailTime = -1;
@@ -694,7 +818,7 @@ class CombatEngine {
         }
         var elapsedWait:Float = now - _skillWaitStart;
         if (skillTimeout > 0 && elapsedWait >= skillTimeout) {
-            if (now - _lastTimeoutSkipLogTime > 3000) {
+            if (now - _lastTimeoutSkipLogTime > ApiTimings.WARN_THROTTLE_MS) {
                 _lastTimeoutSkipLogTime = now;
                 ApiLogger.warn("Combat", "WaitForCooldown: slot " + _skillIndex + " (skill " + skillId
                     + ") still blocked after " + Std.string(Math.round(elapsedWait)) + "ms, skipping (timeout "
@@ -732,6 +856,9 @@ class CombatEngine {
 
     private static function runSimpleRotation(world:Dynamic, avatar:Dynamic):Void {
         if (_customRotation == null || _customRotation.length == 0) return;
+        // Always restarts on a new target. This is the global custom rotation, which has no mode config
+        // and therefore no `resetComboOnTargetChange` flag to read - the toggle only applies to mode-based
+        // rotations. Noted explicitly so the difference from runAdvancedRotation is not mistaken for a bug.
         if (_targetChanged) {
             _rotationIndex = 0;
             _targetChanged = false;

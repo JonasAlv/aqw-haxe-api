@@ -223,6 +223,9 @@ class Api {
         ensureMathShims();
         preloadAssets();
         game = cast gameReference;
+        // Passive packet listener for `[counter]`. Installed here rather than only on the combat tick
+        // so it is live even before combat starts; the tick re-checks it in case the socket changed.
+        com.aqwapi.modules.ActionFeed.install();
         transport = new TransportAdapter(game);
         map = new MapManager(game);
         quest = new QuestManager(game);

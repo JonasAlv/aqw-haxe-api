@@ -1023,9 +1023,9 @@ class SkillManager {
         var conf:Dynamic = findClassConfig(resolvedClass);
         if (conf == null) return true;
 
-        var classFlag = readAutoAttackFlag(conf);
-        if (classFlag != null) return classFlag;
-
+        // Same precedence as modeHasAutoAttack: the mode is the more specific setting, so it wins and
+        // the class object acts purely as a default. Kept in step deliberately - these two resolvers
+        // used to disagree about which level outranked the other.
         if (modeName != null && modeName != "") {
             var resolvedMode = resolveActiveModeName(resolvedClass, modeName);
             var mObj = getModeObject(conf, resolvedMode);
@@ -1034,17 +1034,26 @@ class SkillManager {
             if (modeFlag != null) return modeFlag;
         }
 
+        var classFlag = readAutoAttackFlag(conf);
+        if (classFlag != null) return classFlag;
+
         return true;
     }
 
     public static function modeHasAutoAttack(modeConfig:Dynamic, className:String, ?modeName:String):Bool {
-        // Class-level flag outranks the resolved mode's own flag, so the mode cannot re-enable
-        // Auto Attack on a class that turned it off for itself.
-        var classFlag = readClassAutoAttackFlag(className);
-        if (classFlag != null) return classFlag;
+        // Mode wins, class is only the default. The previous order was inverted - the broader class
+        // flag outranked the specific mode - which meant a class that turned Auto Attack off locked
+        // every one of its modes out of re-enabling it, with no way to recover. Whether a rotation
+        // wants Auto Attack is a property of that rotation: a hard-locked riposte combo needs it off so
+        // it does not burn the dodge buff, while a chip-damage rotation for the same class wants it on.
+        //
+        // Safe to change: no bundled or user config declares a class-level flag, so classFlag is
+        // always null today and the mode value already won.
         var fromMode = readAutoAttackFlag(modeConfig);
         if (fromMode != null) return fromMode;
-        return classHasAutoAttack(className, modeName);
+        var classFlag = readClassAutoAttackFlag(className);
+        if (classFlag != null) return classFlag;
+        return true;
     }
 
     /** The class object's own `autoattack` flag, ignoring any mode. Null when not declared. */

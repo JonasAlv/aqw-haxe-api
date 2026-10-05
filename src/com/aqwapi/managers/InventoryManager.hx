@@ -1,5 +1,7 @@
 package com.aqwapi.managers;
 
+import com.aqwapi.utils.ApiTimings;
+
 import com.aqwapi.events.GameEvent;
 import com.aqwapi.Api;
 import com.aqwapi.data.ItemDTO;
@@ -229,7 +231,7 @@ class InventoryManager {
             };
 
             Api.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
-            timeoutTimer = new Timer(2500, 1);
+            timeoutTimer = new Timer(ApiTimings.EQUIP_TIMEOUT_MS, 1);
             timeoutTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
                 cleanup();
                 resolve(null);
@@ -398,7 +400,6 @@ class InventoryManager {
         return ensureUnbanked(items);
     }
 
-    public static inline var BANK_COOLDOWN_MS:Int = 1100;
     private var _isBankLoaded:Bool = false;
     private var _isBankLoading:Bool = false;
     private var _unbankTimer:Timer = null;
@@ -423,7 +424,7 @@ class InventoryManager {
         }
 
         var elapsed:Int = 0;
-        _housePollTimer = new Timer(500);
+        _housePollTimer = new Timer(ApiTimings.HOUSE_POLL_MS);
         _housePollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
             elapsed += 500;
             var inHouseNow:Bool = (Api.map != null && Api.map.isHouse() && Api.map.isLoaded);
@@ -432,7 +433,7 @@ class InventoryManager {
                     _housePollTimer.stop();
                     _housePollTimer = null;
                 }
-                var settleTimer = new Timer(600, 1);
+                var settleTimer = new Timer(ApiTimings.SETTLE_MS, 1);
                 settleTimer.addEventListener(TimerEvent.TIMER, function(ev:TimerEvent) {
                     settleTimer.stop();
                     onInHouse();
@@ -483,7 +484,7 @@ class InventoryManager {
             _bankLoadPollTimer = null;
         }
         var pollElapsed:Int = 0;
-        _bankLoadPollTimer = new Timer(300);
+        _bankLoadPollTimer = new Timer(ApiTimings.BANK_LOAD_POLL_MS);
         _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
             pollElapsed += 300;
             if (isBankLoaded || pollElapsed >= 8000) {
@@ -495,7 +496,7 @@ class InventoryManager {
 
     private function _processBankQueue():Void {
         if (_bankTimer != null) return;
-        _bankTimer = new Timer(BANK_COOLDOWN_MS);
+        _bankTimer = new Timer(ApiTimings.BANK_ACTION_MS);
         _bankTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
             if (_bankQueue.length == 0) {
                 if (_bankTimer != null) {
@@ -704,7 +705,7 @@ class InventoryManager {
                 _bankLoadPollTimer = null;
             }
             var pollElapsed:Int = 0;
-            _bankLoadPollTimer = new Timer(300);
+            _bankLoadPollTimer = new Timer(ApiTimings.BANK_LOAD_POLL_MS);
             _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
                 pollElapsed += 300;
                 if (isBankLoaded || pollElapsed >= 8000) {
@@ -726,7 +727,7 @@ class InventoryManager {
             if (toBank.length > 0) {
                 ApiLogger.info("Bank", "Depositing " + toBank.length + " AC items first...");
                 bank(toBank);
-                var pollTimer:Timer = new Timer(300);
+                var pollTimer:Timer = new Timer(ApiTimings.BANK_LOAD_POLL_MS);
                 pollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
                     if (_bankQueue.length == 0 && _bankTimer == null) {
                         pollTimer.stop();
@@ -773,7 +774,7 @@ class InventoryManager {
             _bankLoadPollTimer = null;
         }
         var pollElapsed:Int = 0;
-        _bankLoadPollTimer = new Timer(300);
+        _bankLoadPollTimer = new Timer(ApiTimings.BANK_LOAD_POLL_MS);
         _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
             pollElapsed += 300;
             if (isBankLoaded || pollElapsed >= 8000) {
@@ -785,7 +786,7 @@ class InventoryManager {
 
     private function _processUnbankQueue():Void {
         if (_unbankTimer != null) return;
-        _unbankTimer = new Timer(BANK_COOLDOWN_MS);
+        _unbankTimer = new Timer(ApiTimings.BANK_ACTION_MS);
         _unbankTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
             if (_unbankQueue.length == 0) {
                 if (_unbankTimer != null) {
@@ -1235,6 +1236,176 @@ class InventoryManager {
             }
         } catch (e:Dynamic) {}
         return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Temp items
+    //
+    // Quest/temporary items live in a third array, `avatar.tempitems` (Avatar.as:56), which is not
+    // `items` and not the bank. The game splits them with `bTemp`: an `addItems` packet whose entry
+    // has `bTemp != 0` goes to `addTempItem` instead of `addItem` (Game.as:3485-3492). They therefore
+    // never show up in inventory or bank queries, which is why they need their own accessors.
+    // -------------------------------------------------------------------------
+
+    public function getTempItems():Array<ItemDTO> {
+        var result:Array<ItemDTO> = [];
+        if (_game == null || _game.world == null || _game.world.myAvatar == null) return result;
+        try {
+            var raw:Array<Dynamic> = cast _game.world.myAvatar.tempitems;
+            if (raw == null) return result;
+            for (it in raw) if (it != null) result.push(new ItemDTO(it));
+        } catch (_:Dynamic) {}
+        return result;
+    }
+
+    public function getTempQuantity(itemNameOrId:String):Int {
+        return quantityIn(_tempRaw(), itemNameOrId);
+    }
+
+    public function hasTempItem(itemNameOrId:String, quantity:Int = 1):Bool {
+        if (quantity < 1) quantity = 1;
+        return getTempQuantity(itemNameOrId) >= quantity;
+    }
+
+    private function _tempRaw():Array<Dynamic> {
+        try {
+            if (_game == null || _game.world == null || _game.world.myAvatar == null) return null;
+            var t:Dynamic = _game.world.myAvatar.tempitems;
+            return (t == null) ? null : cast t;
+        } catch (_:Dynamic) {
+            return null;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Where is this item?
+    // -------------------------------------------------------------------------
+
+    /**
+     * Locates an item across every container: `"temp"`, `"inventory"`, `"house"` or `"bank"`.
+     * Returns `""` when the item is nowhere.
+     *
+     * Order matters: a quest temp item and a banked copy of the same ItemID are different things, and
+     * temp wins because that is the array the game itself checks first in its own lookups.
+     */
+    public function getItemLocation(itemNameOrId:String):String {
+        if (hasTempItem(itemNameOrId)) return "temp";
+        if (getQuantity(itemNameOrId) > 0) return "inventory";
+        try {
+            if (_game != null && _game.world != null && _game.world.myAvatar != null) {
+                var house:Array<Dynamic> = cast _game.world.myAvatar.houseitems;
+                if (house != null && quantityIn(house, itemNameOrId) > 0) return "house";
+            }
+        } catch (_:Dynamic) {}
+        if (isInBank(itemNameOrId)) return "bank";
+        return "";
+    }
+
+    /**
+     * Full picture for one item: `{item, id, name, quantity, location}`.
+     *
+     * `quantity` is the count in `location`, not a total across containers, because a caller acting
+     * on it needs to know what the specific container holds.
+     */
+    public function findItem(itemNameOrId:String):Dynamic {
+        var loc:String = getItemLocation(itemNameOrId);
+        if (loc == "") return null;
+        var qty:Int = 0;
+        if (loc == "temp") qty = getTempQuantity(itemNameOrId);
+        else if (loc == "inventory") qty = getQuantity(itemNameOrId);
+        else if (loc == "house") qty = quantityIn(_houseRaw(), itemNameOrId);
+        else if (loc == "bank") qty = getBankQuantity(itemNameOrId);
+        var id:Int = ApiUtils.parseInt(itemNameOrId, 0);
+        return {
+            item: itemNameOrId,
+            id: (id > 0) ? id : resolveItemId(itemNameOrId),
+            name: (id > 0) ? resolveItemName(itemNameOrId) : itemNameOrId,
+            quantity: qty,
+            location: loc
+        };
+    }
+
+    public function getBankQuantity(itemNameOrId:String):Int {
+        try {
+            if (_game == null || _game.world == null || _game.world.bankinfo == null) return 0;
+            var bi:Dynamic = _game.world.bankinfo;
+            if (bi.BankArray != null) {
+                var q:Int = quantityIn(cast bi.BankArray, itemNameOrId);
+                if (q > 0) return q;
+            }
+            if (bi.items != null) {
+                var q2:Int = quantityIn(cast bi.items, itemNameOrId);
+                if (q2 > 0) return q2;
+            }
+        } catch (_:Dynamic) {}
+        return 0;
+    }
+
+    private function _houseRaw():Array<Dynamic> {
+        try {
+            if (_game == null || _game.world == null || _game.world.myAvatar == null) return null;
+            var h:Dynamic = _game.world.myAvatar.houseitems;
+            return (h == null) ? null : cast h;
+        } catch (_:Dynamic) {
+            return null;
+        }
+    }
+
+    /**
+     * Shared name-or-ID scan over a raw item array. Returns the matching stack's `iQty`, or 0.
+     *
+     * Centralised so temp/inventory/house/bank all resolve names and IDs identically; the previous
+     * per-container copies were easy to let drift apart.
+     */
+    private function quantityIn(list:Array<Dynamic>, itemNameOrId:String):Int {
+        if (list == null || itemNameOrId == null || itemNameOrId == "") return 0;
+        var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
+        var isIdLookup:Bool = targetId > 0;
+        var targetName:String = itemNameOrId.toLowerCase();
+        try {
+            for (item in list) {
+                if (item == null) continue;
+                var matches:Bool = false;
+                if (isIdLookup) {
+                    matches = (item.ItemID != null && Std.int(item.ItemID) == targetId);
+                } else if (item.sName != null) {
+                    matches = (Std.string(item.sName).toLowerCase() == targetName);
+                }
+                if (matches) return (item.iQty != null) ? Std.int(item.iQty) : 1;
+            }
+        } catch (_:Dynamic) {}
+        return 0;
+    }
+
+    private function resolveItemId(itemName:String):Int {
+        try {
+            if (_game != null && _game.world != null && _game.world.myAvatar != null) {
+                var items:Array<Dynamic> = cast _game.world.myAvatar.items;
+                if (items == null) return 0;
+                for (item in items) {
+                    if (item != null && item.sName != null && Std.string(item.sName).toLowerCase() == itemName.toLowerCase()) {
+                        return (item.ItemID != null) ? Std.int(item.ItemID) : 0;
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+        return 0;
+    }
+
+    private function resolveItemName(itemNameOrId:String):String {
+        var id:Int = ApiUtils.parseInt(itemNameOrId, 0);
+        try {
+            if (_game != null && _game.world != null && _game.world.invTree != null && id > 0) {
+                var tree:Dynamic = _game.world.invTree;
+                for (k in Reflect.fields(tree)) {
+                    var it:Dynamic = Reflect.field(tree, k);
+                    if (it != null && it.ItemID != null && Std.int(it.ItemID) == id && it.sName != null) {
+                        return Std.string(it.sName);
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+        return "";
     }
 
     public function sellItem(itemNameOrId:String, quantity:Int = 1):Void {

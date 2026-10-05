@@ -189,6 +189,38 @@ class SkillDslParser {
         return tokens;
     }
 
+    /** True for digits with at most one decimal point. Keeps words out of the counter window parse. */
+    private static function isAllDigits(s:String):Bool {
+        if (s == null || s.length == 0) return false;
+        var seenDot:Bool = false;
+        for (i in 0...s.length) {
+            var c:Int = s.charCodeAt(i);
+            if (c == 46) {
+                if (seenDot) return false;
+                seenDot = true;
+            } else if (c < 48 || c > 57) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * The resolution types the server actually sends in `sar`/`sars` (`World.as:10009-10074`), plus
+     * the two aliases meaning "don't filter".
+     */
+    private static function isResolutionType(t:String):Bool {
+        return (t == "hit" || t == "crit" || t == "critical" || t == "miss" || t == "dodge" ||
+            t == "parry" || t == "block" || t == "none" || t == "any" || t == "all");
+    }
+
+    /** `critical` aliases to `crit`; `any`/`all` mean no filter, which is null. */
+    private static function normalizeResolutionType(t:String):String {
+        if (t == "critical") return "crit";
+        if (t == "any" || t == "all") return null;
+        return t;
+    }
+
     private static function parseRule(r:String):Dynamic {
         if (r == null || r.length == 0) return null;
 
@@ -209,7 +241,82 @@ class SkillDslParser {
             };
         }
 
-        // 2. Target Health: target:hp, tgt:hp, target_hp, target.hp, mon:hp, target:health
+        // 2. Counter: [counter], [counter <= 1500], [counter <= 1.5s], [hit], [attacked], [mobattack]
+        //    Opens when the target resolved an attack against us. The value is a freshness window: a
+        //    plain number is milliseconds (like `[wait(500ms)]`), an `s` suffix is seconds.
+        //
+        //    An `=type` suffix narrows to one resolution type, taken from the packet's own enum:
+        //    hit, crit, miss, dodge, parry, block, none. `[counter=miss]` only opens on a swing that
+        //    missed us, `[counter=dodge <= 2s]` on a dodge inside a 2s window. Plain `[counter]` takes
+        //    every type, which is what a riposte wants - the reaction has to be available on the
+        //    swings that miss as well as the ones that land.
+        var cPrefix:Int = -1;
+        if (lower.indexOf("counter") == 0) cPrefix = 7;
+        else if (lower.indexOf("mobattack") == 0) cPrefix = 9;
+        else if (lower.indexOf("attacked") == 0) cPrefix = 8;
+        else if (lower.indexOf("hit") == 0) cPrefix = 3;
+        if (cPrefix > 0) {
+            var out:Dynamic = {type: "Counter"};
+
+            // Normalize the comparison/wrapping noise into plain spaces so the remainder can be
+            // tokenized: `counter=miss <= 1.5s`, `counter: 1500` and `hit(1500)` all reduce to words
+            // and one number.
+            var norm:String = r.substring(cPrefix).toLowerCase();
+            norm = StringTools.replace(norm, "<=", " ");
+            norm = StringTools.replace(norm, "=", " ");
+            norm = StringTools.replace(norm, ">", " ");
+            norm = StringTools.replace(norm, "(", " ");
+            norm = StringTools.replace(norm, ")", " ");
+            norm = StringTools.replace(norm, ":", " ");
+
+            // Scan tokens rather than slicing on `=`. Slicing cannot tell `[counter=miss <= 1500]`
+            // apart from `[counter=1500]`, and reading the `s` in `miss` as a seconds suffix turned
+            // 1500ms into 1500000ms. A token is a type only when it is letters-only and names a real
+            // resolution, so the `s` in `miss` can never reach the seconds check.
+            var tokens:Array<String> = norm.split(" ");
+            for (tok in tokens) {
+                var t:String = StringTools.trim(tok);
+                if (t == "") continue;
+
+                if (isResolutionType(t)) {
+                    out.actionType = normalizeResolutionType(t);
+                    continue;
+                }
+
+                // `xN` counts how many resolved attacks must land before the rule opens.
+                // Deliberately NOT `=N`: `=` followed by digits has always meant a millisecond window
+                // (`[counter=1500]`), so letting `=` also mean a count would silently turn every
+                // existing window into "wait for 1500 hits". `x` cannot collide - no resolution type
+                // or alias begins with it.
+                if (t.charAt(0) == "x") {
+                    var digitsN:String = t.substr(1);
+                    if (isAllDigits(digitsN)) {
+                        var n:Int = ApiUtils.parseInt(digitsN, 0);
+                        if (n > 0) out.count = n;
+                        continue;
+                    }
+                }
+
+                // A numeric token is the window. Only a trailing `s` counts as seconds, and only when
+                // what precedes it is a number.
+                var num:String = t;
+                var isSeconds:Bool = false;
+                if (num.charAt(num.length - 1) == "s") {
+                    var head:String = num.substr(0, num.length - 1);
+                    if (head != "" && isAllDigits(head)) {
+                        num = head;
+                        isSeconds = true;
+                    }
+                }
+                if (!isAllDigits(num)) continue;
+                var amount:Float = ApiUtils.parseFloat(num, 0);
+                if (amount <= 0) continue;
+                out.value = isSeconds ? amount * 1000 : amount;
+            }
+            return out;
+        }
+
+        // 3. Target Health: target:hp, tgt:hp, target_hp, target.hp, mon:hp, target:health
         if (StringTools.startsWith(lower, "target:hp") || StringTools.startsWith(lower, "tgt:hp") ||
             StringTools.startsWith(lower, "target_hp") || StringTools.startsWith(lower, "target.hp") ||
             StringTools.startsWith(lower, "tgt_hp") || StringTools.startsWith(lower, "mon:hp") ||

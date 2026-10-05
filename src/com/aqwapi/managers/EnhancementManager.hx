@@ -1,5 +1,7 @@
 package com.aqwapi.managers;
 
+import com.aqwapi.utils.ApiTimings;
+
 import flash.utils.Timer;
 import flash.events.TimerEvent;
 import com.aqwapi.Api;
@@ -68,7 +70,7 @@ class EnhancementManager {
 
     public function new(gameReference:Game) {
         _game = gameReference;
-        _timer = new Timer(150);
+        _timer = new Timer(ApiTimings.ENHANCE_POLL_MS);
         _timer.addEventListener(TimerEvent.TIMER, onTimerTick);
     }
 

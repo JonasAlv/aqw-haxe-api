@@ -1,5 +1,7 @@
 package com.aqwapi.managers;
 
+import com.aqwapi.utils.ApiTimings;
+
 import com.aqwapi.Api;
 import com.aqwapi.Game;
 import com.aqwapi.utils.ApiTime;
@@ -135,7 +137,7 @@ class MapManager {
             else reload();
             var remainingMs:Int = inCombat ? 2000 : Std.int(Math.max(200, 2000 - timeSinceCombat));
             var now2 = ApiTime.now();
-            if (now2 - _lastCombatCooldownLogTime >= 2000) {
+            if (now2 - _lastCombatCooldownLogTime >= ApiTimings.COMBAT_COOLDOWN_LOG_MS) {
                 _lastCombatCooldownLogTime = now2;
                 ApiLogger.debug("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining " + mapName + "...");
                 ApiTime.delay(remainingMs, function() {
@@ -146,7 +148,7 @@ class MapManager {
         }
 
         var now = ApiTime.now();
-        if (now - _lastJoinTime < 2000) return;
+        if (now - _lastJoinTime < ApiTimings.MAP_JOIN_MS) return;
         _lastJoinTime = now;
         _pauseScriptIfRunning(2000);
         var avatar:Dynamic = g.world.myAvatar;
@@ -195,7 +197,7 @@ class MapManager {
             if (Api.combat != null) Api.combat.dropCombat();
             var remainingMs:Int = inCombat ? 2000 : Std.int(Math.max(200, 2000 - timeSinceCombat));
             var now2 = ApiTime.now();
-            if (now2 - _lastCombatCooldownLogTime >= 2000) {
+            if (now2 - _lastCombatCooldownLogTime >= ApiTimings.COMBAT_COOLDOWN_LOG_MS) {
                 _lastCombatCooldownLogTime = now2;
                 ApiLogger.debug("Map", "Waiting " + remainingMs + "ms for combat cooldown before joining house...");
                 ApiTime.delay(remainingMs, function() {
@@ -267,7 +269,7 @@ class MapManager {
         if (g.world.moveToCell != null) {
             if (cell != null && (force || !isCell(cell))) {
                 var now = ApiTime.now();
-                if (!force && (now - _lastJumpTime < 500)) return;
+                if (!force && (now - _lastJumpTime < ApiTimings.CELL_JUMP_MS)) return;
                 _lastJumpTime = now;
                 _pauseScriptIfRunning(500);
                 g.world.moveToCell(cell, p);
@@ -326,7 +328,7 @@ class MapManager {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return false;
         var now = ApiTime.now();
-        if (now - _lastMapItemTime < 2000) return false;
+        if (now - _lastMapItemTime < ApiTimings.MAP_ITEM_MS) return false;
         _lastMapItemTime = now;
         _pauseScriptIfRunning(2000);
         try {

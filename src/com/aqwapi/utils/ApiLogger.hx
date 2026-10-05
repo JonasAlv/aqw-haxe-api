@@ -1,5 +1,7 @@
 package com.aqwapi.utils;
 
+import com.aqwapi.utils.ApiTimings;
+
 class ApiLogger {
     public static inline var LEVEL_DEBUG:Int = 0;
     public static inline var LEVEL_INFO:Int = 1;
@@ -186,11 +188,10 @@ class ApiLogger {
      *
      * A script calling `log()` in a loop used to emit one file line, one console line and one chat
      * line per iteration. The first occurrence is written through unchanged, so nothing is lost for
-     * normal one-shot logging; only the repeats inside `DEDUPE_WINDOW_MS` are swallowed, and they are
+     * normal one-shot logging; only the repeats inside `ApiTimings.LOG_DEDUPE_MS` are swallowed, and they are
      * summarised once the burst goes quiet. The summary flushes lazily on the next distinct entry and
      * on a Flash timer, so a burst that ends as the last thing that happens still gets its count.
      */
-    private static inline var DEDUPE_WINDOW_MS:Float = 2000.0;
     private static var _dedupeTag:String = null;
     private static var _dedupeLevel:Int = 0;
     private static var _dedupeMessage:String = null;
@@ -203,7 +204,7 @@ class ApiLogger {
     private static function armDedupeTimer():Void {
         try {
             if (_dedupeTimer == null) {
-                _dedupeTimer = new flash.utils.Timer(DEDUPE_WINDOW_MS, 1);
+                _dedupeTimer = new flash.utils.Timer(ApiTimings.LOG_DEDUPE_MS, 1);
                 _dedupeTimer.addEventListener(flash.events.TimerEvent.TIMER, onDedupeTimer);
             }
             _dedupeTimer.stop();
@@ -243,7 +244,7 @@ class ApiLogger {
 
         var now:Float = ApiTime.now();
         if (_dedupeCount > 0 && _dedupeTag == tag && _dedupeLevel == msgLevel && _dedupeMessage == message
-            && (now - _dedupeLastAt) < DEDUPE_WINDOW_MS) {
+            && (now - _dedupeLastAt) < ApiTimings.LOG_DEDUPE_MS) {
             _dedupeCount++;
             _dedupeLastAt = now;
             #if flash
