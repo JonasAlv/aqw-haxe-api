@@ -41,6 +41,11 @@ class CombatEngine {
     public static var pausedAuraName:String = null;
     public static var isPausedByAura(get, never):Bool;
     public static inline function get_isPausedByAura():Bool { return _pausedByTargetAura; }
+    // Monster aggro & pull mechanics
+    public static var aggroAll:Bool = false;
+    public static var pullAll:Bool = false;
+    public static var aggroTargets:Array<String> = [];
+    private static var _lastAggroTime:Float = -10000;
     // Internal execution state
     public static var customRotation(get, never):Array<Int>;
     public static inline function get_customRotation():Array<Int> { return _customRotation; }
@@ -760,6 +765,21 @@ class CombatEngine {
             var prevAura = pausedAuraName;
             pausedAuraName = null;
             ApiLogger.info("Combat", "Target counter/reflect aura expired" + (prevAura != null ? (" (" + prevAura + ")") : "") + " - resuming combat!");
+        }
+
+        if (aggroAll || pullAll || (aggroTargets != null && aggroTargets.length > 0)) {
+            var now = ApiTime.now();
+            if (pullAll) {
+                if (Api.monster != null) {
+                    Api.monster.magnetizeAll((aggroTargets != null && aggroTargets.length > 0) ? aggroTargets : "*");
+                }
+            }
+            if ((aggroAll || (aggroTargets != null && aggroTargets.length > 0)) && (now - _lastAggroTime >= 1200)) {
+                _lastAggroTime = now;
+                if (Api.monster != null) {
+                    Api.monster.aggroMonsters((aggroTargets != null && aggroTargets.length > 0) ? aggroTargets : "*");
+                }
+            }
         }
 
         if (isSmart) {

@@ -274,6 +274,30 @@ class ScriptBindings {
         bind("sortByLowestHp", function(monsters:Array<Dynamic>):Array<Dynamic> {
             return Api.monster != null ? cast Api.monster.sortByLowestHp(cast monsters) : monsters;
         });
+        bind("magnetize", function():Void {
+            if (Api.combat != null) Api.combat.magnetize();
+        });
+        bind("magnetizeAll", function(targets:Dynamic = null):Void {
+            if (Api.combat != null) Api.combat.magnetizeAll(targets);
+        });
+        bind("aggro", function(monster:Dynamic = null):Void {
+            if (Api.combat != null) Api.combat.aggro(monster);
+        });
+        bind("aggroMonsters", function(targets:Dynamic = null):Void {
+            if (Api.combat != null) Api.combat.aggroMonsters(targets);
+        });
+        bind("aggroAll", function(enabled:Bool = true):Void {
+            if (Api.combat != null) Api.combat.enableAggro(enabled);
+        });
+        bind("pullMonsters", function(targets:Dynamic = null):Void {
+            if (Api.combat != null) Api.combat.pullMonsters(targets);
+        });
+        bind("pull", function(targets:Dynamic = null):Void {
+            if (Api.combat != null) Api.combat.pull(targets);
+        });
+        bind("pullAll", function(enabled:Bool = true):Void {
+            if (Api.combat != null) Api.combat.enablePull(enabled);
+        });
     }
 
     // -------------------------------------------------------------------------

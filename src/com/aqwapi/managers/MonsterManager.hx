@@ -427,4 +427,128 @@ class MonsterManager {
 
         return list;
     }
+
+    public function aggro(monster:Dynamic = null):Void {
+        aggroMonsters(monster);
+    }
+
+    public function aggroMonsters(targets:Dynamic = null):Void {
+        if (_game == null || _game.world == null) return;
+        var curCell:String = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
+        if (curCell == "") return;
+
+        var mons:Array<EntityDTO> = getByCell(curCell);
+        if (mons == null || mons.length == 0) return;
+
+        var mapIdsToAggro:Array<Dynamic> = [];
+
+        var isAll:Bool = (targets == null || targets == "*" || targets == "all" || targets == "any");
+        var targetList:Array<String> = [];
+        if (!isAll) {
+            if (Std.isOfType(targets, Array)) {
+                for (t in (cast targets : Array<Dynamic>)) {
+                    if (t != null && Std.string(t) != "") targetList.push(Std.string(t).toLowerCase());
+                }
+            } else if (targets != null) {
+                targetList.push(Std.string(targets).toLowerCase());
+            }
+        }
+
+        for (m in mons) {
+            if (m == null || !m.alive || !m.hasGraphic) continue;
+            var mmid:String = m.mapId;
+            if (mmid == null || mmid == "" || mmid == "0") continue;
+
+            if (isAll) {
+                if (mapIdsToAggro.indexOf(mmid) == -1) mapIdsToAggro.push(mmid);
+            } else {
+                var mName = m.name.toLowerCase();
+                var mId = m.id;
+                var matched = false;
+                for (t in targetList) {
+                    var tInt = ApiUtils.parseInt(t, 0);
+                    if (t == "*" || (mName != "" && mName.indexOf(t) != -1) || (tInt > 0 && (mId == t || mmid == t))) {
+                        matched = true;
+                        break;
+                    }
+                }
+                if (matched && mapIdsToAggro.indexOf(mmid) == -1) {
+                    mapIdsToAggro.push(mmid);
+                }
+            }
+        }
+
+        if (mapIdsToAggro.length > 0) {
+            if (Api.transport != null) {
+                Api.transport.sendExtensionCommand("aggroMon", mapIdsToAggro);
+            }
+            try {
+                if (Reflect.hasField(_game.world, "aggroAllMon") || _game.world.aggroAllMon != null) {
+                    _game.world.aggroAllMon();
+                }
+            } catch (_:Dynamic) {}
+        }
+    }
+
+    public function magnetizeAll(targets:Dynamic = null):Void {
+        if (_game == null || _game.world == null || _game.world.myAvatar == null) return;
+        var myAvt:Dynamic = _game.world.myAvatar;
+        if (myAvt == null || myAvt.pMC == null) return;
+        var myX:Float = myAvt.pMC.x;
+        var myY:Float = myAvt.pMC.y;
+
+        var curCell:String = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
+        if (curCell == "") return;
+
+        var mons:Array<EntityDTO> = getByCell(curCell);
+        if (mons == null || mons.length == 0) return;
+
+        var isAll:Bool = (targets == null || targets == "*" || targets == "all" || targets == "any");
+        var targetList:Array<String> = [];
+        if (!isAll) {
+            if (Std.isOfType(targets, Array)) {
+                for (t in (cast targets : Array<Dynamic>)) {
+                    if (t != null && Std.string(t) != "") targetList.push(Std.string(t).toLowerCase());
+                }
+            } else if (targets != null) {
+                targetList.push(Std.string(targets).toLowerCase());
+            }
+        }
+
+        for (m in mons) {
+            if (m == null || !m.alive || !m.hasGraphic || m.raw == null) continue;
+            var raw:Dynamic = m.raw;
+            if (raw.pMC == null) continue;
+
+            var shouldMagnetize = isAll;
+            if (!shouldMagnetize) {
+                var mName = m.name.toLowerCase();
+                var mId = m.id;
+                var mmid = m.mapId;
+                for (t in targetList) {
+                    var tInt = ApiUtils.parseInt(t, 0);
+                    if (t == "*" || (mName != "" && mName.indexOf(t) != -1) || (tInt > 0 && (mId == t || mmid == t))) {
+                        shouldMagnetize = true;
+                        break;
+                    }
+                }
+            }
+
+            if (shouldMagnetize) {
+                try {
+                    raw.pMC.x = myX;
+                    raw.pMC.y = myY;
+                } catch (_:Dynamic) {}
+            }
+        }
+    }
+
+    public function pullMonsters(targets:Dynamic = null):Void {
+        aggroMonsters(targets);
+        magnetizeAll(targets);
+    }
+
+    public inline function pull(targets:Dynamic = null):Void {
+        pullMonsters(targets);
+    }
 }

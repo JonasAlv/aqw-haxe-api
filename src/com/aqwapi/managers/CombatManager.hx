@@ -48,6 +48,26 @@ class CombatManager {
         } catch (e:Dynamic) {}
     }
 
+    public function magnetizeAll(targets:Dynamic = null):Void {
+        if (Api.monster != null) Api.monster.magnetizeAll(targets);
+    }
+
+    public function aggro(monster:Dynamic = null):Void {
+        if (Api.monster != null) Api.monster.aggro(monster);
+    }
+
+    public function aggroMonsters(targets:Dynamic = null):Void {
+        if (Api.monster != null) Api.monster.aggroMonsters(targets);
+    }
+
+    public function pullMonsters(targets:Dynamic = null):Void {
+        if (Api.monster != null) Api.monster.pullMonsters(targets);
+    }
+
+    public inline function pull(targets:Dynamic = null):Void {
+        pullMonsters(targets);
+    }
+
     public function attack(monsterName:String):Void {
         if (_game == null || _game.world == null || _game.world.myAvatar == null) return;
         var targetMonster:Dynamic = null;
@@ -304,6 +324,35 @@ class CombatManager {
     public function get_isPausedByAura_prop():Bool { return CombatEngine.isPausedByAura; }
     public function get_isPausedByAura():Bool { return CombatEngine.isPausedByAura; }
 
+    private var _globalAggroAll:Bool = false;
+    private var _globalPullAll:Bool = false;
+
+    public var aggroAll(get, set):Bool;
+    @:getter(aggroAll)
+    public function get_aggroAll_prop():Bool { return CombatEngine.aggroAll; }
+    @:setter(aggroAll)
+    public function set_aggroAll_prop(v:Bool):Void { _globalAggroAll = v; CombatEngine.aggroAll = v; }
+    public function get_aggroAll():Bool { return CombatEngine.aggroAll; }
+    public function set_aggroAll(v:Bool):Bool { _globalAggroAll = v; CombatEngine.aggroAll = v; return v; }
+
+    public function enableAggro(enable:Bool = true):Void {
+        _globalAggroAll = enable;
+        CombatEngine.aggroAll = enable;
+    }
+
+    public var pullAll(get, set):Bool;
+    @:getter(pullAll)
+    public function get_pullAll_prop():Bool { return CombatEngine.pullAll; }
+    @:setter(pullAll)
+    public function set_pullAll_prop(v:Bool):Void { _globalPullAll = v; CombatEngine.pullAll = v; }
+    public function get_pullAll():Bool { return CombatEngine.pullAll; }
+    public function set_pullAll(v:Bool):Bool { _globalPullAll = v; CombatEngine.pullAll = v; return v; }
+
+    public function enablePull(enable:Bool = true):Void {
+        _globalPullAll = enable;
+        CombatEngine.pullAll = enable;
+    }
+
     public function setTargetPriority(targets:Dynamic):Void {
         CombatEngine.priorityTargets = [];
         if (Std.isOfType(targets, Array)) {
@@ -356,6 +405,35 @@ class CombatManager {
         } else if (Reflect.hasField(opts, "stopOnAuras")) {
             pauseOnAuras(Reflect.field(opts, "stopOnAuras"));
         }
+
+        if (Reflect.hasField(opts, "aggro")) {
+            CombatEngine.aggroAll = (Reflect.field(opts, "aggro") == true);
+        } else if (Reflect.hasField(opts, "aggroAll")) {
+            CombatEngine.aggroAll = (Reflect.field(opts, "aggroAll") == true);
+        } else if (Reflect.hasField(opts, "aggroMonsters")) {
+            var aggroVal:Dynamic = Reflect.field(opts, "aggroMonsters");
+            if (aggroVal != null) {
+                if (Std.isOfType(aggroVal, Bool)) {
+                    CombatEngine.aggroAll = (aggroVal == true);
+                } else if (Std.isOfType(aggroVal, Array)) {
+                    CombatEngine.aggroTargets = [];
+                    for (a in (cast aggroVal : Array<Dynamic>)) {
+                        if (a != null && Std.string(a) != "") CombatEngine.aggroTargets.push(Std.string(a));
+                    }
+                } else {
+                    var sVal:String = Std.string(aggroVal);
+                    if (sVal != "") CombatEngine.aggroTargets = [sVal];
+                }
+            }
+        }
+
+        if (Reflect.hasField(opts, "pull")) {
+            CombatEngine.pullAll = (Reflect.field(opts, "pull") == true);
+        } else if (Reflect.hasField(opts, "pullAll")) {
+            CombatEngine.pullAll = (Reflect.field(opts, "pullAll") == true);
+        } else if (Reflect.hasField(opts, "magnetizeAll")) {
+            CombatEngine.pullAll = (Reflect.field(opts, "magnetizeAll") == true);
+        }
     }
 
     private var _huntMonster:String = null;
@@ -378,6 +456,9 @@ class CombatManager {
         CombatEngine.lockedMMID = null;
         CombatEngine.priorityTargets = [];
         CombatEngine.huntPriority = "lowest_hp";
+        if (!_globalAggroAll) CombatEngine.aggroAll = false;
+        if (!_globalPullAll) CombatEngine.pullAll = false;
+        CombatEngine.aggroTargets = [];
     }
 
     public function hunt(monster:Dynamic, itemOrCount:Dynamic = null, quantityOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {

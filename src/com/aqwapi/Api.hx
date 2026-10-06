@@ -172,6 +172,22 @@ class Api {
         if (combat != null) combat.endCombat();
     }
 
+    public static inline function aggro(monsterTarget:Dynamic = null):Void {
+        if (monster != null) monster.aggro(monsterTarget);
+    }
+
+    public static inline function aggroMonsters(targets:Dynamic = null):Void {
+        if (monster != null) monster.aggroMonsters(targets);
+    }
+
+    public static inline function pullMonsters(targets:Dynamic = null):Void {
+        if (monster != null) monster.pullMonsters(targets);
+    }
+
+    public static inline function magnetizeAll(targets:Dynamic = null):Void {
+        if (monster != null) monster.magnetizeAll(targets);
+    }
+
     public static inline function reload(pad:String = null):Void {
         if (map != null) map.reload(pad);
     }
