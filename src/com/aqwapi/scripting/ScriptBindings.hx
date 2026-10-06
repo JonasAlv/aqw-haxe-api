@@ -180,6 +180,21 @@ class ScriptBindings {
         bind("isSkipCutscenes", function():Bool {
             return Api.map != null && Api.map.skipCutscenes;
         });
+        bind("skipCutscenes", function():Bool {
+            return Api.map != null ? Api.map.skipCutscenesNow() : false;
+        });
+        bind("skipCutscene", function():Bool {
+            return Api.map != null ? Api.map.skipCutscenesNow() : false;
+        });
+        bind("autoSkipCutscenes", function(enabled:Bool = true):Void {
+            if (Api.map != null) Api.map.skipCutscenes = enabled;
+        });
+        bind("walkThroughWalls", function(enabled:Bool = true):Void {
+            if (Api.map != null) Api.map.walkThroughWalls(enabled);
+        });
+        bind("disableCollisions", function(enabled:Bool = true):Void {
+            if (Api.map != null) Api.map.setDisableCollisions(enabled);
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -227,6 +242,15 @@ class ScriptBindings {
         });
         bind("equipLoadout", function(type:String):Bool {
             return Api.combat != null ? Api.combat.equipLoadout(type) : false;
+        });
+        bind("getBestTarget", function(nameOrId:String = "*"):Dynamic {
+            return Api.monster != null ? Api.monster.getBestMonsterTargetInCell(null, nameOrId) : null;
+        });
+        bind("getBestMonsterTarget", function(cell:String = null, nameOrId:String = "*"):Dynamic {
+            return Api.monster != null ? Api.monster.getBestMonsterTargetInCell(cell, nameOrId) : null;
+        });
+        bind("sortByLowestHp", function(monsters:Array<Dynamic>):Array<Dynamic> {
+            return Api.monster != null ? cast Api.monster.sortByLowestHp(cast monsters) : monsters;
         });
     }
 
@@ -920,6 +944,34 @@ class ScriptBindings {
         });
         bind("getAuraRemaining", function(name:String):Float {
             return Api.player != null ? Api.player.getAuraRemaining(name) : 0.0;
+        });
+
+        // Server Boosts (Gold, CP, Rep, XP)
+        bind("isBoostActive", function(boostType:String):Bool {
+            return Api.player != null && Api.player.isBoostActive(boostType);
+        });
+        bind("getBoostRemaining", function(boostType:String):Int {
+            return Api.player != null ? Api.player.getBoostRemaining(boostType) : 0;
+        });
+        bind("useBoost", function(nameOrId:Dynamic):Bool {
+            return Api.player != null && Api.player.useBoost(nameOrId);
+        });
+        bind("autoBoost", function(boostType:String, enabled:Bool = true):Void {
+            if (Api.player != null) Api.player.setAutoBoost(boostType, enabled);
+        });
+
+        // Aura Garbage Collection
+        bind("cleanExpiredAuras", function():Int {
+            return Api.aura != null ? Api.aura.cleanExpiredAuras() : 0;
+        });
+        bind("cleanAuras", function():Int {
+            return Api.aura != null ? Api.aura.cleanExpiredAuras() : 0;
+        });
+        bind("autoCleanAuras", function(enabled:Bool = true):Void {
+            if (Api.aura != null) {
+                if (enabled) Api.aura.startAutoClean(5000);
+                else Api.aura.stopAutoClean();
+            }
         });
     }
 

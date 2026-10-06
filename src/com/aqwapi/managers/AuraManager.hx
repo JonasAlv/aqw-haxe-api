@@ -211,4 +211,92 @@ var search:String = normalizeAuraName(auraName);
         }
         return false;
     }
+
+    // -------------------------------------------------------------------------
+    // Expired Aura Garbage Collection (Anti-Leak & Stale-State Prevention)
+    // -------------------------------------------------------------------------
+
+    private var _cleanTimer:flash.utils.Timer = null;
+    private var _autoClean:Bool = false;
+
+    public function cleanExpiredAuras():Int {
+        var g = _g();
+        if (g == null || g.world == null) return 0;
+        var world:Dynamic = g.world;
+        var removedCount:Int = 0;
+
+        // 1. Clean player auras in uoTree
+        if (world.uoTree != null) {
+            try {
+                for (playerName in Reflect.fields(world.uoTree)) {
+                    var userObj:Dynamic = Reflect.field(world.uoTree, playerName);
+                    if (userObj != null && userObj.auras != null && Std.isOfType(userObj.auras, Array)) {
+                        removedCount += _cleanAuraArray(cast userObj.auras);
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        // 2. Clean monster auras in monTree
+        if (world.monTree != null) {
+            try {
+                for (monId in Reflect.fields(world.monTree)) {
+                    var monObj:Dynamic = Reflect.field(world.monTree, monId);
+                    if (monObj != null && monObj.auras != null && Std.isOfType(monObj.auras, Array)) {
+                        removedCount += _cleanAuraArray(cast monObj.auras);
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        // 3. Clean myAvatar auras if present
+        if (world.myAvatar != null && world.myAvatar.auras != null && Std.isOfType(world.myAvatar.auras, Array)) {
+            try {
+                removedCount += _cleanAuraArray(cast world.myAvatar.auras);
+            } catch (_:Dynamic) {}
+        }
+
+        return removedCount;
+    }
+
+    private function _cleanAuraArray(auras:Array<Dynamic>):Int {
+        if (auras == null) return 0;
+        var removed:Int = 0;
+        var i = auras.length - 1;
+        while (i >= 0) {
+            var a:Dynamic = auras[i];
+            if (a == null || a.nam == null || a.nam == "" || a.e == 1 || a.e == "1" || a.e == true) {
+                auras.splice(i, 1);
+                removed++;
+            }
+            i--;
+        }
+        return removed;
+    }
+
+    public function startAutoClean(intervalMs:Int = 5000):Void {
+        stopAutoClean();
+        _autoClean = true;
+        _cleanTimer = new flash.utils.Timer(intervalMs);
+        _cleanTimer.addEventListener(flash.events.TimerEvent.TIMER, function(_) {
+            cleanExpiredAuras();
+        });
+        _cleanTimer.start();
+    }
+
+    public function stopAutoClean():Void {
+        _autoClean = false;
+        if (_cleanTimer != null) {
+            _cleanTimer.stop();
+            _cleanTimer = null;
+        }
+    }
+
+    public var autoClean(get, set):Bool;
+    @:getter(autoClean)
+    public function get_autoClean_prop():Bool { return _autoClean; }
+    @:setter(autoClean)
+    public function set_autoClean_prop(v:Bool):Void { if (v) startAutoClean(); else stopAutoClean(); }
+    public function get_autoClean():Bool { return _autoClean; }
+    public function set_autoClean(v:Bool):Bool { if (v) startAutoClean(); else stopAutoClean(); return v; }
 }

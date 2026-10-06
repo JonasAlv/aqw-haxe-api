@@ -308,6 +308,43 @@ class MonsterManager {
         return res;
     }
 
+    public function sortByLowestHp(monsters:Array<EntityDTO>):Array<EntityDTO> {
+        if (monsters == null || monsters.length <= 1) return monsters;
+        var res = monsters.copy();
+        res.sort(function(a:EntityDTO, b:EntityDTO):Int {
+            var aAlive = (a != null && a.alive && a.hp > 0);
+            var bAlive = (b != null && b.alive && b.hp > 0);
+            if (aAlive != bAlive) return aAlive ? -1 : 1;
+            var aHp = (a != null) ? a.hp : 0;
+            var bHp = (b != null) ? b.hp : 0;
+            if (aHp != bHp) return aHp - bHp;
+            var aId = (a != null) ? ApiUtils.parseInt(a.mapId, 0) : 0;
+            var bId = (b != null) ? ApiUtils.parseInt(b.mapId, 0) : 0;
+            return aId - bId;
+        });
+        return res;
+    }
+
+    public function getBestMonsterTargetInCell(cell:String = null, nameOrId:String = "*"):EntityDTO {
+        var c = (cell != null && cell != "") ? cell : ((Api.player != null) ? Api.player.cell : "");
+        var living = getLivingMonstersInCell(c);
+        if (living.length == 0) return null;
+        var search = (nameOrId != null) ? nameOrId.toLowerCase() : "*";
+        var idInt = (nameOrId != null) ? ApiUtils.parseInt(nameOrId, 0) : 0;
+
+        var candidates:Array<EntityDTO> = [];
+        for (m in living) {
+            if (m == null || !m.alive || m.hp <= 0 || !m.hasGraphic) continue;
+            var matches = (search == "*" || search == "any" || search == "")
+                || (idInt > 0 && (m.id == nameOrId || m.mapId == nameOrId || m.monsterId == nameOrId))
+                || (m.name != "" && m.name.toLowerCase().indexOf(search) != -1);
+            if (matches) candidates.push(m);
+        }
+        if (candidates.length == 0) return null;
+        var sorted = sortByLowestHp(candidates);
+        return sorted[0];
+    }
+
     private function _getRawMonsters():Array<Dynamic> {
         if (_game == null || _game.world == null || _game.world.monsters == null) return [];
         var raw:Dynamic = _game.world.monsters;

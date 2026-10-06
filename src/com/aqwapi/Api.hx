@@ -176,6 +176,42 @@ class Api {
         if (map != null) map.reload(pad);
     }
 
+    public static inline function cleanExpiredAuras():Int {
+        return (aura != null) ? aura.cleanExpiredAuras() : 0;
+    }
+
+    public static inline function walkThroughWalls(enabled:Bool = true):Void {
+        if (map != null) map.walkThroughWalls(enabled);
+    }
+
+    public static inline function skipCutscenes():Bool {
+        return (map != null) ? map.skipCutscenesNow() : false;
+    }
+
+    public static inline function autoSkipCutscenes(enabled:Bool = true):Void {
+        if (map != null) map.skipCutscenes = enabled;
+    }
+
+    public static inline function isBoostActive(boostType:String):Bool {
+        return (player != null) ? player.isBoostActive(boostType) : false;
+    }
+
+    public static inline function getBoostRemaining(boostType:String):Int {
+        return (player != null) ? player.getBoostRemaining(boostType) : 0;
+    }
+
+    public static inline function useBoost(itemNameOrId:Dynamic):Bool {
+        return (player != null) ? player.useBoost(itemNameOrId) : false;
+    }
+
+    public static inline function autoBoost(boostType:String, enabled:Bool = true):Void {
+        if (player != null) player.setAutoBoost(boostType, enabled);
+    }
+
+    public static inline function getBestMonsterTargetInCell(cell:String = null, nameOrId:String = "*"):com.aqwapi.data.EntityDTO {
+        return (monster != null) ? monster.getBestMonsterTargetInCell(cell, nameOrId) : null;
+    }
+
     public static var transport(default, null):TransportAdapter;
     public static var hscript(default, null):HScriptEngine;
 
@@ -250,6 +286,7 @@ class Api {
 
         if (transport != null) transport.start();
         if (drop != null) drop.start();
+        if (aura != null) aura.startAutoClean(5000);
     }
 
     public static function notify(message:String):Void {

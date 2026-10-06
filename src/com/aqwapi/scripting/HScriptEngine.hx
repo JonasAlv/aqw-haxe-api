@@ -268,8 +268,11 @@ class HScriptEngine {
         if (!isRunning) return;
         if (Api.game == null || Api.game.world == null) return;
 
-        // Always run skip-cutscenes check first when enabled
-        if (Api.map != null) Api.map.checkSkipCutscenes();
+        // Always run skip-cutscenes check and collision state when enabled
+        if (Api.map != null) {
+            Api.map.checkSkipCutscenes();
+            if (Api.map.disableCollisions) Api.map.applyCollisionState();
+        }
 
         var world = Api.game.world;
         if (world.myAvatar != null && world.myAvatar.dataLeaf != null && world.myAvatar.dataLeaf.intState == 0) {
@@ -308,7 +311,10 @@ class HScriptEngine {
 
     private function onGameZoneEntered(e:GameEvent):Void {
         // Always cancel cutscenes on zone entry when enabled (script running or not)
-        if (Api.map != null) Api.map.checkSkipCutscenes();
+        if (Api.map != null) {
+            Api.map.checkSkipCutscenes();
+            if (Api.map.disableCollisions) Api.map.applyCollisionState();
+        }
         if (isRunning && _hasOnZoneEntered) {
             try { _interp.variables.get("onZoneEntered")(e.data); } catch(err:Dynamic) { _handleScriptError("onZoneEntered: " + err, err); }
         }

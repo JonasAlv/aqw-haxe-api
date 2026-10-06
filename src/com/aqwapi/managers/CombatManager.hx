@@ -54,15 +54,21 @@ class CombatManager {
         var sName:String = (monsterName != null) ? monsterName : "*";
         var targetName:String = sName.toLowerCase();
 
-        // 1. Wildcard / any monster in current cell
+        var currentCell = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
+
+        // 1. Wildcard / any monster in current cell (prioritizing lowest HP)
         if (targetName == "*" || targetName == "any" || targetName == "") {
-            var currentCell = (_game.world.strFrame != null) ? Std.string(_game.world.strFrame) : "";
-            var living = Api.monster.getByCell(currentCell);
-            for (m in living) {
-                if (m != null && m.alive && m.raw != null && Reflect.field(m.raw, "pMC") != null) {
-                    targetMonster = m.raw;
-                    break;
-                }
+            var best = Api.monster.getBestMonsterTargetInCell(currentCell, "*");
+            if (best != null && best.raw != null && Reflect.field(best.raw, "pMC") != null) {
+                targetMonster = best.raw;
+            }
+        }
+
+        // 2. Matching monster by name or ID in current cell (prioritizing lowest HP)
+        if (targetMonster == null && currentCell != "") {
+            var best = Api.monster.getBestMonsterTargetInCell(currentCell, sName);
+            if (best != null && best.raw != null && Reflect.field(best.raw, "pMC") != null) {
+                targetMonster = best.raw;
             }
         }
 

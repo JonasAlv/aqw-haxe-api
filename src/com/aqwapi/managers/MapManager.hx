@@ -327,6 +327,10 @@ class MapManager {
             }
         }
 
+        if (_disableCollisions) {
+            applyCollisionState();
+        }
+
         if (_autoDeathSpawn && cell != null && cell != "" && cell.toLowerCase().indexOf("cut") == -1) {
             _lastSpawnCell = cell;
             Api.player.setSpawnPoint(cell, p);
@@ -620,20 +624,44 @@ class MapManager {
     private var _skipCutscenes:Bool = false;
 
     /**
-     * When enabled, cancels any pending cutscene handler every tick.
+     * When enabled, cancels any pending cutscene handler and dismisses external movie cutscenes every tick.
      * Call this from the script engine tick and on map zone-entered events.
      * Mirrors the technique used by Skua's skipCutscenes binding.
      */
     public function checkSkipCutscenes():Void {
         if (!_skipCutscenes) return;
         var g = _g();
-        if (g == null || g.world == null) return;
+        if (g == null) return;
         try {
-            var w:Dynamic = g.world;
-            if (w.cHandle != null) {
-                try { w.cHandle.cancel(); } catch (e:Dynamic) {}
+            if (g.world != null && g.world.cHandle != null) {
+                try { g.world.cHandle.cancel(); } catch (e:Dynamic) {}
+            }
+            if (g.mcExtSWF != null && g.mcExtSWF.numChildren != null && untyped g.mcExtSWF.numChildren > 0) {
+                while (untyped g.mcExtSWF.numChildren > 0) {
+                    untyped g.mcExtSWF.removeChildAt(0);
+                }
+                if (g.showInterface != null) untyped g.showInterface();
             }
         } catch (e:Dynamic) {}
+    }
+
+    public function skipCutscenesNow():Bool {
+        var g = _g();
+        if (g == null) return false;
+        var dismissed:Bool = false;
+        try {
+            if (g.world != null && g.world.cHandle != null) {
+                try { g.world.cHandle.cancel(); dismissed = true; } catch (e:Dynamic) {}
+            }
+            if (g.mcExtSWF != null && g.mcExtSWF.numChildren != null && untyped g.mcExtSWF.numChildren > 0) {
+                while (untyped g.mcExtSWF.numChildren > 0) {
+                    untyped g.mcExtSWF.removeChildAt(0);
+                }
+                if (g.showInterface != null) untyped g.showInterface();
+                dismissed = true;
+            }
+        } catch (e:Dynamic) {}
+        return dismissed;
     }
 
     public var skipCutscenes(get, set):Bool;
@@ -643,6 +671,52 @@ class MapManager {
     public function set_skipCutscenes_prop(v:Bool):Void { _skipCutscenes = v; if (v) checkSkipCutscenes(); }
     public function get_skipCutscenes():Bool { return _skipCutscenes; }
     public function set_skipCutscenes(v:Bool):Bool { _skipCutscenes = v; if (v) checkSkipCutscenes(); return v; }
+
+    // -------------------------------------------------------------------------
+    // Walk Through Walls / Disable Collisions
+    // -------------------------------------------------------------------------
+
+    private var _disableCollisions:Bool = false;
+    private var _savedArrSolid:Dynamic = null;
+    private var _savedArrSolidR:Dynamic = null;
+
+    public var disableCollisions(get, set):Bool;
+    @:getter(disableCollisions)
+    public function get_disableCollisions_prop():Bool { return _disableCollisions; }
+    @:setter(disableCollisions)
+    public function set_disableCollisions_prop(v:Bool):Void { setDisableCollisions(v); }
+    public function get_disableCollisions():Bool { return _disableCollisions; }
+    public function set_disableCollisions(v:Bool):Bool { setDisableCollisions(v); return v; }
+
+    public function setDisableCollisions(enabled:Bool):Void {
+        _disableCollisions = enabled;
+        applyCollisionState();
+    }
+
+    public inline function walkThroughWalls(enabled:Bool = true):Void {
+        setDisableCollisions(enabled);
+    }
+
+    public function applyCollisionState():Void {
+        var g = _g();
+        if (g == null || g.world == null) return;
+        try {
+            var w:Dynamic = g.world;
+            if (_disableCollisions) {
+                if (w.arrSolid != null && (w.arrSolid.length != null && untyped w.arrSolid.length > 0)) {
+                    _savedArrSolid = w.arrSolid;
+                }
+                if (w.arrSolidR != null && (w.arrSolidR.length != null && untyped w.arrSolidR.length > 0)) {
+                    _savedArrSolidR = w.arrSolidR;
+                }
+                w.arrSolid = [];
+                w.arrSolidR = [];
+            } else {
+                if (_savedArrSolid != null) w.arrSolid = _savedArrSolid;
+                if (_savedArrSolidR != null) w.arrSolidR = _savedArrSolidR;
+            }
+        } catch (e:Dynamic) {}
+    }
 
     public var autoCorrectJump(get, set):Bool;
     @:getter(autoCorrectJump)

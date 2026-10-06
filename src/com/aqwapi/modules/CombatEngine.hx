@@ -555,6 +555,7 @@ class CombatEngine {
         if (target == null) {
             try {
                 var currentMonsters:Array<EntityDTO> = Api.monster.getByCell(Std.string(world.strFrame));
+                if (Api.monster != null) currentMonsters = Api.monster.sortByLowestHp(currentMonsters);
                 for (monsterTarget in currentMonsters) {
                     if (monsterTarget == null || !monsterTarget.alive || !monsterTarget.hasGraphic) continue;
                     var raw = monsterTarget.raw;

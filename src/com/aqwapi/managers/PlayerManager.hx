@@ -2,7 +2,11 @@ package com.aqwapi.managers;
 
 import com.aqwapi.Api;
 import com.aqwapi.data.EntityDTO;
+import com.aqwapi.data.ItemDTO;
+import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.Game;
+import flash.utils.Timer;
+import flash.events.TimerEvent;
 
 class PlayerManager {
 
@@ -351,5 +355,134 @@ class PlayerManager {
             }
         }
         return 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // Server Boost Management (Gold, Class Points, Rep, XP)
+    // -------------------------------------------------------------------------
+
+    private var _boostTimer:Timer = null;
+    private var _autoBoostGold:Bool = false;
+    private var _autoBoostCp:Bool = false;
+    private var _autoBoostRep:Bool = false;
+    private var _autoBoostXp:Bool = false;
+
+    private function _getBoostField(boostType:String):String {
+        var t = (boostType != null) ? boostType.toLowerCase() : "";
+        if (t == "gold" || t == "g") return "iBoostG";
+        if (t == "cp" || t == "class" || t == "classpoints") return "iBoostCP";
+        if (t == "rep" || t == "reputation") return "iBoostRep";
+        if (t == "xp" || t == "exp" || t == "experience") return "iBoostXP";
+        return "";
+    }
+
+    public function getBoostRemaining(boostType:String):Int {
+        var a = _avatar();
+        if (a == null || a.objData == null) return 0;
+        var f = _getBoostField(boostType);
+        if (f == "") return 0;
+        var val = Reflect.field(a.objData, f);
+        if (val != null) return ApiUtils.parseInt(val, 0);
+        // Fallback for reputation which is sometimes iBoostR in server responses
+        if (f == "iBoostRep") {
+            var valR = Reflect.field(a.objData, "iBoostR");
+            if (valR != null) return ApiUtils.parseInt(valR, 0);
+        }
+        return 0;
+    }
+
+    public function isBoostActive(boostType:String):Bool {
+        return getBoostRemaining(boostType) > 0;
+    }
+
+    public function useBoost(itemNameOrId:Dynamic):Bool {
+        var g = _g();
+        if (g == null || g.sfc == null || g.world == null) return false;
+        var idInt:Int = 0;
+        if (Std.isOfType(itemNameOrId, Int)) {
+            idInt = cast itemNameOrId;
+        } else {
+            var str = Std.string(itemNameOrId);
+            idInt = ApiUtils.parseInt(str, 0);
+            if (idInt <= 0 && Api.inventory != null) {
+                var itm:Dynamic = Api.inventory.findItem(str);
+                if (itm != null && itm.id != null) idInt = Std.int(itm.id);
+            }
+        }
+        if (idInt <= 0) return false;
+        var roomId = (g.world.curRoom != null) ? Std.string(g.world.curRoom) : "1";
+        g.sfc.sendString("%xt%zm%serverUseItem%" + roomId + "%+%" + idInt + "%");
+        return true;
+    }
+
+    public function findBoostItem(boostType:String):ItemDTO {
+        if (Api.inventory == null) return null;
+        var t = (boostType != null) ? boostType.toLowerCase() : "";
+        var keyword = switch (t) {
+            case "gold", "g": "gold";
+            case "cp", "class", "classpoints": "class";
+            case "rep", "reputation": "rep";
+            case "xp", "exp", "experience": "xp";
+            default: "";
+        };
+        if (keyword == "") return null;
+
+        var invItems = Api.inventory.getItems();
+        for (item in invItems) {
+            if (item == null) continue;
+            var isServerUse = (item.es == "ServerUse" || item.type == "ServerUse");
+            if (isServerUse && item.name != null && item.name.toLowerCase().indexOf(keyword) != -1) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    public function checkAutoBoosts():Void {
+        if (!_autoBoostGold && !_autoBoostCp && !_autoBoostRep && !_autoBoostXp) return;
+        var g = _g();
+        if (g == null || g.world == null || g.world.myAvatar == null) return;
+
+        var tryBoost = function(boostType:String, enabled:Bool) {
+            if (!enabled) return;
+            if (isBoostActive(boostType)) return;
+            var item = findBoostItem(boostType);
+            if (item != null && item.itemId > 0) {
+                useBoost(item.itemId);
+            }
+        };
+
+        tryBoost("gold", _autoBoostGold);
+        tryBoost("cp", _autoBoostCp);
+        tryBoost("rep", _autoBoostRep);
+        tryBoost("xp", _autoBoostXp);
+    }
+
+    public function setAutoBoost(boostType:String, enabled:Bool = true):Void {
+        var t = (boostType != null) ? boostType.toLowerCase() : "";
+        switch (t) {
+            case "gold", "g": _autoBoostGold = enabled;
+            case "cp", "class", "classpoints": _autoBoostCp = enabled;
+            case "rep", "reputation": _autoBoostRep = enabled;
+            case "xp", "exp", "experience": _autoBoostXp = enabled;
+            case "all", "*":
+                _autoBoostGold = enabled;
+                _autoBoostCp = enabled;
+                _autoBoostRep = enabled;
+                _autoBoostXp = enabled;
+        }
+        if (_autoBoostGold || _autoBoostCp || _autoBoostRep || _autoBoostXp) {
+            if (_boostTimer == null) {
+                _boostTimer = new Timer(15000);
+                _boostTimer.addEventListener(TimerEvent.TIMER, function(_) checkAutoBoosts());
+                _boostTimer.start();
+            }
+            checkAutoBoosts();
+        } else {
+            if (_boostTimer != null) {
+                _boostTimer.stop();
+                _boostTimer = null;
+            }
+        }
     }
 }
