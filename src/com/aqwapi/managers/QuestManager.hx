@@ -744,6 +744,9 @@ class QuestManager {
         if (_game != null && _game.world != null && _game.world.questTree != null) {
             var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(qid));
             if (qData != null) {
+                if (qData.bDaily == 1 || qData.bDaily == "1" || qData.bDaily == true) {
+                    return isDailyComplete(qid);
+                }
                 qslot = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
                 qval = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
             } else {
@@ -755,6 +758,21 @@ class QuestManager {
             return getQuestValue(qslot) >= qval;
         }
 
+        return false;
+    }
+
+    public function isDaily(questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0) return false;
+        if (_game != null && _game.world != null && _game.world.questTree != null) {
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(qid));
+            if (qData != null) {
+                var bDaily:Dynamic = qData.bDaily;
+                return bDaily == 1 || bDaily == "1" || bDaily == true;
+            } else {
+                load(qid);
+            }
+        }
         return false;
     }
 

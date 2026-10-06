@@ -264,6 +264,14 @@ class Api {
         if (inventory != null) inventory.cancelRestoreGear();
     }
 
+    public static inline function isDaily(questId:Dynamic):Bool {
+        return (quest != null) ? quest.isDaily(questId) : false;
+    }
+
+    public static inline function isDailyComplete(questId:Dynamic):Bool {
+        return (quest != null) ? quest.isDailyComplete(questId) : false;
+    }
+
     public static var transport(default, null):TransportAdapter;
     public static var hscript(default, null):HScriptEngine;
 

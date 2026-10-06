@@ -382,7 +382,26 @@ class ScriptBindings {
             }
             if (Api.quest.canComplete(questId)) {
                 if (Api.combat != null) Api.combat.stopCombat();
-                Api.quest.ensureComplete(questId, rewardChoice);
+                if (Std.isOfType(rewardChoice, Array)) {
+                    Api.quest.ensureCompleteChoose(questId, rewardChoice);
+                } else {
+                    Api.quest.ensureComplete(questId, rewardChoice);
+                }
+            }
+            var done = Api.quest.hasBeenCompleted(questId);
+            if (done) _cleanQuestStoryData(questId);
+            return done;
+        });
+
+        bind("completeChoose", function(questId:Dynamic, ?preferredItems:Dynamic):Bool {
+            if (Api.quest == null) return false;
+            if (Api.quest.hasBeenCompleted(questId)) {
+                _cleanQuestStoryData(questId);
+                return true;
+            }
+            if (Api.quest.canComplete(questId)) {
+                if (Api.combat != null) Api.combat.stopCombat();
+                Api.quest.ensureCompleteChoose(questId, preferredItems);
             }
             var done = Api.quest.hasBeenCompleted(questId);
             if (done) _cleanQuestStoryData(questId);
@@ -395,6 +414,12 @@ class ScriptBindings {
         });
         bind("isCompletedBefore", function(questId:Dynamic):Bool {
             return Api.quest != null && Api.quest.hasBeenCompleted(questId);
+        });
+        bind("isDaily", function(questId:Dynamic):Bool {
+            return Api.quest != null && Api.quest.isDaily(questId);
+        });
+        bind("isDailyComplete", function(questId:Dynamic):Bool {
+            return Api.quest != null && Api.quest.isDailyComplete(questId);
         });
         bind("isQuestComplete", function(questId:Dynamic):Bool {
             return Api.quest != null ? Api.quest.canComplete(questId) : false;
