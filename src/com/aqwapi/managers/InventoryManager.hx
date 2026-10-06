@@ -344,10 +344,12 @@ class InventoryManager {
                     if (slotItem != null && Reflect.hasField(slotItem, "ItemID")) {
                         var id:Int = ApiUtils.parseInt(Reflect.field(slotItem, "ItemID"), 0);
                         if (id > 0 && !seenIds.exists(id)) {
+                            var actualItem = _findItem(Std.string(id));
+                            if (actualItem == null) continue;
                             seenIds.set(id, true);
-                            var name:String = Reflect.hasField(slotItem, "sName") ? Std.string(Reflect.field(slotItem, "sName")) : "";
-                            var es:String = Reflect.hasField(slotItem, "sES") ? Std.string(Reflect.field(slotItem, "sES")) : slot;
-                            var st:String = Reflect.hasField(slotItem, "sType") ? Std.string(Reflect.field(slotItem, "sType")) : "";
+                            var name:String = (actualItem.sName != null) ? Std.string(actualItem.sName) : (Reflect.hasField(slotItem, "sName") ? Std.string(Reflect.field(slotItem, "sName")) : "");
+                            var es:String = (actualItem.sES != null) ? Std.string(actualItem.sES) : (Reflect.hasField(slotItem, "sES") ? Std.string(Reflect.field(slotItem, "sES")) : slot);
+                            var st:String = (actualItem.sType != null) ? Std.string(actualItem.sType) : (Reflect.hasField(slotItem, "sType") ? Std.string(Reflect.field(slotItem, "sType")) : "");
                             _gearSnapshot.push({
                                 id: id,
                                 name: name,

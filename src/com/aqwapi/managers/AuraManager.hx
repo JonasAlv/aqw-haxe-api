@@ -294,23 +294,32 @@ var search:String = normalizeAuraName(auraName);
         }
 
         // 2. Clean monster auras in monTree
-        if (world.monTree != null) {
-            try {
+        try {
+            if (world.monTree != null) {
                 for (monId in Reflect.fields(world.monTree)) {
                     var monObj:Dynamic = Reflect.field(world.monTree, monId);
-                    if (monObj != null && monObj.auras != null && Std.isOfType(monObj.auras, Array)) {
-                        removedCount += _cleanAuraArray(cast monObj.auras);
+                    if (monObj != null) {
+                        var monAuras:Dynamic = Reflect.field(monObj, "auras");
+                        if (monAuras != null && Std.isOfType(monAuras, Array)) {
+                            removedCount += _cleanAuraArray(cast monAuras);
+                        }
                     }
                 }
-            } catch (_:Dynamic) {}
-        }
+            }
+        } catch (_:Dynamic) {}
 
         // 3. Clean myAvatar auras if present
-        if (world.myAvatar != null && world.myAvatar.auras != null && Std.isOfType(world.myAvatar.auras, Array)) {
-            try {
-                removedCount += _cleanAuraArray(cast world.myAvatar.auras);
-            } catch (_:Dynamic) {}
-        }
+        try {
+            if (world.myAvatar != null) {
+                if (world.myAvatar.dataLeaf != null && world.myAvatar.dataLeaf.auras != null && Std.isOfType(world.myAvatar.dataLeaf.auras, Array)) {
+                    removedCount += _cleanAuraArray(cast world.myAvatar.dataLeaf.auras);
+                }
+                var avAuras:Dynamic = Reflect.field(world.myAvatar, "auras");
+                if (avAuras != null && Std.isOfType(avAuras, Array)) {
+                    removedCount += _cleanAuraArray(cast avAuras);
+                }
+            }
+        } catch (_:Dynamic) {}
 
         return removedCount;
     }
