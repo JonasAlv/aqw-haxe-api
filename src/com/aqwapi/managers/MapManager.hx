@@ -97,9 +97,12 @@ class MapManager {
         if (!isLoaded) return false;
 
         if (mapName != null && mapName != "") {
-            var mLower = mapName.toLowerCase();
+            var mLower = StringTools.trim(mapName).toLowerCase();
             if (mLower == "house" || mLower == "myhouse") {
                 return ensureHouse();
+            }
+            if (mLower == "tercess" || mLower == "tercessuinotlim") {
+                return ensureTercess(cell, pad);
             }
             if (!isMap(mapName)) {
                 var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
@@ -155,10 +158,14 @@ class MapManager {
     public function join(mapName:String, cell:String = null, pad:String = null, force:Bool = false):Void {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return;
-        stopJumpCorrection();
-
-        if (mapName != null && StringTools.trim(mapName).toLowerCase() == "house") {
+        var mLower = (mapName != null) ? StringTools.trim(mapName).toLowerCase() : "";
+        if (mLower == "house" || mLower == "myhouse") {
             joinHouse();
+            return;
+        }
+
+        if (mLower == "tercess" || mLower == "tercessuinotlim") {
+            joinTercess(cell, pad);
             return;
         }
 
@@ -259,6 +266,163 @@ class MapManager {
         }
         if (Api.transport != null) {
             Api.transport.send("zm", "house", [un]);
+        }
+    }
+
+    public inline function isTercess():Bool {
+        return isMap("tercessuinotlim");
+    }
+
+    public static function resolveTercessDestination(destination:String, ?pad:String):{cell:String, pad:String} {
+        var d = (destination != null && destination != "") ? destination.toLowerCase() : "nulgath";
+        d = StringTools.trim(d);
+        switch (d) {
+            case "nulgath", "boss2":
+                return {cell: "Boss2", pad: (pad != null && pad != "") ? pad : "Right"};
+            case "taro", "vhl", "manslayer":
+                return {cell: "Taro", pad: (pad != null && pad != "") ? pad : "Left"};
+            case "swindle", "swindle bilk", "bilk":
+                return {cell: "Swindle", pad: (pad != null && pad != "") ? pad : "Left"};
+            case "twins", "the twins":
+                return {cell: "Twins", pad: (pad != null && pad != "") ? pad : "Left"};
+            case "polish", "dirtlicker":
+                return {cell: "Polish", pad: (pad != null && pad != "") ? pad : "Left"};
+            case "makai", "essence", "darkmakai", "dark makai":
+                return {cell: "m2", pad: (pad != null && pad != "") ? pad : "Left"};
+            case "shadow", "onyx", "hadean", "shadowofnulgath", "shadow of nulgath":
+                return {cell: "m4", pad: (pad != null && pad != "") ? pad : "Top"};
+            case "carnage", "ninja":
+                return {cell: "m4", pad: (pad != null && pad != "") ? pad : "Right"};
+            case "overfiend", "boss", "klunk":
+                return {cell: "Boss", pad: (pad != null && pad != "") ? pad : "Right"};
+            case "enter", "entrance", "spawn":
+                return {cell: "Enter", pad: (pad != null && pad != "") ? pad : "Spawn"};
+            default:
+                var p = (pad != null && pad != "") ? pad : "Left";
+                return {cell: destination, pad: p};
+        }
+    }
+
+    public function ensureTercess(destination:String = "nulgath", ?pad:String):Bool {
+        if (Api.player != null && !Api.player.isAlive) return false;
+        if (!isLoaded) return false;
+
+        var loc = resolveTercessDestination(destination, pad);
+        var targetCell = loc.cell;
+        var targetPad = loc.pad;
+
+        // 1. If already on tercessuinotlim, jump to cell if not there
+        if (isMap("tercessuinotlim")) {
+            if (isCell(targetCell)) return true;
+            jump(targetCell, targetPad);
+            return false;
+        }
+
+        // 2. Drop combat before changing maps
+        var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
+        if (inCombat) {
+            if (Api.combat != null) Api.combat.dropCombat();
+            else reload();
+            _pauseScriptIfRunning(600);
+            return false;
+        }
+
+        // 3. To enter tercessuinotlim, route through citadel m22, Left
+        if (!isMap("citadel")) {
+            join("citadel", "m22", "Left");
+            return false;
+        }
+
+        // 4. On citadel, ensure we are at m22, Left (the cave portal)
+        if (!isCell("m22")) {
+            jump("m22", "Left");
+            return false;
+        }
+
+        // 5. Check one-time prerequisite quest 9540 ("Beyond the Portal")
+        if (Api.quest != null && !Api.quest.hasBeenCompleted(9540)) {
+            if (!Api.quest.isAccepted(9540)) {
+                if (!Api.quest.isLoaded(9540)) {
+                    Api.quest.load(9540);
+                } else {
+                    Api.quest.accept(9540);
+                }
+                return false;
+            }
+            if (Api.quest.canComplete(9540)) {
+                Api.quest.complete(9540);
+                return false;
+            }
+            if (Api.combat != null) {
+                Api.combat.hunt("Death's Head", "Death's Head Bested", 1);
+            }
+            return false;
+        }
+
+        // 6. At citadel m22, Left -> join tercessuinotlim directly to target cell
+        var targetMap = _usePrivateRoom ? ("tercessuinotlim-" + _privateRoomNumber) : "tercessuinotlim";
+        var g = _g();
+        if (g != null && g.world != null && g.world.gotoTown != null) {
+            var now = ApiTime.now();
+            if (now - _lastJoinTime >= ApiTimings.MAP_JOIN_MS) {
+                _lastJoinTime = now;
+                _pauseScriptIfRunning(2000);
+                try {
+                    g.world.gotoTown(targetMap, targetCell, targetPad);
+                } catch (e:Dynamic) {}
+            }
+        }
+        return false;
+    }
+
+    public function joinTercess(destination:String = "nulgath", ?pad:String):Void {
+        ensureTercess(destination, pad);
+    }
+
+    public function fastTravel(destination:String):Bool {
+        if (destination == null || destination == "") return false;
+        var dLower = StringTools.trim(destination).toLowerCase();
+
+        if (dLower.indexOf("tercess:") == 0) {
+            var sub = dLower.substr(8);
+            return ensureTercess(sub);
+        }
+        if (dLower == "nulgath" || dLower == "taro" || dLower == "vhl" || dLower == "swindle"
+            || dLower == "polish" || dLower == "twins" || dLower == "makai" || dLower == "tercess"
+            || dLower == "tercessuinotlim") {
+            return ensureTercess(dLower);
+        }
+
+        switch (dLower) {
+            case "citadel":
+                return ensure("citadel", "m22", "Left");
+            case "battleon":
+                return ensure("battleon", "Enter", "Spawn");
+            case "yulgar":
+                return ensure("yulgar", "Enter", "Spawn");
+            case "house", "myhouse":
+                return ensureHouse();
+            case "icestormarena", "ice":
+                return ensure("icestormarena", "r3c", "Top");
+            case "shadowbattleon":
+                return ensure("shadowbattleon", "r4", "Left");
+            case "revenant", "revan":
+                return ensure("revenant", "r2", "Left");
+            case "underworld":
+                return ensure("underworld", "Enter", "Spawn");
+            case "binky", "doomvault":
+                return ensure("doomvault", "r5", "Left");
+            case "graveyard":
+                return ensure("graveyard", "End", "Left");
+            default:
+                if (dLower.indexOf(":") != -1) {
+                    var parts = destination.split(":");
+                    var mMap = parts[0];
+                    var mCell = parts.length > 1 ? parts[1] : null;
+                    var mPad = parts.length > 2 ? parts[2] : null;
+                    return ensure(mMap, mCell, mPad);
+                }
+                return ensure(destination);
         }
     }
 

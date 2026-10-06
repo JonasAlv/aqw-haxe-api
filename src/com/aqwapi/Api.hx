@@ -172,22 +172,6 @@ class Api {
         if (combat != null) combat.endCombat();
     }
 
-    public static inline function aggro(monsterTarget:Dynamic = null):Void {
-        if (monster != null) monster.aggro(monsterTarget);
-    }
-
-    public static inline function aggroMonsters(targets:Dynamic = null):Void {
-        if (monster != null) monster.aggroMonsters(targets);
-    }
-
-    public static inline function pullMonsters(targets:Dynamic = null):Void {
-        if (monster != null) monster.pullMonsters(targets);
-    }
-
-    public static inline function magnetizeAll(targets:Dynamic = null):Void {
-        if (monster != null) monster.magnetizeAll(targets);
-    }
-
     public static inline function reload(pad:String = null):Void {
         if (map != null) map.reload(pad);
     }
@@ -206,6 +190,22 @@ class Api {
 
     public static inline function autoSkipCutscenes(enabled:Bool = true):Void {
         if (map != null) map.skipCutscenes = enabled;
+    }
+
+    public static inline function isTercess():Bool {
+        return (map != null) ? map.isTercess() : false;
+    }
+
+    public static inline function ensureTercess(destination:String = "nulgath", ?pad:String):Bool {
+        return (map != null) ? map.ensureTercess(destination, pad) : false;
+    }
+
+    public static inline function joinTercess(destination:String = "nulgath", ?pad:String):Void {
+        if (map != null) map.joinTercess(destination, pad);
+    }
+
+    public static inline function fastTravel(destination:String):Bool {
+        return (map != null) ? map.fastTravel(destination) : false;
     }
 
     public static inline function isBoostActive(boostType:String):Bool {
