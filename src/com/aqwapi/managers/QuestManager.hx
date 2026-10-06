@@ -341,7 +341,13 @@ class QuestManager {
 
     public function load(questId:Dynamic):Void {
         var qid:Int = resolveQuestId(questId);
-        if (qid <= 0 || isLoaded(qid)) return;
+        if (qid <= 0) {
+            if (Std.isOfType(questId, String) && ApiUtils.parseInt(questId, 0) <= 0) {
+                ApiLogger.warn("Quest", "Cannot load quest by name '" + Std.string(questId) + "'. The AQW server protocol requires a numeric Quest ID (e.g. loadQuest(1234)).");
+            }
+            return;
+        }
+        if (isLoaded(qid)) return;
         var now:Float = ApiTime.now();
         if (now - _lastGlobalLoadTime < ApiTimings.QUEST_DATA_LOAD_MS) {
             return;
