@@ -281,7 +281,8 @@ class CombatManager {
         CombatEngine.lockedMMID = null;
     }
 
-    public function hunt(monsterName:String, itemOrCount:Dynamic = null, quantityOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
+    public function hunt(monster:Dynamic, itemOrCount:Dynamic = null, quantityOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
+        var monsterName:String = (monster != null) ? Std.string(monster) : "*";
         var targetMMID:Dynamic = null;
         var isKillCount:Bool = false;
         var targetKills:Int = 0;
@@ -310,10 +311,16 @@ class CombatManager {
 
         if (itemOrCount != null) {
             if (Std.isOfType(itemOrCount, Int) || Std.isOfType(itemOrCount, Float)) {
-                isKillCount = true;
-                targetKills = Std.int(itemOrCount);
-                if (targetMMID == null && quantityOrCallback != null && !Reflect.isFunction(quantityOrCallback)) {
-                    targetMMID = quantityOrCallback;
+                // If quantityOrCallback is also a positive number, e.g. hunt(mob, itemId, qty), then itemOrCount is an itemId!
+                if (quantityOrCallback != null && !Reflect.isFunction(quantityOrCallback) && (Std.isOfType(quantityOrCallback, Int) || Std.isOfType(quantityOrCallback, Float)) && Std.int(quantityOrCallback) > 0) {
+                    isKillCount = false;
+                    targetQuantity = Std.int(quantityOrCallback);
+                } else {
+                    isKillCount = true;
+                    targetKills = Std.int(itemOrCount);
+                    if (targetMMID == null && quantityOrCallback != null && !Reflect.isFunction(quantityOrCallback)) {
+                        targetMMID = quantityOrCallback;
+                    }
                 }
             } else if (Std.isOfType(itemOrCount, Array)) {
                 isArrayItems = true;

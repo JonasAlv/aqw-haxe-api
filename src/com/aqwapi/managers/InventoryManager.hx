@@ -19,10 +19,11 @@ class InventoryManager {
         _game = gameReference;
     }
 
-    public function hasItem(itemName:String, quantity:Int = 1):Bool {
-        var qty = getQuantity(itemName);
+    public function hasItem(itemNameOrId:Dynamic, quantity:Int = 1):Bool {
+        var str = Std.string(itemNameOrId);
+        var qty = getQuantity(str);
         if (qty < quantity) {
-            qty = getQuestQuantity(itemName);
+            qty = getQuestQuantity(str);
         }
         return qty >= quantity;
     }
@@ -36,29 +37,30 @@ class InventoryManager {
         return invQ >= quantity;
     }
 
-    public function isEquipped(itemNameOrId:String):Bool {
-        var item = _findItem(itemNameOrId);
+    public function isEquipped(itemNameOrId:Dynamic):Bool {
+        var item = _findItem(Std.string(itemNameOrId));
         if (item == null) return false;
         var bEquip:Dynamic = item.bEquip;
         return bEquip == 1 || bEquip == "1" || bEquip == true;
     }
 
-    public function isWorn(itemNameOrId:String):Bool {
-        var item = _findItem(itemNameOrId);
+    public function isWorn(itemNameOrId:Dynamic):Bool {
+        var item = _findItem(Std.string(itemNameOrId));
         if (item == null) return false;
         var bWear:Dynamic = item.bWear;
         return bWear == 1 || bWear == "1" || bWear == true;
     }
 
-    public inline function isCosmetic(itemNameOrId:String):Bool {
+    public inline function isCosmetic(itemNameOrId:Dynamic):Bool {
         return isWorn(itemNameOrId);
     }
 
-    public function getQuantity(itemNameOrId:String):Int {
+    public function getQuantity(itemNameOrId:Dynamic):Int {
         if (_game == null || _game.world == null || _game.world.myAvatar == null || _game.world.myAvatar.items == null) return 0;
-        var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
+        var str = Std.string(itemNameOrId);
+        var targetId:Int = ApiUtils.parseInt(str, 0);
         var isIdLookup:Bool = targetId > 0;
-        var targetName:String = itemNameOrId.toLowerCase();
+        var targetName:String = str.toLowerCase();
         try {
             var items:Dynamic = _game.world.myAvatar.items;
             var len:Int = Std.int(items.length);
@@ -200,9 +202,10 @@ class InventoryManager {
         return bestMatch;
     }
 
-    public function equip(itemNameOrId:String):Promise<Dynamic> {
+    public function equip(itemNameOrId:Dynamic):Promise<Dynamic> {
         return new Promise<Dynamic>(function(resolve:Dynamic->Void) {
-            var bestMatch = _findItem(itemNameOrId);
+            var str = Std.string(itemNameOrId);
+            var bestMatch = _findItem(str);
             if (bestMatch == null) { resolve(null); return; }
             var bEquip:Dynamic = bestMatch.bEquip;
             if (bEquip == 1 || bEquip == "1" || bEquip == true) { resolve(null); return; }
@@ -212,7 +215,7 @@ class InventoryManager {
             var sType:String = (bestMatch.sType != null) ? Std.string(bestMatch.sType).toLowerCase() : "";
             var bU:Dynamic = bestMatch.bU;
             if (sES == "co" || sType == "item" || sType == "serveruse" || bU == 1 || bU == "1" || bU == true) {
-                equipUsable(itemNameOrId);
+                equipUsable(str);
                 resolve(bestMatch);
                 return;
             }
@@ -250,12 +253,13 @@ class InventoryManager {
         });
     }
 
-    public function equipWait(itemNameOrId:String, onComplete:Void->Void):Void {
+    public function equipWait(itemNameOrId:Dynamic, onComplete:Void->Void):Void {
         equip(itemNameOrId).then(function(_:Dynamic) { if (onComplete != null) onComplete(); });
     }
 
-    public function equipUsable(itemNameOrId:String):Void {
-        var item = _findItem(itemNameOrId);
+    public function equipUsable(itemNameOrId:Dynamic):Void {
+        var str = Std.string(itemNameOrId);
+        var item = _findItem(str);
         if (item == null) return;
         if (_game.world != null && _game.world.equipUseableItem != null) {
             var usableObj:Dynamic = { ItemID: item.ItemID, sName: item.sName, sDesc: item.sDesc, sFile: item.sFile };

@@ -90,11 +90,11 @@ class Api {
         if (map != null) map.join(m, c, p);
     }
 
-    public static function hunt(monsterName:String, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
+    public static function hunt(monsterName:Dynamic, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
         return combat != null ? combat.hunt(monsterName, itemOrCount, quantity, mmid) : false;
     }
 
-    public static function kill(monsterName:String, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
+    public static function kill(monsterName:Dynamic, itemOrCount:Dynamic = null, quantity:Int = 1, mmid:Dynamic = null):Bool {
         return combat != null ? combat.hunt(monsterName, itemOrCount, quantity, mmid) : false;
     }
 
@@ -208,7 +208,7 @@ class Api {
         if (player != null) player.setAutoBoost(boostType, enabled);
     }
 
-    public static inline function getBestMonsterTargetInCell(cell:String = null, nameOrId:String = "*"):com.aqwapi.data.EntityDTO {
+    public static inline function getBestMonsterTargetInCell(cell:String = null, nameOrId:Dynamic = "*"):com.aqwapi.data.EntityDTO {
         return (monster != null) ? monster.getBestMonsterTargetInCell(cell, nameOrId) : null;
     }
 

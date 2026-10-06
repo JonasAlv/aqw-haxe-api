@@ -79,11 +79,12 @@ class MonsterManager {
         return cells;
     }
 
-    public function getMonsterCells(nameOrId:String, mmid:Dynamic = null):Array<String> {
+    public function getMonsterCells(nameOrId:Dynamic, mmid:Dynamic = null):Array<String> {
         var cells:Array<String> = [];
         if ((nameOrId == null || nameOrId == "") && mmid == null) return cells;
-        var search:String = (nameOrId != null) ? StringTools.trim(nameOrId).toLowerCase() : "";
-        var idInt:Int = (nameOrId != null) ? ApiUtils.parseInt(nameOrId, 0) : 0;
+        var strVal:String = Std.string(nameOrId);
+        var search:String = StringTools.trim(strVal).toLowerCase();
+        var idInt:Int = ApiUtils.parseInt(nameOrId, 0);
         var mmidStr:String = (mmid != null) ? Std.string(mmid) : null;
         var mmidInt:Int = (mmid != null) ? ApiUtils.parseInt(mmid, 0) : 0;
 
@@ -170,7 +171,7 @@ class MonsterManager {
         return cells;
     }
 
-    public function getMonsterCell(nameOrId:String, mmid:Dynamic = null):String {
+    public function getMonsterCell(nameOrId:Dynamic, mmid:Dynamic = null):String {
         var list = getMonsterCells(nameOrId, mmid);
         if (list.length == 0) return "";
         var curCell = (Api.player != null && Api.player.cell != null) ? Api.player.cell.toLowerCase() : "";
@@ -325,11 +326,12 @@ class MonsterManager {
         return res;
     }
 
-    public function getBestMonsterTargetInCell(cell:String = null, nameOrId:String = "*"):EntityDTO {
+    public function getBestMonsterTargetInCell(cell:String = null, nameOrId:Dynamic = "*"):EntityDTO {
         var c = (cell != null && cell != "") ? cell : ((Api.player != null) ? Api.player.cell : "");
         var living = getLivingMonstersInCell(c);
         if (living.length == 0) return null;
-        var search = (nameOrId != null) ? nameOrId.toLowerCase() : "*";
+        var nameOrIdStr:String = Std.string(nameOrId);
+        var search = (nameOrId != null) ? nameOrIdStr.toLowerCase() : "*";
         var idInt = (nameOrId != null) ? ApiUtils.parseInt(nameOrId, 0) : 0;
 
         var candidates:Array<EntityDTO> = [];

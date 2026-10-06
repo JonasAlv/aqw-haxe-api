@@ -33,7 +33,7 @@ class ShopManager {
         } catch(e:Dynamic) {}
     }
 
-    public function buyItem(itemNameOrId:String, quantity:Int = 1):Void {
+    public function buyItem(itemNameOrId:Dynamic, quantity:Int = 1):Void {
         if (quantity < 1) quantity = 1;
         if (_game == null || _game.world == null) return;
         var now = com.aqwapi.utils.ApiTime.now();
@@ -106,12 +106,12 @@ class ShopManager {
         }
         var entry:Dynamic = _buyQueue.shift();
         _lastBuyTime = com.aqwapi.utils.ApiTime.now();
-        sendBuy(Std.string(entry.item), Std.int(entry.quantity));
+        sendBuy(entry.item, Std.int(entry.quantity));
         if (_buyQueue.length == 0 && _buyTimer != null) _buyTimer.stop();
     }
 
     /** Actual send path, with no throttle of its own. */
-    private function sendBuy(itemNameOrId:String, quantity:Int):Void {
+    private function sendBuy(itemNameOrId:Dynamic, quantity:Int):Void {
         if (quantity < 1) quantity = 1;
         if (_game == null || _game.world == null) return;
         try {
@@ -120,9 +120,10 @@ class ShopManager {
                 if (lObj != null) lObj.ts = com.aqwapi.utils.ApiTime.epochMs();
             }
         } catch (e:Dynamic) {}
+        var strVal:String = Std.string(itemNameOrId);
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
-        var target:String = itemNameOrId.toLowerCase();
+        var target:String = strVal.toLowerCase();
         try {
             var shopInfo:Dynamic = (_game.world.shopinfo != null) ? _game.world.shopinfo : null;
             if (_game.ui != null && _game.ui.mcPopup != null) {
@@ -155,7 +156,7 @@ class ShopManager {
         } catch(e:Dynamic) {}
     }
 
-    public function sellItem(itemNameOrId:String, quantity:Int = 1):Void {
+    public function sellItem(itemNameOrId:Dynamic, quantity:Int = 1):Void {
         if (quantity < 1) quantity = 1;
         if (_game == null || _game.world == null) return;
         var now = com.aqwapi.utils.ApiTime.now();
@@ -167,9 +168,10 @@ class ShopManager {
                 if (lObj != null) lObj.ts = com.aqwapi.utils.ApiTime.epochMs();
             } catch (e:Dynamic) {}
         }
+        var strVal:String = Std.string(itemNameOrId);
         var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
         var isIdLookup:Bool = targetId > 0;
-        var target:String = itemNameOrId.toLowerCase();
+        var target:String = strVal.toLowerCase();
         try {
             if (_game.world.myAvatar != null && _game.world.myAvatar.items != null) {
                 var myItems:Array<Dynamic> = cast _game.world.myAvatar.items;

@@ -29,13 +29,50 @@ class QuestManager {
         _game = gameReference;
     }
 
+    public function resolveQuestId(idOrName:Dynamic):Int {
+        if (idOrName == null) return 0;
+        var directId:Int = ApiUtils.parseInt(idOrName, 0);
+        if (directId > 0) return directId;
+
+        var nameStr:String = StringTools.trim(Std.string(idOrName)).toLowerCase();
+        if (nameStr == "") return 0;
+
+        // Check live questTree in game (if quest is already loaded)
+        if (_game != null && _game.world != null && _game.world.questTree != null) {
+            for (key in Reflect.fields(_game.world.questTree)) {
+                var qObj:Dynamic = Reflect.field(_game.world.questTree, key);
+                if (qObj != null && qObj.sName != null) {
+                    var sName:String = StringTools.trim(Std.string(qObj.sName)).toLowerCase();
+                    if (sName == nameStr) {
+                        var qid:Int = (qObj.QuestID != null) ? Std.int(qObj.QuestID) : ApiUtils.parseInt(key, 0);
+                        if (qid > 0) return qid;
+                    }
+                }
+            }
+            for (key in Reflect.fields(_game.world.questTree)) {
+                var qObj:Dynamic = Reflect.field(_game.world.questTree, key);
+                if (qObj != null && qObj.sName != null) {
+                    var sName:String = StringTools.trim(Std.string(qObj.sName)).toLowerCase();
+                    if (sName.indexOf(nameStr) != -1) {
+                        var qid:Int = (qObj.QuestID != null) ? Std.int(qObj.QuestID) : ApiUtils.parseInt(key, 0);
+                        if (qid > 0) return qid;
+                    }
+                }
+            }
+        }
+
+        return 0;
+    }
+
     // ==========================================
     // LIVE QUEST DATA LOOKUP
     // ==========================================
 
-    public function get(questId:Int):QuestDTO {
+    public function get(questId:Dynamic):QuestDTO {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0) return null;
         if (_game != null && _game.world != null && _game.world.questTree != null) {
-            var liveData = Reflect.field(_game.world.questTree, Std.string(questId));
+            var liveData = Reflect.field(_game.world.questTree, Std.string(qid));
             if (liveData != null) {
                 return new QuestDTO(liveData);
             }
@@ -43,36 +80,36 @@ class QuestManager {
         return null;
     }
 
-    public inline function getQuest(questId:Int):QuestDTO {
+    public inline function getQuest(questId:Dynamic):QuestDTO {
         return get(questId);
     }
 
-    public function getName(questId:Int):String {
+    public function getName(questId:Dynamic):String {
         var q = get(questId);
         return q != null ? q.name : "";
     }
 
-    public function getRequirements(questId:Int):Array<Dynamic> {
+    public function getRequirements(questId:Dynamic):Array<Dynamic> {
         var q = get(questId);
         return q != null ? q.requirements : [];
     }
 
-    public function getRewards(questId:Int):Array<Dynamic> {
+    public function getRewards(questId:Dynamic):Array<Dynamic> {
         var q = get(questId);
         return q != null ? q.rewards : [];
     }
 
-    public function getChoiceRewards(questId:Int):Array<Dynamic> {
+    public function getChoiceRewards(questId:Dynamic):Array<Dynamic> {
         var q = get(questId);
         return q != null ? q.choiceRewards : [];
     }
 
-    public function isChoiceQuest(questId:Int):Bool {
+    public function isChoiceQuest(questId:Dynamic):Bool {
         var q = get(questId);
         return q != null && q.isChoice;
     }
 
-    public function getUnownedRewards(questId:Int):Array<Dynamic> {
+    public function getUnownedRewards(questId:Dynamic):Array<Dynamic> {
         var choices = getChoiceRewards(questId);
         if (choices == null || choices.length == 0) return [];
         var result:Array<Dynamic> = [];
@@ -95,7 +132,7 @@ class QuestManager {
         return result;
     }
 
-    public function getNextUnownedReward(questId:Int, ?preferredItems:Dynamic):Dynamic {
+    public function getNextUnownedReward(questId:Dynamic, ?preferredItems:Dynamic):Dynamic {
         var unowned = getUnownedRewards(questId);
         if (unowned.length == 0) return null;
 
@@ -127,7 +164,7 @@ class QuestManager {
         return unowned[0];
     }
 
-    public function resolveRewardId(questId:Int, rewardChoice:Dynamic):Int {
+    public function resolveRewardId(questId:Dynamic, rewardChoice:Dynamic):Int {
         if (rewardChoice == null) {
             if (isChoiceQuest(questId)) {
                 var next = getNextUnownedReward(questId);
@@ -177,7 +214,7 @@ class QuestManager {
         return -1;
     }
 
-    public function getAcceptRequirements(questId:Int):Array<Dynamic> {
+    public function getAcceptRequirements(questId:Dynamic):Array<Dynamic> {
         var q = get(questId);
         return q != null ? q.acceptRequirements : [];
     }
@@ -199,7 +236,7 @@ class QuestManager {
         return results;
     }
 
-    public function hasRequirements(questId:Int):Bool {
+    public function hasRequirements(questId:Dynamic):Bool {
         var q = get(questId);
         if (q == null) return false;
 
@@ -259,7 +296,7 @@ class QuestManager {
         return true;
     }
 
-    public function getMissingRequirements(questId:Int):Array<Dynamic> {
+    public function getMissingRequirements(questId:Dynamic):Array<Dynamic> {
         var q = get(questId);
         if (q == null) return [];
 
@@ -302,35 +339,38 @@ class QuestManager {
     // SERVER INTERACTION & NETWORK LOADING
     // ==========================================
 
-    public function load(questId:Int):Void {
-        if (questId <= 0 || isLoaded(questId)) return;
+    public function load(questId:Dynamic):Void {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0 || isLoaded(qid)) return;
         var now:Float = ApiTime.now();
         if (now - _lastGlobalLoadTime < ApiTimings.QUEST_DATA_LOAD_MS) {
             return;
         }
-        if (_lastLoadRequests.exists(questId) && (now - _lastLoadRequests.get(questId)) < 1500) {
+        if (_lastLoadRequests.exists(qid) && (now - _lastLoadRequests.get(qid)) < 1500) {
             return;
         }
         _lastGlobalLoadTime = now;
-        _lastLoadRequests.set(questId, now);
+        _lastLoadRequests.set(qid, now);
         _pauseScriptIfRunning();
         if (_game != null && _game.world != null && _game.world.getQuests != null) {
             try {
-                _game.world.getQuests([questId]);
+                _game.world.getQuests([qid]);
             } catch (e:Dynamic) {}
         } else if (_game != null && _game.sfc != null) {
             var rId:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
             try {
-                _game.sfc.sendXtMessage("zm", "getQuests", [questId], "str", rId);
+                _game.sfc.sendXtMessage("zm", "getQuests", [qid], "str", rId);
             } catch (e:Dynamic) {}
         }
     }
 
-    public function loadMultiple(questIds:Array<Int>):Void {
-        if (questIds == null || questIds.length == 0) return;
+    public function loadMultiple(questIds:Dynamic):Void {
+        if (questIds == null) return;
         var toLoad:Array<Dynamic> = [];
         var now:Float = ApiTime.now();
-        for (qid in questIds) {
+        var rawList:Array<Dynamic> = Std.isOfType(questIds, Array) ? (cast questIds:Array<Dynamic>) : [questIds];
+        for (item in rawList) {
+            var qid:Int = resolveQuestId(item);
             if (qid > 0 && !isLoaded(qid)) {
                 if (!_lastLoadRequests.exists(qid) || (now - _lastLoadRequests.get(qid)) >= 1500) {
                     _lastLoadRequests.set(qid, now);
@@ -356,21 +396,25 @@ class QuestManager {
         }
     }
 
-    public function isLoaded(questId:Int):Bool {
-        if (_game == null || _game.world == null || _game.world.questTree == null) return false;
-        return Reflect.field(_game.world.questTree, Std.string(questId)) != null;
+    public function isLoaded(questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0 || _game == null || _game.world == null || _game.world.questTree == null) return false;
+        return Reflect.field(_game.world.questTree, Std.string(qid)) != null;
     }
 
-    public function areAllLoaded(questIds:Array<Int>):Bool {
-        if (questIds == null || questIds.length == 0) return true;
-        for (qid in questIds) {
+    public function areAllLoaded(questIds:Dynamic):Bool {
+        if (questIds == null) return true;
+        var rawList:Array<Dynamic> = Std.isOfType(questIds, Array) ? (cast questIds:Array<Dynamic>) : [questIds];
+        if (rawList.length == 0) return true;
+        for (item in rawList) {
+            var qid:Int = resolveQuestId(item);
             if (qid > 0 && !isLoaded(qid)) return false;
         }
         return true;
     }
 
-    public function ensureLoaded(questIds:Array<Int>):Bool {
-        if (questIds == null || questIds.length == 0) return true;
+    public function ensureLoaded(questIds:Dynamic):Bool {
+        if (questIds == null) return true;
         if (areAllLoaded(questIds)) return true;
         loadMultiple(questIds);
         return false;
@@ -385,10 +429,11 @@ class QuestManager {
         } catch (e:Dynamic) {}
     }
 
-    public function isInProgress(questId:Int):Bool {
-        if (_game == null || _game.world == null || questId <= 0) return false;
+    public function isInProgress(questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (_game == null || _game.world == null || qid <= 0) return false;
         if (_game.world.questTree != null) {
-            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(qid));
             if (qData != null) {
                 var s:Dynamic = qData.status;
                 if (s == "p" || s == "c") return true;
@@ -397,57 +442,65 @@ class QuestManager {
         }
         if (_game.world.isQuestInProgress != null) {
             try {
-                return _game.world.isQuestInProgress(questId);
+                return _game.world.isQuestInProgress(qid);
             } catch (e:Dynamic) {}
         }
         return false;
     }
 
-    public function accept(questId:Int):Void {
-        if (_game == null || _game.world == null || questId <= 0) return;
-        if (isInProgress(questId)) return;
+    public function accept(questId:Dynamic):Void {
+        var qid:Int = resolveQuestId(questId);
+        if (_game == null || _game.world == null || qid <= 0) return;
+        if (isInProgress(qid)) return;
 
         for (task in _actionQueue) {
-            if (task.type == "accept" && task.questId == questId) return;
+            if (task.type == "accept" && task.questId == qid) return;
         }
 
-        _actionQueue.push({type: "accept", questId: questId, itemId: -1});
+        _actionQueue.push({type: "accept", questId: qid, itemId: -1});
         _pauseScriptIfRunning();
         processQueue();
     }
 
-    public function acceptMultiple(questIds:Array<Int>):Void {
-        if (questIds == null || questIds.length == 0) return;
-        for (qid in questIds) {
+    public function acceptMultiple(questIds:Dynamic):Void {
+        if (questIds == null) return;
+        var rawList:Array<Dynamic> = Std.isOfType(questIds, Array) ? (cast questIds:Array<Dynamic>) : [questIds];
+        for (item in rawList) {
+            var qid:Int = resolveQuestId(item);
             if (qid > 0) accept(qid);
         }
     }
 
-    public function ensureAccept(questId:Int):Void {
-        if (!isAccepted(questId) && !isAcceptQueued(questId)) {
-            if (!isLoaded(questId)) load(questId);
-            accept(questId);
+    public function ensureAccept(questId:Dynamic):Void {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0) return;
+        if (!isAccepted(qid) && !isAcceptQueued(qid)) {
+            if (!isLoaded(qid)) load(qid);
+            accept(qid);
         }
     }
 
-    public function complete(questId:Int, itemId:Dynamic = -1):Void {
-        if (_game == null || _game.world == null || questId <= 0) return;
-        if (!isInProgress(questId)) return;
+    public function complete(questId:Dynamic, itemId:Dynamic = -1):Void {
+        var qid:Int = resolveQuestId(questId);
+        if (_game == null || _game.world == null || qid <= 0) return;
+        if (!isInProgress(qid)) return;
 
-        var resolvedItemId:Int = resolveRewardId(questId, itemId);
+        var resolvedItemId:Int = resolveRewardId(qid, itemId);
 
         for (task in _actionQueue) {
-            if (task.type == "complete" && task.questId == questId) return;
+            if (task.type == "complete" && task.questId == qid) return;
         }
 
-        _actionQueue.push({type: "complete", questId: questId, itemId: resolvedItemId});
+        _actionQueue.push({type: "complete", questId: qid, itemId: resolvedItemId});
         _pauseScriptIfRunning();
         processQueue();
     }
 
-    public function ensureComplete(questId:Int, itemIdOrCallback:Dynamic = -1, ?callback:Dynamic):Bool {
-        if (!isInProgress(questId)) return true;
-        if (canComplete(questId)) {
+    public function ensureComplete(questId:Dynamic, itemIdOrCallback:Dynamic = -1, ?callback:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0) return false;
+        if (!isInProgress(qid)) return true;
+        if (canComplete(qid)) {
             var actualItemId:Dynamic = -1;
             var actualCallback:Dynamic = null;
 
@@ -458,7 +511,7 @@ class QuestManager {
                 actualCallback = callback;
             }
 
-            complete(questId, actualItemId);
+            complete(qid, actualItemId);
             if (actualCallback != null && Reflect.isFunction(actualCallback)) {
                 haxe.Timer.delay(function() {
                     try { actualCallback(); } catch (e:Dynamic) {}
@@ -469,42 +522,48 @@ class QuestManager {
         return false;
     }
 
-    public function ensureCompleteChoose(questId:Int, ?preferredItems:Dynamic):Bool {
-        if (!isInProgress(questId)) return true;
-        var next = getNextUnownedReward(questId, preferredItems);
+    public function ensureCompleteChoose(questId:Dynamic, ?preferredItems:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0) return false;
+        if (!isInProgress(qid)) return true;
+        var next = getNextUnownedReward(qid, preferredItems);
         if (next == null) {
-            ApiLogger.warn("Quest", "All choice rewards already owned for quest: " + questId);
+            ApiLogger.warn("Quest", "All choice rewards already owned for quest: " + qid);
             return false;
         }
         var nextId:Int = (next.ItemID != null) ? Std.int(next.ItemID) : ((next.id != null) ? Std.int(next.id) : -1);
         var nextName:String = (next.sName != null) ? Std.string(next.sName) : ((next.name != null) ? Std.string(next.name) : Std.string(nextId));
         ApiLogger.debug("Quest", "Selected reward: " + nextName);
-        return ensureComplete(questId, nextId);
+        return ensureComplete(qid, nextId);
     }
 
-    public inline function turnIn(questId:Int, itemId:Dynamic = -1):Void {
+    public inline function turnIn(questId:Dynamic, itemId:Dynamic = -1):Void {
         complete(questId, itemId);
     }
 
-    public function completeMultiple(questIds:Array<Int>):Void {
-        if (questIds == null || questIds.length == 0) return;
-        for (qid in questIds) {
+    public function completeMultiple(questIds:Dynamic):Void {
+        if (questIds == null) return;
+        var rawList:Array<Dynamic> = Std.isOfType(questIds, Array) ? (cast questIds:Array<Dynamic>) : [questIds];
+        for (item in rawList) {
+            var qid:Int = resolveQuestId(item);
             if (qid > 0 && isAccepted(qid)) complete(qid);
         }
     }
 
-    public function isActionQueued(type:String, questId:Int):Bool {
+    public function isActionQueued(type:String, questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0) return false;
         for (task in _actionQueue) {
-            if (task.type == type && task.questId == questId) return true;
+            if (task.type == type && task.questId == qid) return true;
         }
         return false;
     }
 
-    public inline function isAcceptQueued(questId:Int):Bool {
+    public inline function isAcceptQueued(questId:Dynamic):Bool {
         return isActionQueued("accept", questId);
     }
 
-    public inline function isCompleteQueued(questId:Int):Bool {
+    public inline function isCompleteQueued(questId:Dynamic):Bool {
         return isActionQueued("complete", questId);
     }
 
@@ -670,17 +729,19 @@ class QuestManager {
     // STATUS & PROGRESS CHECKS
     // ==========================================
 
-    public function isCompleted(questId:Int):Bool {
+    public function isCompleted(questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0) return false;
         var qslot:Int = -1;
         var qval:Int = 0;
 
         if (_game != null && _game.world != null && _game.world.questTree != null) {
-            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(qid));
             if (qData != null) {
                 qslot = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
                 qval = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
             } else {
-                load(questId);
+                load(qid);
             }
         }
 
@@ -691,29 +752,31 @@ class QuestManager {
         return false;
     }
 
-    public inline function isComplete(questId:Int):Bool {
+    public inline function isComplete(questId:Dynamic):Bool {
         return isCompleted(questId);
     }
 
-    public inline function hasBeenCompleted(questId:Int):Bool {
+    public inline function hasBeenCompleted(questId:Dynamic):Bool {
         return isCompleted(questId);
     }
 
-    public inline function isCompletedBefore(questId:Int):Bool {
+    public inline function isCompletedBefore(questId:Dynamic):Bool {
         return isCompleted(questId);
     }
 
-    public function isUnlocked(questId:Int):Bool {
+    public function isUnlocked(questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0) return false;
         var qslot:Int = -1;
         var qval:Int = 0;
 
         if (_game != null && _game.world != null && _game.world.questTree != null) {
-            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(qid));
             if (qData != null) {
                 qslot = (qData.iSlot != null) ? Std.int(qData.iSlot) : -1;
                 qval = (qData.iValue != null) ? Std.int(qData.iValue) : 0;
             } else {
-                load(questId);
+                load(qid);
             }
         }
 
@@ -721,12 +784,14 @@ class QuestManager {
         return getQuestValue(qslot) >= (qval - 1);
     }
 
-    public function isDailyComplete(questId:Int):Bool {
+    public function isDailyComplete(questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0) return false;
         var sField:String = null;
         var iIndex:Int = 0;
 
         if (_game != null && _game.world != null && _game.world.questTree != null) {
-            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(qid));
             if (qData != null) {
                 sField = qData.sField;
                 iIndex = (qData.iIndex != null) ? Std.int(qData.iIndex) : 0;
@@ -742,12 +807,13 @@ class QuestManager {
         return false;
     }
 
-    public function canComplete(questId:Int):Bool {
-        if (_game == null || _game.world == null || questId <= 0) return false;
-        if (isCompleteQueued(questId)) return false;
+    public function canComplete(questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (_game == null || _game.world == null || qid <= 0) return false;
+        if (isCompleteQueued(qid)) return false;
 
         // 1. Must be currently in progress (accepted)
-        if (!isInProgress(questId)) return false;
+        if (!isInProgress(qid)) return false;
 
         // 2. Refresh native AQW quest status if method exists
         try {
@@ -759,13 +825,13 @@ class QuestManager {
         // 3. Native AQW engine check: canTurnInQuest(questId)
         if (_game.world.canTurnInQuest != null) {
             try {
-                if (!_game.world.canTurnInQuest(questId)) return false;
+                if (!_game.world.canTurnInQuest(qid)) return false;
             } catch (e:Dynamic) {}
         }
 
         // 4. Native AQW questTree status check: "p" = in progress (incomplete), "c" = complete
         if (_game.world.questTree != null) {
-            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
+            var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(qid));
             if (qData != null) {
                 var s:Dynamic = qData.status;
                 if (s == "p") return false;
@@ -774,22 +840,22 @@ class QuestManager {
         }
 
         // 5. Strict inventory & temp inventory requirement verification
-        return hasRequirements(questId);
+        return hasRequirements(qid);
     }
 
-    public inline function isAccepted(questId:Int):Bool {
+    public inline function isAccepted(questId:Dynamic):Bool {
         return isInProgress(questId) || isAcceptQueued(questId);
     }
 
-    public inline function hasActive(questId:Int):Bool {
+    public inline function hasActive(questId:Dynamic):Bool {
         return isInProgress(questId);
     }
 
-    public inline function isActive(questId:Int):Bool {
+    public inline function isActive(questId:Dynamic):Bool {
         return isInProgress(questId);
     }
 
-    public function isAvailable(questId:Int):Bool {
+    public function isAvailable(questId:Dynamic):Bool {
         var q = get(questId);
         if (q == null) return false;
 

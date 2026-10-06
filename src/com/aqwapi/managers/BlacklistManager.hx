@@ -2,6 +2,7 @@ package com.aqwapi.managers;
 
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiStorage;
+import com.aqwapi.utils.ApiUtils;
 
 class BlacklistManager {
     private static var _instance:BlacklistManager;
@@ -55,26 +56,39 @@ class BlacklistManager {
     // Core API
     // -------------------------------------------------------------------------
 
-    public function add(name:String):Void {
-        var n = StringTools.trim(name).toLowerCase();
+    public function add(nameOrId:Dynamic):Void {
+        var n = StringTools.trim(Std.string(nameOrId)).toLowerCase();
         if (n == "") return;
         if (_list.exists(n)) return;
         _list.set(n, true);
         save();
-        ApiLogger.info("Blacklist", "Added: " + name);
+        ApiLogger.info("Blacklist", "Added: " + Std.string(nameOrId));
     }
 
-    public function remove(name:String):Void {
-        var n = StringTools.trim(name).toLowerCase();
+    public function remove(nameOrId:Dynamic):Void {
+        var n = StringTools.trim(Std.string(nameOrId)).toLowerCase();
         if (!_list.exists(n)) return;
         _list.remove(n);
         save();
-        ApiLogger.info("Blacklist", "Removed: " + name);
+        ApiLogger.info("Blacklist", "Removed: " + Std.string(nameOrId));
     }
 
-    public function isBlacklisted(name:String):Bool {
-        if (name == null || name == "") return false;
-        return _list.exists(StringTools.trim(name).toLowerCase());
+    public function isBlacklisted(nameOrId:Dynamic):Bool {
+        if (nameOrId == null) return false;
+        var n = StringTools.trim(Std.string(nameOrId)).toLowerCase();
+        if (n == "") return false;
+        if (_list.exists(n)) return true;
+        var idInt:Int = ApiUtils.parseInt(nameOrId, 0);
+        if (idInt > 0) {
+            if (com.aqwapi.Api.inventory != null) {
+                var itm:Dynamic = com.aqwapi.Api.inventory.findItem(nameOrId);
+                if (itm != null && itm.name != null) {
+                    var iname = StringTools.trim(Std.string(itm.name)).toLowerCase();
+                    if (_list.exists(iname)) return true;
+                }
+            }
+        }
+        return false;
     }
 
     public function getList():Array<String> {

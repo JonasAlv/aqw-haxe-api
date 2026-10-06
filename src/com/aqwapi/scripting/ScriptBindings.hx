@@ -38,8 +38,9 @@ class ScriptBindings {
      * quest, so completing an unrelated quest must not make `mapItem()` re-request items it already
      * counted. Clearing those is `resetMapItems()`' job, and `resetStoryData()` clears everything.
      */
-    private static function _cleanQuestStoryData(questId:Int):Void {
-        var prefix = questId + "_";
+    private static function _cleanQuestStoryData(questId:Dynamic):Void {
+        var qid = ApiUtils.parseInt(questId, 0);
+        var prefix = (qid > 0 ? Std.string(qid) : Std.string(questId)) + "_";
         var monsterKeys:Array<String> = [];
         for (k in _reqToMonsterMap.keys()) {
             if (StringTools.startsWith(k, prefix)) monsterKeys.push(k);
@@ -202,16 +203,16 @@ class ScriptBindings {
     // -------------------------------------------------------------------------
 
     private static function registerCombatShortcuts():Void {
-        bind("hunt", function(monster:String, itemOrCount:Dynamic = null, qtyOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
+        bind("hunt", function(monster:Dynamic, itemOrCount:Dynamic = null, qtyOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
             return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qtyOrCallback, mmidOrCallback, onComplete) : false;
         });
-        bind("kill", function(monster:String, itemOrCount:Dynamic = null, qtyOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
+        bind("kill", function(monster:Dynamic, itemOrCount:Dynamic = null, qtyOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
             return Api.combat != null ? Api.combat.hunt(monster, itemOrCount, qtyOrCallback, mmidOrCallback, onComplete) : false;
         });
         bind("resetHunt", function():Void {
             if (Api.combat != null) Api.combat.resetHunt();
         });
-        bind("huntItem", function(monster:String, item:String, quantity:Int = 1, ?mapName:String):Bool {
+        bind("huntItem", function(monster:Dynamic, item:Dynamic, quantity:Int = 1, ?mapName:String):Bool {
             if (Api.combat == null) return false;
             if (mapName != null && mapName != "" && Api.map != null) {
                 if (!Api.map.ensure(mapName)) return false;
@@ -224,7 +225,7 @@ class ScriptBindings {
             Api.combat.hunt(monster);
             return false;
         });
-        bind("huntMonster", function(monster:String, kills:Int = 1, ?mapName:String):Bool {
+        bind("huntMonster", function(monster:Dynamic, kills:Int = 1, ?mapName:String):Bool {
             if (Api.combat == null) return false;
             if (mapName != null && mapName != "" && Api.map != null) {
                 if (!Api.map.ensure(mapName)) return false;
@@ -243,10 +244,10 @@ class ScriptBindings {
         bind("equipLoadout", function(type:String):Bool {
             return Api.combat != null ? Api.combat.equipLoadout(type) : false;
         });
-        bind("getBestTarget", function(nameOrId:String = "*"):Dynamic {
+        bind("getBestTarget", function(nameOrId:Dynamic = "*"):Dynamic {
             return Api.monster != null ? Api.monster.getBestMonsterTargetInCell(null, nameOrId) : null;
         });
-        bind("getBestMonsterTarget", function(cell:String = null, nameOrId:String = "*"):Dynamic {
+        bind("getBestMonsterTarget", function(cell:String = null, nameOrId:Dynamic = "*"):Dynamic {
             return Api.monster != null ? Api.monster.getBestMonsterTargetInCell(cell, nameOrId) : null;
         });
         bind("sortByLowestHp", function(monsters:Array<Dynamic>):Array<Dynamic> {
@@ -260,7 +261,7 @@ class ScriptBindings {
 
     private static function registerQuestShortcuts():Void {
         // High-level explicit step-by-step shortcuts
-        bind("quest", function(questId:Int, ?mapName:String):Bool {
+        bind("quest", function(questId:Dynamic, ?mapName:String):Bool {
             if (Api.quest == null) return false;
             if (Api.quest.hasBeenCompleted(questId)) return false;
             if (!Api.quest.isLoaded(questId)) {
@@ -340,7 +341,7 @@ class ScriptBindings {
             _mapItemGrabCount = new Map();
         });
 
-        bind("complete", function(questId:Int, ?rewardChoice:Dynamic):Bool {
+        bind("complete", function(questId:Dynamic, ?rewardChoice:Dynamic):Bool {
             if (Api.quest == null) return false;
             if (Api.quest.hasBeenCompleted(questId)) {
                 _cleanQuestStoryData(questId);
@@ -356,27 +357,27 @@ class ScriptBindings {
         });
 
         // Quest status & completion checks
-        bind("hasBeenCompleted", function(questId:Int):Bool {
+        bind("hasBeenCompleted", function(questId:Dynamic):Bool {
             return Api.quest != null && Api.quest.hasBeenCompleted(questId);
         });
-        bind("isCompletedBefore", function(questId:Int):Bool {
+        bind("isCompletedBefore", function(questId:Dynamic):Bool {
             return Api.quest != null && Api.quest.hasBeenCompleted(questId);
         });
-        bind("isQuestComplete", function(questId:Int):Bool {
+        bind("isQuestComplete", function(questId:Dynamic):Bool {
             return Api.quest != null ? Api.quest.canComplete(questId) : false;
         });
-        bind("canComplete", function(questId:Int):Bool {
+        bind("canComplete", function(questId:Dynamic):Bool {
             return Api.quest != null ? Api.quest.canComplete(questId) : false;
         });
-        bind("isQuestUnlocked", function(questId:Int):Bool {
+        bind("isQuestUnlocked", function(questId:Dynamic):Bool {
             return Api.quest != null ? Api.quest.isUnlocked(questId) : false;
         });
-        bind("isUnlocked", function(questId:Int):Bool {
+        bind("isUnlocked", function(questId:Dynamic):Bool {
             return Api.quest != null ? Api.quest.isUnlocked(questId) : false;
         });
 
         // Acceptance & completion helpers
-        bind("ensureAccept", function(questId:Int):Bool {
+        bind("ensureAccept", function(questId:Dynamic):Bool {
             if (Api.quest == null) return false;
             // A completed quest can never be accepted again. Reporting "done" here is what keeps an
             // ensure-style script loop from spinning on accept() forever.
@@ -389,21 +390,21 @@ class ScriptBindings {
             Api.quest.accept(questId);
             return Api.quest.isAccepted(questId);
         });
-        bind("ensureQuest", function(questId:Int):Bool {
+        bind("ensureQuest", function(questId:Dynamic):Bool {
             return getShortcut("ensureAccept")(questId);
         });
-        bind("acceptQuest", function(questId:Int):Void {
+        bind("acceptQuest", function(questId:Dynamic):Void {
             if (Api.quest != null) Api.quest.accept(questId);
         });
-        bind("ensureComplete", function(questId:Int, ?choice:Dynamic):Bool {
+        bind("ensureComplete", function(questId:Dynamic, ?choice:Dynamic):Bool {
             return getShortcut("complete")(questId, choice);
         });
-        bind("completeQuest", function(questId:Int, ?choice:Dynamic):Void {
+        bind("completeQuest", function(questId:Dynamic, ?choice:Dynamic):Void {
             if (Api.quest != null) Api.quest.complete(questId, choice);
         });
 
         // Quest loading & multi-load
-        bind("loadQuest", function(questId:Int):Void {
+        bind("loadQuest", function(questId:Dynamic):Void {
             if (Api.quest != null) Api.quest.load(questId);
         });
         bind("loadQuests", function(questIds:Dynamic):Void {
@@ -411,11 +412,11 @@ class ScriptBindings {
             var intArr:Array<Int> = [];
             if (Std.isOfType(questIds, Array)) {
                 for (item in (cast questIds:Array<Dynamic>)) {
-                    var qid = ApiUtils.parseInt(item, 0);
+                    var qid = Api.quest.resolveQuestId(item);
                     if (qid > 0) intArr.push(qid);
                 }
             } else if (questIds != null) {
-                var qid = ApiUtils.parseInt(questIds, 0);
+                var qid = Api.quest.resolveQuestId(questIds);
                 if (qid > 0) intArr.push(qid);
             }
             if (intArr.length > 0) Api.quest.loadMultiple(intArr);
@@ -425,11 +426,11 @@ class ScriptBindings {
             var intArr:Array<Int> = [];
             if (Std.isOfType(questIds, Array)) {
                 for (item in (cast questIds:Array<Dynamic>)) {
-                    var qid = ApiUtils.parseInt(item, 0);
+                    var qid = Api.quest.resolveQuestId(item);
                     if (qid > 0) intArr.push(qid);
                 }
             } else if (questIds != null) {
-                var qid = ApiUtils.parseInt(questIds, 0);
+                var qid = Api.quest.resolveQuestId(questIds);
                 if (qid > 0) intArr.push(qid);
             }
             return Api.quest.ensureLoaded(intArr);
@@ -439,21 +440,21 @@ class ScriptBindings {
             var intArr:Array<Int> = [];
             if (Std.isOfType(questIds, Array)) {
                 for (item in (cast questIds:Array<Dynamic>)) {
-                    var qid = ApiUtils.parseInt(item, 0);
+                    var qid = Api.quest.resolveQuestId(item);
                     if (qid > 0) intArr.push(qid);
                 }
             } else if (questIds != null) {
-                var qid = ApiUtils.parseInt(questIds, 0);
+                var qid = Api.quest.resolveQuestId(questIds);
                 if (qid > 0) intArr.push(qid);
             }
             return Api.quest.areAllLoaded(intArr);
         });
-        bind("getMissingRequirements", function(questId:Int):Array<Dynamic> {
+        bind("getMissingRequirements", function(questId:Dynamic):Array<Dynamic> {
             return Api.quest != null ? Api.quest.getMissingRequirements(questId) : [];
         });
 
         // Legacy / Macro Story Quest Functions
-        bind("storyKillQuest", function(questId:Int, mapName:String, monster:Dynamic):Bool {
+        bind("storyKillQuest", function(questId:Dynamic, mapName:String, monster:Dynamic):Bool {
             if (Api.quest == null || Api.map == null || Api.combat == null) return false;
             if (!Api.quest.isLoaded(questId)) {
                 Api.quest.load(questId);
@@ -486,7 +487,9 @@ class ScriptBindings {
                             var missingId:Int = (firstMissing.ItemID != null) ? Std.int(firstMissing.ItemID) : ((firstMissing.id != null) ? Std.int(firstMissing.id) : 0);
                             var rawMissingName:String = (firstMissing.sName != null) ? Std.string(firstMissing.sName) : ((firstMissing.name != null) ? Std.string(firstMissing.name) : "");
                             var missingName = StringTools.trim(rawMissingName).toLowerCase();
-                            var rMapKey = questId + "_" + (missingId > 0 ? Std.string(missingId) : missingName);
+                            var qid = Api.quest.resolveQuestId(questId);
+                            var qKey = (qid > 0 ? Std.string(qid) : Std.string(questId));
+                            var rMapKey = qKey + "_" + (missingId > 0 ? Std.string(missingId) : missingName);
 
                             if (_reqToMonsterMap.exists(rMapKey)) {
                                 foundMonster = _reqToMonsterMap.get(rMapKey);
@@ -539,7 +542,7 @@ class ScriptBindings {
                                 } else {
                                     var usedMonsters:Array<String> = [];
                                     for (k in _reqToMonsterMap.keys()) {
-                                        if (StringTools.startsWith(k, questId + "_")) usedMonsters.push(_reqToMonsterMap.get(k));
+                                        if (StringTools.startsWith(k, qKey + "_")) usedMonsters.push(_reqToMonsterMap.get(k));
                                     }
                                     for (m in arr) {
                                         var mStr = Std.string(m);
@@ -568,7 +571,7 @@ class ScriptBindings {
             return done;
         });
 
-        bind("storyMapItemQuest", function(questId:Int, mapName:String, itemIds:Dynamic, amount:Int = 1):Bool {
+        bind("storyMapItemQuest", function(questId:Dynamic, mapName:String, itemIds:Dynamic, amount:Int = 1):Bool {
             if (Api.quest == null || Api.map == null) return false;
             if (!Api.quest.isLoaded(questId)) {
                 Api.quest.load(questId);
@@ -602,10 +605,13 @@ class ScriptBindings {
             }
             if (targetMids.length == 0) return true;
 
+            var qid = Api.quest.resolveQuestId(questId);
+            var qKey = (qid > 0 ? Std.string(qid) : Std.string(questId));
+
             var allMidsDone:Bool = true;
             var nextMidToGrab:Int = 0;
             for (mid in targetMids) {
-                var grabKey = questId + "_" + mid;
+                var grabKey = qKey + "_" + mid;
                 var grabs = _mapItemGrabCount.exists(grabKey) ? _mapItemGrabCount.get(grabKey) : 0;
                 if (grabs < amount) {
                     allMidsDone = false;
@@ -624,7 +630,7 @@ class ScriptBindings {
             }
 
             if (nextMidToGrab > 0) {
-                var grabKey = questId + "_" + nextMidToGrab;
+                var grabKey = qKey + "_" + nextMidToGrab;
                 var grabs = _mapItemGrabCount.exists(grabKey) ? _mapItemGrabCount.get(grabKey) : 0;
                 if (Api.map.getMapItem(nextMidToGrab)) {
                     _mapItemGrabCount.set(grabKey, grabs + 1);
@@ -633,7 +639,7 @@ class ScriptBindings {
             return false;
         });
 
-        bind("storyChainQuest", function(questId:Int, mapName:String = null):Bool {
+        bind("storyChainQuest", function(questId:Dynamic, mapName:String = null):Bool {
             if (Api.quest == null) return false;
             if (!Api.quest.isLoaded(questId)) {
                 Api.quest.load(questId);
@@ -673,13 +679,13 @@ class ScriptBindings {
     // -------------------------------------------------------------------------
 
     private static function registerInventoryShortcuts():Void {
-        bind("hasItem", function(itemName:String, quantity:Int = 1):Bool {
+        bind("hasItem", function(itemName:Dynamic, quantity:Int = 1):Bool {
             return Api.inventory != null ? Api.inventory.hasItem(itemName, quantity) : false;
         });
-        bind("getItemCount", function(itemName:String):Int {
+        bind("getItemCount", function(itemName:Dynamic):Int {
             return Api.inventory != null ? Api.inventory.getItemCount(itemName) : 0;
         });
-        bind("getQuestQuantity", function(itemName:String):Int {
+        bind("getQuestQuantity", function(itemName:Dynamic):Int {
             return Api.inventory != null ? Api.inventory.getQuestQuantity(itemName) : 0;
         });
         bind("getInventory", function():Array<Dynamic> {
@@ -688,16 +694,16 @@ class ScriptBindings {
         bind("getBankItems", function():Array<Dynamic> {
             return Api.inventory != null ? cast Api.inventory.getBankItems() : [];
         });
-        bind("equip", function(itemName:String):Void {
+        bind("equip", function(itemName:Dynamic):Void {
             if (Api.inventory != null) Api.inventory.equip(itemName);
         });
-        bind("ensureEquipped", function(itemName:String):Bool {
+        bind("ensureEquipped", function(itemName:Dynamic):Bool {
             if (Api.inventory == null) return false;
             if (Api.inventory.isEquipped(itemName)) return true;
             Api.inventory.equip(itemName);
             return false;
         });
-        bind("isEquipped", function(itemName:String):Bool {
+        bind("isEquipped", function(itemName:Dynamic):Bool {
             return Api.inventory != null ? Api.inventory.isEquipped(itemName) : false;
         });
 
@@ -720,7 +726,7 @@ class ScriptBindings {
         bind("acceptAcDrops", function(enabled:Bool = true):Void {
             if (Api.drop != null) Api.drop.acceptAcDrops(enabled);
         });
-        bind("getDrop", function(itemName:String):Void {
+        bind("getDrop", function(itemName:Dynamic):Void {
             if (Api.drop != null) Api.drop.getDrop(itemName);
         });
         bind("getDrops", function(drops:Dynamic = "all"):Void {
@@ -740,17 +746,17 @@ class ScriptBindings {
     // -------------------------------------------------------------------------
 
     private static function registerShopAndBankShortcuts():Void {
-        bind("buyItem", function(shopId:Dynamic, itemNameOrId:String = null, quantity:Int = 1):Void {
+        bind("buyItem", function(shopId:Dynamic, itemNameOrId:Dynamic = null, quantity:Int = 1):Void {
             if (Api.shop == null) return;
             if (itemNameOrId == null) {
-                Api.shop.buyItem(Std.string(shopId), quantity);
+                Api.shop.buyItem(shopId, quantity);
             } else {
                 var sId:Int = ApiUtils.parseInt(shopId, 0);
                 if (sId > 0 && !Api.shop.isShopLoaded) Api.shop.loadShop(sId);
                 Api.shop.buyItem(itemNameOrId, quantity);
             }
         });
-        bind("sellItem", function(itemNameOrId:String, quantity:Int = 1):Void {
+        bind("sellItem", function(itemNameOrId:Dynamic, quantity:Int = 1):Void {
             if (Api.shop != null) Api.shop.sellItem(itemNameOrId, quantity);
         });
 
@@ -782,29 +788,29 @@ class ScriptBindings {
         bind("getTempItems", function():Array<Dynamic> {
             return Api.inventory != null ? cast Api.inventory.getTempItems() : [];
         });
-        bind("getTempQuantity", function(itemNameOrId:String):Int {
+        bind("getTempQuantity", function(itemNameOrId:Dynamic):Int {
             return Api.inventory != null ? Api.inventory.getTempQuantity(itemNameOrId) : 0;
         });
-        bind("hasTempItem", function(itemNameOrId:String, quantity:Int = 1):Bool {
+        bind("hasTempItem", function(itemNameOrId:Dynamic, quantity:Int = 1):Bool {
             return Api.inventory != null && Api.inventory.hasTempItem(itemNameOrId, quantity);
         });
 
         // Container lookup across temp / inventory / house / bank.
-        bind("getItemLocation", function(itemNameOrId:String):String {
+        bind("getItemLocation", function(itemNameOrId:Dynamic):String {
             return Api.inventory != null ? Api.inventory.getItemLocation(itemNameOrId) : "";
         });
-        bind("findItem", function(itemNameOrId:String):Dynamic {
+        bind("findItem", function(itemNameOrId:Dynamic):Dynamic {
             return Api.inventory != null ? Api.inventory.findItem(itemNameOrId) : null;
         });
-        bind("getBankQuantity", function(itemNameOrId:String):Int {
+        bind("getBankQuantity", function(itemNameOrId:Dynamic):Int {
             return Api.inventory != null ? Api.inventory.getBankQuantity(itemNameOrId) : 0;
         });
         // Backpack-only counterpart to getTempQuantity/getBankQuantity. Deliberately NOT a total:
         // getQuestQuantity is the de-duplicated cross-container reading.
-        bind("getInventoryQuantity", function(itemNameOrId:String):Int {
+        bind("getInventoryQuantity", function(itemNameOrId:Dynamic):Int {
             return Api.inventory != null ? Api.inventory.getQuantity(itemNameOrId) : 0;
         });
-        bind("isQuestAccepted", function(questId:Int):Bool {
+        bind("isQuestAccepted", function(questId:Dynamic):Bool {
             return Api.quest != null && Api.quest.isAccepted(questId);
         });
 
@@ -1046,14 +1052,14 @@ class ScriptBindings {
         });
 
         // Blacklist operations
-        bind("addBlacklist", function(name:String):Void {
-            Api.blacklist.add(name);
+        bind("addBlacklist", function(nameOrId:Dynamic):Void {
+            Api.blacklist.add(nameOrId);
         });
-        bind("removeBlacklist", function(name:String):Void {
-            Api.blacklist.remove(name);
+        bind("removeBlacklist", function(nameOrId:Dynamic):Void {
+            Api.blacklist.remove(nameOrId);
         });
-        bind("isBlacklisted", function(name:String):Bool {
-            return Api.blacklist.isBlacklisted(name);
+        bind("isBlacklisted", function(nameOrId:Dynamic):Bool {
+            return Api.blacklist.isBlacklisted(nameOrId);
         });
         bind("clearBlacklist", function():Void {
             Api.blacklist.clear();

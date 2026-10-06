@@ -533,7 +533,11 @@ class CombatEngine {
             else {
                 var ent = new EntityDTO(target);
                 if (targetName != null && targetName != "*" && targetName != "") {
-                    if (ent.name != "" && ent.name.toLowerCase().indexOf(targetName.toLowerCase()) == -1) {
+                    var tLower = targetName.toLowerCase();
+                    var tId = ApiUtils.parseInt(targetName, 0);
+                    var isNameMatch = (ent.name != "" && ent.name.toLowerCase().indexOf(tLower) != -1);
+                    var isIdMatch = (tId > 0 && (ent.id == targetName || ent.monsterId == targetName || ent.mapId == targetName));
+                    if (!isNameMatch && !isIdMatch) {
                         isInvalid = true;
                     }
                 }
@@ -562,7 +566,13 @@ class CombatEngine {
                     if (raw == null || raw.pMC == null || raw.objData == null || raw.dataLeaf == null) continue;
                     if (lockedMMID != null && monsterTarget.mapId != lockedMMID) continue;
                     if (isTemporarilyIgnored(monsterTarget.mapId)) continue;
-                    if (targetName != null && targetName != "*" && monsterTarget.name.toLowerCase().indexOf(targetName.toLowerCase()) == -1) continue;
+                    if (targetName != null && targetName != "*" && targetName != "") {
+                        var tLower = targetName.toLowerCase();
+                        var tId = ApiUtils.parseInt(targetName, 0);
+                        var isNameMatch = (monsterTarget.name != "" && monsterTarget.name.toLowerCase().indexOf(tLower) != -1);
+                        var isIdMatch = (tId > 0 && (monsterTarget.id == targetName || monsterTarget.monsterId == targetName || monsterTarget.mapId == targetName));
+                        if (!isNameMatch && !isIdMatch) continue;
+                    }
                     if (world.setTarget != null) {
                         world.setTarget(monsterTarget.raw);
                         target = monsterTarget.raw;

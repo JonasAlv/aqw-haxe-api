@@ -260,8 +260,8 @@ class DropManager {
         return accepted;
     }
 
-    public function getDrop(itemName:String):Void {
-        acceptPendingDrops([itemName]);
+    public function getDrop(nameOrId:Dynamic):Void {
+        acceptPendingDrops([Std.string(nameOrId)]);
     }
 
     public function isTargetDrop(item:Dynamic):Bool {
