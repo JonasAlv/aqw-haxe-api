@@ -125,6 +125,18 @@ class AuraManager {
             if (a.e == 1 || a.e == "1" || a.e == true) return;
             var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : ((a.sName != null) ? Std.string(a.sName) : ""));
             if (name != "" && normalizeAuraName(name) == search) {
+                // If aura has duration and start timestamp, check if it already expired
+                if (a.dur != null) {
+                    var dur:Float = ApiUtils.parseFloat(a.dur, 0.0);
+                    if (dur > 0) {
+                        var ts:Float = (a.ts != null) ? ApiUtils.parseFloat(a.ts, 0.0) : 0.0;
+                        if (ts > 0) {
+                            var tsMs:Float = (ts < 10000000000.0) ? (ts * 1000.0) : ts;
+                            var nowMs:Float = ApiTime.epochMs();
+                            if (nowMs >= tsMs + (dur * 1000.0)) return; // Expired by time!
+                        }
+                    }
+                }
                 var val:Float = 1.0;
                 if (a.val != null) val = ApiUtils.parseFloat(a.val, 1.0);
                 else if (a.value != null) val = ApiUtils.parseFloat(a.value, 1.0);
@@ -181,33 +193,77 @@ var search:String = normalizeAuraName(auraName);
     }
 
     /**
-     * Checks whether combat should pause due to forbidden target reflect/shield auras.
+     * Standard AQW boss counter-attack / reflect / invulnerability auras.
+     * When counterHandler is enabled, attacks are paused while any of these are active on the target.
      */
-    public function shouldStopForTargetAuras(globalStopAuras:Array<String>, modeConfig:Dynamic, ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):Bool {
+    public static var DEFAULT_COUNTER_AURAS:Array<String> = [
+        "counter attack",
+        "retaliate",
+        "fox",
+        "damage reflect",
+        "reflect",
+        "reflective shield",
+        "talon twisting"
+    ];
+
+    /**
+     * Checks target auras and returns the name of any active counter/shield/pause aura.
+     * Evaluates built-in counter auras (if enableCounterHandler is true), globalStopAuras,
+     * and modeConfig.stopOnTargetAuras. Returns null if no forbidden aura is active.
+     */
+    public function findTriggeringTargetAura(enableCounterHandler:Bool = false, ?globalStopAuras:Array<String>, ?modeConfig:Dynamic, ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):String {
         var aurasToCheck:Array<String> = [];
+        if (enableCounterHandler) {
+            for (a in DEFAULT_COUNTER_AURAS) aurasToCheck.push(a);
+        }
         if (globalStopAuras != null) {
-            for (a in globalStopAuras) if (a != null && a != "") aurasToCheck.push(a.toLowerCase());
+            for (a in globalStopAuras) {
+                if (a != null && a != "") {
+                    var tr = normalizeAuraName(a);
+                    if (tr != "" && aurasToCheck.indexOf(tr) == -1) aurasToCheck.push(tr);
+                }
+            }
         }
         if (modeConfig != null && modeConfig.stopOnTargetAuras != null) {
             var val:Dynamic = modeConfig.stopOnTargetAuras;
             if (Std.isOfType(val, Array)) {
                 for (item in (cast val : Array<Dynamic>)) {
-                    if (item != null && Std.string(item) != "") aurasToCheck.push(Std.string(item).toLowerCase());
+                    if (item != null) {
+                        var tr = normalizeAuraName(Std.string(item));
+                        if (tr != "" && aurasToCheck.indexOf(tr) == -1) aurasToCheck.push(tr);
+                    }
                 }
             } else if (Std.isOfType(val, String)) {
                 var parts:Array<String> = Std.string(val).split(",");
                 for (p in parts) {
-                    var tr = StringTools.trim(p).toLowerCase();
-                    if (tr != "") aurasToCheck.push(tr);
+                    var tr = normalizeAuraName(p);
+                    if (tr != "" && aurasToCheck.indexOf(tr) == -1) aurasToCheck.push(tr);
                 }
             }
         }
-        if (aurasToCheck.length == 0) return false;
+        if (aurasToCheck.length == 0) return null;
 
         for (aName in aurasToCheck) {
             if (getStacks(aName, "target", world, avatar, targetObj) > 0) {
-                return true;
+                return aName;
             }
+        }
+        return null;
+    }
+
+    /**
+     * Checks whether combat should pause due to forbidden target reflect/shield auras.
+     */
+    public function shouldStopForTargetAuras(?globalStopAuras:Array<String>, ?modeConfig:Dynamic, ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic, enableCounterHandler:Bool = false):Bool {
+        return findTriggeringTargetAura(enableCounterHandler, globalStopAuras, modeConfig, world, avatar, targetObj) != null;
+    }
+
+    /**
+     * Checks if target currently has any known reflect or counter aura.
+     */
+    public function hasCounterAura(target:String = "target", ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):Bool {
+        for (a in DEFAULT_COUNTER_AURAS) {
+            if (getStacks(a, target, world, avatar, targetObj) > 0) return true;
         }
         return false;
     }

@@ -326,6 +326,56 @@ class MonsterManager {
         return res;
     }
 
+    public function sortByHighestHp(monsters:Array<EntityDTO>):Array<EntityDTO> {
+        if (monsters == null || monsters.length <= 1) return monsters;
+        var res = monsters.copy();
+        res.sort(function(a:EntityDTO, b:EntityDTO):Int {
+            var aAlive = (a != null && a.alive && a.hp > 0);
+            var bAlive = (b != null && b.alive && b.hp > 0);
+            if (aAlive != bAlive) return aAlive ? -1 : 1;
+            var aHp = (a != null) ? a.hp : 0;
+            var bHp = (b != null) ? b.hp : 0;
+            if (aHp != bHp) return bHp - aHp;
+            var aId = (a != null) ? ApiUtils.parseInt(a.mapId, 0) : 0;
+            var bId = (b != null) ? ApiUtils.parseInt(b.mapId, 0) : 0;
+            return aId - bId;
+        });
+        return res;
+    }
+
+    public function sortByClosest(monsters:Array<EntityDTO>):Array<EntityDTO> {
+        if (monsters == null || monsters.length <= 1) return monsters;
+        var pX:Float = 0.0;
+        var pY:Float = 0.0;
+        if (Api.player != null) {
+            pX = Api.player.x;
+            pY = Api.player.y;
+        }
+        var res = monsters.copy();
+        res.sort(function(a:EntityDTO, b:EntityDTO):Int {
+            var aAlive = (a != null && a.alive && a.hp > 0);
+            var bAlive = (b != null && b.alive && b.hp > 0);
+            if (aAlive != bAlive) return aAlive ? -1 : 1;
+            var adx = (a != null) ? (a.x - pX) : 999999.0;
+            var ady = (a != null) ? (a.y - pY) : 999999.0;
+            var aDist = adx * adx + ady * ady;
+            var bdx = (b != null) ? (b.x - pX) : 999999.0;
+            var bdy = (b != null) ? (b.y - pY) : 999999.0;
+            var bDist = bdx * bdx + bdy * bdy;
+            if (aDist != bDist) return (aDist < bDist) ? -1 : 1;
+            return 0;
+        });
+        return res;
+    }
+
+    public function sortMonsters(monsters:Array<EntityDTO>, priority:String = "lowest_hp"):Array<EntityDTO> {
+        if (monsters == null || monsters.length <= 1) return monsters;
+        var p = (priority != null) ? priority.toLowerCase() : "lowest_hp";
+        if (p == "highest" || p == "highest_hp" || p == "max_hp") return sortByHighestHp(monsters);
+        if (p == "closest" || p == "distance" || p == "near") return sortByClosest(monsters);
+        return sortByLowestHp(monsters);
+    }
+
     public function getBestMonsterTargetInCell(cell:String = null, nameOrId:Dynamic = "*"):EntityDTO {
         var c = (cell != null && cell != "") ? cell : ((Api.player != null) ? Api.player.cell : "");
         var living = getLivingMonstersInCell(c);

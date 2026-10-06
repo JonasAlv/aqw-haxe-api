@@ -62,6 +62,32 @@ class EntityDTO {
         } catch (e:Dynamic) { return false; }
     }
 
+    public var x(get, never):Float;
+    @:getter(x)
+    public function get_x_prop():Float { return get_x(); }
+    public function get_x():Float {
+        if (raw == null) return 0.0;
+        try {
+            var mc:Dynamic = _sf(raw, "pMC");
+            if (mc != null && mc.x != null) return ApiUtils.parseFloat(mc.x, 0.0);
+            if (raw.x != null) return ApiUtils.parseFloat(raw.x, 0.0);
+        } catch (_:Dynamic) {}
+        return 0.0;
+    }
+
+    public var y(get, never):Float;
+    @:getter(y)
+    public function get_y_prop():Float { return get_y(); }
+    public function get_y():Float {
+        if (raw == null) return 0.0;
+        try {
+            var mc:Dynamic = _sf(raw, "pMC");
+            if (mc != null && mc.y != null) return ApiUtils.parseFloat(mc.y, 0.0);
+            if (raw.y != null) return ApiUtils.parseFloat(raw.y, 0.0);
+        } catch (_:Dynamic) {}
+        return 0.0;
+    }
+
     public function new(rawData:Dynamic) {
         if (rawData == null) return;
         this.raw = rawData;

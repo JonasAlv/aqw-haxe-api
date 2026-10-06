@@ -30,10 +30,17 @@ class CombatEngine {
     public static var bossMode:String = "Auto";
     public static var dodgeClass:String = "Current";
     public static var dodgeMode:String = "Auto";
-    // Target lock
+    // Target lock & prioritization
     public static var targetName:String = null;
     public static var lockedMMID:String = null;
-    public static var globalStopOnTargetAuras:Array<String> = null;
+    public static var priorityTargets:Array<String> = [];
+    public static var huntPriority:String = "lowest_hp";
+    // Counter & reflect aura handling
+    public static var counterHandler:Bool = false;
+    public static var globalStopOnTargetAuras:Array<String> = [];
+    public static var pausedAuraName:String = null;
+    public static var isPausedByAura(get, never):Bool;
+    public static inline function get_isPausedByAura():Bool { return _pausedByTargetAura; }
     // Internal execution state
     public static var customRotation(get, never):Array<Int>;
     public static inline function get_customRotation():Array<Int> { return _customRotation; }
@@ -111,6 +118,7 @@ class CombatEngine {
         _stepFirstFailTime = -1;
         _targetChanged = false;
         _pausedByTargetAura = false;
+        pausedAuraName = null;
         _lastCastAt = -10000;
         _lastSkillAt = -10000;
         _avatarBusyAnim = false;
@@ -135,12 +143,16 @@ class CombatEngine {
         IS_ON = false;
         targetName = null;
         lockedMMID = null;
+        priorityTargets = [];
+        _pausedByTargetAura = false;
+        pausedAuraName = null;
         _temporaryIgnore = new Map<String, Float>();
         if (_timer != null && _timer.running) {
             _timer.stop();
         }
         if (Api.game != null && Api.game.world != null) {
             var world:Dynamic = Api.game.world;
+            clearNativeAutoAttack(world);
             if (world.cancelAutoAttack != null) {
                 try { world.cancelAutoAttack(); } catch (_:Dynamic) {}
             }
@@ -532,7 +544,46 @@ class CombatEngine {
             else if (target.dataLeaf.intState != null && target.dataLeaf.intState == 0) isInvalid = true;
             else {
                 var ent = new EntityDTO(target);
-                if (targetName != null && targetName != "*" && targetName != "") {
+                if (priorityTargets != null && priorityTargets.length > 0) {
+                    var curPriIdx:Int = -1;
+                    for (i in 0...priorityTargets.length) {
+                        var pName = priorityTargets[i];
+                        if (pName == null || pName == "" || pName == "*") {
+                            curPriIdx = i;
+                            break;
+                        }
+                        var pLower = pName.toLowerCase();
+                        var pId = ApiUtils.parseInt(pName, 0);
+                        var isNameMatch = (ent.name != "" && ent.name.toLowerCase().indexOf(pLower) != -1);
+                        var isIdMatch = (pId > 0 && (ent.id == pName || ent.monsterId == pName || ent.mapId == pName));
+                        if (isNameMatch || isIdMatch) {
+                            curPriIdx = i;
+                            break;
+                        }
+                    }
+                    if (curPriIdx == -1) {
+                        isInvalid = true;
+                    } else if (curPriIdx > 0) {
+                        // Check if any higher-priority target is currently alive in the cell
+                        var cellMons:Array<EntityDTO> = (Api.monster != null) ? Api.monster.getByCell(Std.string(world.strFrame)) : [];
+                        for (hIdx in 0...curPriIdx) {
+                            var hName = priorityTargets[hIdx];
+                            if (hName == null || hName == "") continue;
+                            var hLower = hName.toLowerCase();
+                            var hId = ApiUtils.parseInt(hName, 0);
+                            for (m in cellMons) {
+                                if (m == null || !m.alive || !m.hasGraphic) continue;
+                                var hMatchName = (m.name != "" && m.name.toLowerCase().indexOf(hLower) != -1);
+                                var hMatchId = (hId > 0 && (m.id == hName || m.monsterId == hName || m.mapId == hName));
+                                if (hMatchName || hMatchId) {
+                                    isInvalid = true;
+                                    break;
+                                }
+                            }
+                            if (isInvalid) break;
+                        }
+                    }
+                } else if (targetName != null && targetName != "*" && targetName != "") {
                     var tLower = targetName.toLowerCase();
                     var tId = ApiUtils.parseInt(targetName, 0);
                     var isNameMatch = (ent.name != "" && ent.name.toLowerCase().indexOf(tLower) != -1);
@@ -554,33 +605,67 @@ class CombatEngine {
                 target = null;
                 _lastTargetMMID = null;
                 _targetChanged = true;
+                _pausedByTargetAura = false;
+                pausedAuraName = null;
             }
         }
         if (target == null) {
             try {
-                var currentMonsters:Array<EntityDTO> = Api.monster.getByCell(Std.string(world.strFrame));
-                if (Api.monster != null) currentMonsters = Api.monster.sortByLowestHp(currentMonsters);
-                for (monsterTarget in currentMonsters) {
-                    if (monsterTarget == null || !monsterTarget.alive || !monsterTarget.hasGraphic) continue;
-                    var raw = monsterTarget.raw;
-                    if (raw == null || raw.pMC == null || raw.objData == null || raw.dataLeaf == null) continue;
-                    if (lockedMMID != null && monsterTarget.mapId != lockedMMID) continue;
-                    if (isTemporarilyIgnored(monsterTarget.mapId)) continue;
-                    if (targetName != null && targetName != "*" && targetName != "") {
-                        var tLower = targetName.toLowerCase();
-                        var tId = ApiUtils.parseInt(targetName, 0);
-                        var isNameMatch = (monsterTarget.name != "" && monsterTarget.name.toLowerCase().indexOf(tLower) != -1);
-                        var isIdMatch = (tId > 0 && (monsterTarget.id == targetName || monsterTarget.monsterId == targetName || monsterTarget.mapId == targetName));
-                        if (!isNameMatch && !isIdMatch) continue;
+                var currentMonsters:Array<EntityDTO> = (Api.monster != null) ? Api.monster.getByCell(Std.string(world.strFrame)) : [];
+                if (Api.monster != null) currentMonsters = Api.monster.sortMonsters(currentMonsters, huntPriority);
+
+                if (priorityTargets != null && priorityTargets.length > 0) {
+                    for (pTarget in priorityTargets) {
+                        if (pTarget == null || pTarget == "") continue;
+                        var pLower = pTarget.toLowerCase();
+                        var pId = ApiUtils.parseInt(pTarget, 0);
+                        var foundRaw:Dynamic = null;
+                        for (monsterTarget in currentMonsters) {
+                            if (monsterTarget == null || !monsterTarget.alive || !monsterTarget.hasGraphic) continue;
+                            var raw = monsterTarget.raw;
+                            if (raw == null || raw.pMC == null || raw.objData == null || raw.dataLeaf == null) continue;
+                            if (lockedMMID != null && monsterTarget.mapId != lockedMMID) continue;
+                            if (isTemporarilyIgnored(monsterTarget.mapId)) continue;
+                            
+                            var isWild = (pTarget == "*");
+                            var isNameMatch = (monsterTarget.name != "" && monsterTarget.name.toLowerCase().indexOf(pLower) != -1);
+                            var isIdMatch = (pId > 0 && (monsterTarget.id == pTarget || monsterTarget.monsterId == pTarget || monsterTarget.mapId == pTarget));
+                            if (isWild || isNameMatch || isIdMatch) {
+                                foundRaw = monsterTarget.raw;
+                                break;
+                            }
+                        }
+                        if (foundRaw != null) {
+                            if (world.setTarget != null) {
+                                world.setTarget(foundRaw);
+                                target = foundRaw;
+                                break;
+                            }
+                        }
                     }
-                    if (world.setTarget != null) {
-                        world.setTarget(monsterTarget.raw);
-                        target = monsterTarget.raw;
-                        break;
+                } else {
+                    for (monsterTarget in currentMonsters) {
+                        if (monsterTarget == null || !monsterTarget.alive || !monsterTarget.hasGraphic) continue;
+                        var raw = monsterTarget.raw;
+                        if (raw == null || raw.pMC == null || raw.objData == null || raw.dataLeaf == null) continue;
+                        if (lockedMMID != null && monsterTarget.mapId != lockedMMID) continue;
+                        if (isTemporarilyIgnored(monsterTarget.mapId)) continue;
+                        if (targetName != null && targetName != "*" && targetName != "") {
+                            var tLower = targetName.toLowerCase();
+                            var tId = ApiUtils.parseInt(targetName, 0);
+                            var isNameMatch = (monsterTarget.name != "" && monsterTarget.name.toLowerCase().indexOf(tLower) != -1);
+                            var isIdMatch = (tId > 0 && (monsterTarget.id == targetName || monsterTarget.monsterId == targetName || monsterTarget.mapId == targetName));
+                            if (!isNameMatch && !isIdMatch) continue;
+                        }
+                        if (world.setTarget != null) {
+                            world.setTarget(monsterTarget.raw);
+                            target = monsterTarget.raw;
+                            break;
+                        }
                     }
                 }
             } catch (_:Dynamic) {}
-            if (target == null && lockedMMID == null) {
+            if (target == null && lockedMMID == null && (priorityTargets == null || priorityTargets.length == 0)) {
                 try {
                     if (world.getMonster != null) {
                         var monName:String = (targetName != null && targetName != "*") ? targetName.toLowerCase() : "Any";
@@ -627,6 +712,8 @@ class CombatEngine {
             _targetChanged = true;
             _skillWaitStart = ApiTime.now();
             _stepFirstFailTime = -1;
+            _pausedByTargetAura = false;
+            pausedAuraName = null;
             if (world.cancelTarget != null) {
                 try { world.cancelTarget(); } catch (_:Dynamic) {}
             }
@@ -655,32 +742,27 @@ class CombatEngine {
             allowAuto = SkillManager.classHasAutoAttack(activeClass, skillMode);
         }
         if (!allowAuto) clearNativeAutoAttack(world);
-        if (isSmart) {
-            if (Api.aura.shouldStopForTargetAuras(globalStopOnTargetAuras, activeModeConfig, world, avatar, target)) {
-                if (!_pausedByTargetAura) {
-                    _pausedByTargetAura = true;
-                    ApiLogger.warn("Combat", "Target has forbidden reflect/shield aura, dropping target!");
-                }
-                if (world.cancelAutoAttack != null) {
-                    try { world.cancelAutoAttack(); } catch (_:Dynamic) {}
-                }
-                var dropMMID:String = null;
-                try {
-                    if (target != null && target.dataLeaf != null && target.dataLeaf.MonMapID != null) dropMMID = Std.string(target.dataLeaf.MonMapID);
-                    else if (target != null && target.objData != null && target.objData.MonMapID != null) dropMMID = Std.string(target.objData.MonMapID);
-                } catch (_:Dynamic) {}
-                ignoreTemporarily(dropMMID);
-                if (world.cancelTarget != null) {
-                    try { world.cancelTarget(); } catch (_:Dynamic) {}
-                }
-                try { avatar.target = null; } catch (_:Dynamic) {}
-                target = null;
-                _targetChanged = true;
-                return;
-            } else if (_pausedByTargetAura) {
-                _pausedByTargetAura = false;
-                ApiLogger.info("Combat", "Target reflect/shield aura expired, resuming combat!");
+
+        var triggerAura:String = (Api.aura != null) ? Api.aura.findTriggeringTargetAura(counterHandler, globalStopOnTargetAuras, activeModeConfig, world, avatar, target) : null;
+        if (triggerAura != null) {
+            if (!_pausedByTargetAura) {
+                _pausedByTargetAura = true;
+                pausedAuraName = triggerAura;
+                ApiLogger.warn("Combat", "Target counter/reflect aura detected ['" + triggerAura + "'] - holding attacks!");
             }
+            clearNativeAutoAttack(world);
+            if (world.cancelAutoAttack != null) {
+                try { world.cancelAutoAttack(); } catch (_:Dynamic) {}
+            }
+            return;
+        } else if (_pausedByTargetAura) {
+            _pausedByTargetAura = false;
+            var prevAura = pausedAuraName;
+            pausedAuraName = null;
+            ApiLogger.info("Combat", "Target counter/reflect aura expired" + (prevAura != null ? (" (" + prevAura + ")") : "") + " - resuming combat!");
+        }
+
+        if (isSmart) {
             try {
                 if (shouldApproachTarget(world, aaAct) && !targetWithinActionRange(world, avatar, target, aaAct)) {
                     approachTargetOnly(world);

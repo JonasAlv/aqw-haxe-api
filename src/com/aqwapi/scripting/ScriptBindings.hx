@@ -238,6 +238,27 @@ class ScriptBindings {
         bind("stopCombat", function():Void {
             if (Api.combat != null) Api.combat.stopCombat();
         });
+        bind("counterHandler", function(enabled:Bool = true):Void {
+            if (Api.combat != null) Api.combat.enableCounterHandler(enabled);
+        });
+        bind("enableCounterHandler", function(enabled:Bool = true):Void {
+            if (Api.combat != null) Api.combat.enableCounterHandler(enabled);
+        });
+        bind("pauseOnAuras", function(auras:Dynamic):Void {
+            if (Api.combat != null) Api.combat.pauseOnAuras(auras);
+        });
+        bind("clearPauseAuras", function():Void {
+            if (Api.combat != null) Api.combat.clearPauseAuras();
+        });
+        bind("setTargetPriority", function(targets:Dynamic):Void {
+            if (Api.combat != null) Api.combat.setTargetPriority(targets);
+        });
+        bind("setHuntPriority", function(priority:String):Void {
+            if (Api.combat != null) Api.combat.setHuntPriority(priority);
+        });
+        bind("isPausedByAura", function():Bool {
+            return Api.combat != null ? Api.combat.isPausedByAura : false;
+        });
         bind("ensureCombat", function(smart:Bool = true):Void {
             if (Api.combat != null) Api.combat.ensure(smart);
         });

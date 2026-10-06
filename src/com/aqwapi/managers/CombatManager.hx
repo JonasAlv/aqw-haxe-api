@@ -261,6 +261,103 @@ class CombatManager {
         if (!isRunning()) start(smart);
     }
 
+    public var counterHandler(get, set):Bool;
+    @:getter(counterHandler)
+    public function get_counterHandler_prop():Bool { return CombatEngine.counterHandler; }
+    @:setter(counterHandler)
+    public function set_counterHandler_prop(v:Bool):Void { CombatEngine.counterHandler = v; }
+    public function get_counterHandler():Bool { return CombatEngine.counterHandler; }
+    public function set_counterHandler(v:Bool):Bool { CombatEngine.counterHandler = v; return v; }
+
+    public function enableCounterHandler(enable:Bool = true):Void {
+        CombatEngine.counterHandler = enable;
+    }
+
+    public function pauseOnAuras(auras:Dynamic):Void {
+        if (CombatEngine.globalStopOnTargetAuras == null) CombatEngine.globalStopOnTargetAuras = [];
+        if (Std.isOfType(auras, Array)) {
+            for (a in (cast auras : Array<Dynamic>)) {
+                if (a != null && Std.string(a) != "") {
+                    var s = StringTools.trim(Std.string(a));
+                    if (CombatEngine.globalStopOnTargetAuras.indexOf(s) == -1) {
+                        CombatEngine.globalStopOnTargetAuras.push(s);
+                    }
+                }
+            }
+        } else if (auras != null) {
+            var parts = Std.string(auras).split(",");
+            for (p in parts) {
+                var s = StringTools.trim(p);
+                if (s != "" && CombatEngine.globalStopOnTargetAuras.indexOf(s) == -1) {
+                    CombatEngine.globalStopOnTargetAuras.push(s);
+                }
+            }
+        }
+    }
+
+    public function clearPauseAuras():Void {
+        CombatEngine.globalStopOnTargetAuras = [];
+    }
+
+    public var isPausedByAura(get, never):Bool;
+    @:getter(isPausedByAura)
+    public function get_isPausedByAura_prop():Bool { return CombatEngine.isPausedByAura; }
+    public function get_isPausedByAura():Bool { return CombatEngine.isPausedByAura; }
+
+    public function setTargetPriority(targets:Dynamic):Void {
+        CombatEngine.priorityTargets = [];
+        if (Std.isOfType(targets, Array)) {
+            for (t in (cast targets : Array<Dynamic>)) {
+                if (t != null && Std.string(t) != "") {
+                    CombatEngine.priorityTargets.push(StringTools.trim(Std.string(t)));
+                }
+            }
+        } else if (targets != null && Std.string(targets) != "") {
+            CombatEngine.priorityTargets.push(StringTools.trim(Std.string(targets)));
+        }
+    }
+
+    public function setHuntPriority(priority:String):Void {
+        var p = (priority != null) ? priority.toLowerCase() : "lowest_hp";
+        if (p == "highest" || p == "highest_hp" || p == "max_hp") CombatEngine.huntPriority = "highest_hp";
+        else if (p == "closest" || p == "distance" || p == "near") CombatEngine.huntPriority = "closest";
+        else CombatEngine.huntPriority = "lowest_hp";
+    }
+
+    private function _applyHuntOptions(opts:Dynamic, ?primaryMonster:String):Void {
+        if (opts == null || !Reflect.isObject(opts) || Std.isOfType(opts, Array) || Std.isOfType(opts, String) || Std.isOfType(opts, Int) || Std.isOfType(opts, Float)) return;
+
+        var pri:Dynamic = null;
+        if (Reflect.hasField(opts, "priority")) pri = Reflect.field(opts, "priority");
+        else if (Reflect.hasField(opts, "minions")) pri = Reflect.field(opts, "minions");
+        else if (Reflect.hasField(opts, "secondary")) pri = Reflect.field(opts, "secondary");
+
+        if (pri != null) {
+            setTargetPriority(pri);
+            if (primaryMonster != null && primaryMonster != "" && primaryMonster != "*") {
+                if (CombatEngine.priorityTargets.indexOf(primaryMonster) == -1) {
+                    CombatEngine.priorityTargets.push(primaryMonster);
+                }
+            }
+        }
+
+        if (Reflect.hasField(opts, "huntPriority")) {
+            setHuntPriority(Std.string(Reflect.field(opts, "huntPriority")));
+        } else if (Reflect.hasField(opts, "strategy")) {
+            setHuntPriority(Std.string(Reflect.field(opts, "strategy")));
+        }
+
+        if (Reflect.hasField(opts, "counterHandler")) {
+            enableCounterHandler(Reflect.field(opts, "counterHandler") == true);
+        }
+
+        if (Reflect.hasField(opts, "pauseOnAuras")) {
+            pauseOnAuras(Reflect.field(opts, "pauseOnAuras"));
+        } else if (Reflect.hasField(opts, "stopOnAuras")) {
+            pauseOnAuras(Reflect.field(opts, "stopOnAuras"));
+        }
+    }
+
     private var _huntMonster:String = null;
     private var _huntTargetKills:Int = 0;
     private var _huntCurrentKills:Int = 0;
@@ -279,31 +376,60 @@ class CombatManager {
         _huntMonAliveMap = new Map();
         CombatEngine.targetName = null;
         CombatEngine.lockedMMID = null;
+        CombatEngine.priorityTargets = [];
+        CombatEngine.huntPriority = "lowest_hp";
     }
 
     public function hunt(monster:Dynamic, itemOrCount:Dynamic = null, quantityOrCallback:Dynamic = null, mmidOrCallback:Dynamic = null, onComplete:Dynamic = null):Bool {
-        var monsterName:String = (monster != null) ? Std.string(monster) : "*";
+        var monsterName:String = "*";
+        var priorityList:Array<String> = [];
+
+        if (monster != null) {
+            if (Std.isOfType(monster, Array)) {
+                var mArr:Array<Dynamic> = cast monster;
+                for (elem in mArr) {
+                    if (elem != null && Std.string(elem) != "") {
+                        priorityList.push(StringTools.trim(Std.string(elem)));
+                    }
+                }
+                if (priorityList.length > 0) {
+                    monsterName = priorityList[priorityList.length - 1];
+                }
+            } else {
+                monsterName = Std.string(monster);
+                priorityList.push(monsterName);
+            }
+        }
+
         var targetMMID:Dynamic = null;
         var isKillCount:Bool = false;
         var targetKills:Int = 0;
         var targetQuantity:Int = 1;
         var callback:Dynamic = null;
 
+        _applyHuntOptions(quantityOrCallback, monsterName);
+        _applyHuntOptions(mmidOrCallback, monsterName);
+        _applyHuntOptions(onComplete, monsterName);
+
         if (Reflect.isFunction(quantityOrCallback)) {
             callback = quantityOrCallback;
             targetQuantity = 1;
-        } else if (quantityOrCallback != null) {
+        } else if (quantityOrCallback != null && (Std.isOfType(quantityOrCallback, Int) || Std.isOfType(quantityOrCallback, Float))) {
             targetQuantity = Std.int(quantityOrCallback);
         }
 
         if (Reflect.isFunction(mmidOrCallback)) {
             callback = mmidOrCallback;
-        } else if (mmidOrCallback != null) {
+        } else if (mmidOrCallback != null && !Reflect.isObject(mmidOrCallback) && (Std.isOfType(mmidOrCallback, String) || Std.isOfType(mmidOrCallback, Int) || Std.isOfType(mmidOrCallback, Float))) {
             targetMMID = mmidOrCallback;
         }
 
         if (Reflect.isFunction(onComplete)) {
             callback = onComplete;
+        }
+
+        if (priorityList.length > 1 && (CombatEngine.priorityTargets == null || CombatEngine.priorityTargets.length == 0)) {
+            CombatEngine.priorityTargets = priorityList.copy();
         }
 
         var isArrayItems:Bool = false;
@@ -451,6 +577,12 @@ class CombatManager {
         var targetCell:String = "";
         if (Api.monster != null) {
             targetCell = Api.monster.getMonsterCell(monsterName, targetMMID);
+            if (targetCell == "" && priorityList.length > 0) {
+                for (pMon in priorityList) {
+                    targetCell = Api.monster.getMonsterCell(pMon);
+                    if (targetCell != "") break;
+                }
+            }
         }
 
         // 5. Move to that cell if found and not already there
@@ -463,6 +595,14 @@ class CombatManager {
         // If monster is not found across the map and not in current cell, wait
         if (targetCell == "" && monsterName != null && monsterName != "" && monsterName != "*") {
             var inCurCell = (Api.monster != null) ? (Api.monster.findByName(monsterName, false) != null) : false;
+            if (!inCurCell && priorityList.length > 0) {
+                for (pMon in priorityList) {
+                    if (Api.monster != null && Api.monster.findByName(pMon, false) != null) {
+                        inCurCell = true;
+                        break;
+                    }
+                }
+            }
             if (!inCurCell) {
                 return false;
             }
