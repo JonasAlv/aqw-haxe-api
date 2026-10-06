@@ -267,6 +267,233 @@ class InventoryManager {
         }
     }
 
+    // ==========================================
+    // GEAR SNAPSHOT & RESTORE
+    // ==========================================
+
+    private var _gearSnapshot:Array<{ id:Int, name:String, sES:String, sType:String }> = null;
+    public var isRestoringGear:Bool = false;
+    private var _restoreQueue:Array<{ id:Int, name:String, sES:String, sType:String }> = [];
+    private var _restoreCallback:Void->Void = null;
+
+    /**
+     * Captures a snapshot of currently equipped items (Armor/Class, Weapon, Helm, Cape, Pet, Ground).
+     * If an explicit items array or comma-separated string is passed, snapshots those items instead.
+     */
+    public function storeGear(?itemsToStore:Dynamic):Array<{ id:Int, name:String, sES:String, sType:String }> {
+        _gearSnapshot = [];
+        var seenIds:Map<Int, Bool> = new Map();
+
+        if (itemsToStore != null) {
+            var resolved:Array<String> = [];
+            if (Std.isOfType(itemsToStore, Array)) {
+                var arr:Array<Dynamic> = cast itemsToStore;
+                for (it in arr) if (it != null) resolved.push(Std.string(it));
+            } else {
+                var str = Std.string(itemsToStore);
+                if (str.indexOf(",") != -1) {
+                    for (p in str.split(",")) {
+                        var pt = StringTools.trim(p);
+                        if (pt != "") resolved.push(pt);
+                    }
+                } else if (str != "") {
+                    resolved.push(str);
+                }
+            }
+            for (idOrName in resolved) {
+                var itemObj = _findItem(idOrName);
+                if (itemObj != null) {
+                    var id = ApiUtils.parseInt(itemObj.ItemID, 0);
+                    if (id > 0 && !seenIds.exists(id)) {
+                        seenIds.set(id, true);
+                        _gearSnapshot.push({
+                            id: id,
+                            name: (itemObj.sName != null) ? Std.string(itemObj.sName) : "",
+                            sES: (itemObj.sES != null) ? Std.string(itemObj.sES) : "",
+                            sType: (itemObj.sType != null) ? Std.string(itemObj.sType) : ""
+                        });
+                    }
+                }
+            }
+            ApiLogger.info("Inventory", "Snapshot saved for " + _gearSnapshot.length + " explicit items.");
+            return _gearSnapshot.copy();
+        }
+
+        // 1. Scan player inventory items for currently equipped items
+        var invItems = getItems();
+        for (it in invItems) {
+            if (it != null && it.isEquipped && it.itemId > 0) {
+                if (!seenIds.exists(it.itemId)) {
+                    seenIds.set(it.itemId, true);
+                    _gearSnapshot.push({
+                        id: it.itemId,
+                        name: it.name,
+                        sES: it.es,
+                        sType: it.type
+                    });
+                }
+            }
+        }
+
+        // 2. Scan objData.eqp in case bEquip flags were out of sync
+        if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.objData != null) {
+            var eqp:Dynamic = _game.world.myAvatar.objData.eqp;
+            if (eqp != null) {
+                for (slot in Reflect.fields(eqp)) {
+                    var slotItem:Dynamic = Reflect.field(eqp, slot);
+                    if (slotItem != null && Reflect.hasField(slotItem, "ItemID")) {
+                        var id:Int = ApiUtils.parseInt(Reflect.field(slotItem, "ItemID"), 0);
+                        if (id > 0 && !seenIds.exists(id)) {
+                            seenIds.set(id, true);
+                            var name:String = Reflect.hasField(slotItem, "sName") ? Std.string(Reflect.field(slotItem, "sName")) : "";
+                            var es:String = Reflect.hasField(slotItem, "sES") ? Std.string(Reflect.field(slotItem, "sES")) : slot;
+                            var st:String = Reflect.hasField(slotItem, "sType") ? Std.string(Reflect.field(slotItem, "sType")) : "";
+                            _gearSnapshot.push({
+                                id: id,
+                                name: name,
+                                sES: es,
+                                sType: st
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        ApiLogger.info("Inventory", "Gear snapshot stored (" + _gearSnapshot.length + " equipped items).");
+        return _gearSnapshot.copy();
+    }
+
+    /**
+     * Returns true if all items in the captured gear snapshot are currently equipped.
+     */
+    public function isGearRestored():Bool {
+        if (_gearSnapshot == null || _gearSnapshot.length == 0) return true;
+        for (it in _gearSnapshot) {
+            if (it != null && !isEquipped(it.id)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Helper for loops and state machines:
+     * If all snapshot gear is equipped, returns true.
+     * If gear is not restored and restore process is idle, starts restoreGear() and returns false.
+     */
+    public function ensureRestored():Bool {
+        if (isGearRestored()) return true;
+        if (!isRestoringGear) {
+            restoreGear();
+        }
+        return false;
+    }
+
+    /**
+     * Returns the active gear snapshot array.
+     */
+    public function getGearSnapshot():Array<{ id:Int, name:String, sES:String, sType:String }> {
+        return (_gearSnapshot != null) ? _gearSnapshot.copy() : [];
+    }
+
+    /**
+     * Checks whether an in-memory gear snapshot is currently saved.
+     */
+    public inline function hasGearSnapshot():Bool {
+        return _gearSnapshot != null && _gearSnapshot.length > 0;
+    }
+
+    /**
+     * Clears the current gear snapshot and cancels any active restoration.
+     */
+    public function clearGearSnapshot():Void {
+        _gearSnapshot = null;
+        cancelRestoreGear();
+    }
+
+    /**
+     * Cancels an ongoing gear restoration queue.
+     */
+    public function cancelRestoreGear():Void {
+        _restoreQueue = [];
+        isRestoringGear = false;
+        _restoreCallback = null;
+    }
+
+    /**
+     * Restores all items captured in the gear snapshot by equipping any pieces that are not currently equipped.
+     * Re-equips sequentially with safe delay spacing to prevent packet drops.
+     */
+    public function restoreGear(?onComplete:Void->Void):Void {
+        if (_gearSnapshot == null || _gearSnapshot.length == 0) {
+            ApiLogger.warn("Inventory", "restoreGear: No gear snapshot has been stored.");
+            if (onComplete != null) onComplete();
+            return;
+        }
+
+        var toRestore:Array<{ id:Int, name:String, sES:String, sType:String }> = [];
+        for (it in _gearSnapshot) {
+            if (it != null && !isEquipped(it.id)) {
+                toRestore.push(it);
+            }
+        }
+
+        if (toRestore.length == 0) {
+            ApiLogger.info("Inventory", "All items in gear snapshot are already equipped.");
+            if (onComplete != null) onComplete();
+            return;
+        }
+
+        cancelRestoreGear();
+        _restoreQueue = toRestore;
+        _restoreCallback = onComplete;
+        isRestoringGear = true;
+
+        ApiLogger.info("Inventory", "Restoring " + _restoreQueue.length + " gear items...");
+        _processRestoreStep();
+    }
+
+    private function _processRestoreStep():Void {
+        if (!isRestoringGear) return;
+        if (_restoreQueue.length == 0) {
+            isRestoringGear = false;
+            ApiLogger.info("Inventory", "Gear restore completed.");
+            var cb = _restoreCallback;
+            _restoreCallback = null;
+            if (cb != null) cb();
+            return;
+        }
+
+        var next = _restoreQueue.shift();
+        if (next == null) {
+            _processRestoreStep();
+            return;
+        }
+
+        if (isEquipped(next.id)) {
+            _processRestoreStep();
+            return;
+        }
+
+        var itemObj = _findItem(Std.string(next.id));
+        if (itemObj == null) {
+            ApiLogger.warn("Inventory", "restoreGear: Item '" + next.name + "' (ID: " + next.id + ") not found in inventory.");
+            _processRestoreStep();
+            return;
+        }
+
+        ApiLogger.info("Inventory", "Equipping restored item: " + next.name + " (" + next.sES + ")");
+        equip(next.id).then(function(_) {
+            var delayTimer = new Timer(350, 1);
+            delayTimer.addEventListener(TimerEvent.TIMER, function(_) {
+                delayTimer.stop();
+                _processRestoreStep();
+            });
+            delayTimer.start();
+        });
+    }
+
     public var isBanking:Bool = false;
     private var _bankQueue:Array<String> = [];
     private var _bankTimer:Timer = null;

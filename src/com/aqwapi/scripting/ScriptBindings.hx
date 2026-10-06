@@ -740,6 +740,37 @@ class ScriptBindings {
             return Api.inventory != null ? Api.inventory.isEquipped(itemName) : false;
         });
 
+        // Gear Snapshot & Restoration
+        bind("storeGear", function(?items:Dynamic):Array<Dynamic> {
+            return Api.storeGear(items);
+        });
+        bind("restoreGear", function(?onComplete:Dynamic):Void {
+            var cb:Void->Void = null;
+            if (Reflect.isFunction(onComplete)) cb = cast onComplete;
+            Api.restoreGear(cb);
+        });
+        bind("isGearRestored", function():Bool {
+            return Api.isGearRestored();
+        });
+        bind("ensureRestored", function():Bool {
+            return Api.ensureRestored();
+        });
+        bind("ensureRestoreGear", function():Bool {
+            return Api.ensureRestoreGear();
+        });
+        bind("hasGearSnapshot", function():Bool {
+            return Api.hasGearSnapshot();
+        });
+        bind("getGearSnapshot", function():Array<Dynamic> {
+            return Api.getGearSnapshot();
+        });
+        bind("clearGearSnapshot", function():Void {
+            Api.clearGearSnapshot();
+        });
+        bind("cancelRestoreGear", function():Void {
+            Api.cancelRestoreGear();
+        });
+
         // Enhancement operations
         bind("enhanceEquipped", function(?type:Dynamic, ?cSpecial:Dynamic, ?hSpecial:Dynamic, ?wSpecial:Dynamic, ?onComplete:Dynamic):Void {
             Api.enhanceEquipped(type, cSpecial, hSpecial, wSpecial, onComplete);

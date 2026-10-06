@@ -228,6 +228,42 @@ class Api {
         return (monster != null) ? monster.getBestMonsterTargetInCell(cell, nameOrId) : null;
     }
 
+    public static inline function storeGear(?items:Dynamic):Array<Dynamic> {
+        return (inventory != null) ? cast inventory.storeGear(items) : [];
+    }
+
+    public static inline function restoreGear(?onComplete:Void->Void):Void {
+        if (inventory != null) inventory.restoreGear(onComplete);
+    }
+
+    public static inline function isGearRestored():Bool {
+        return (inventory != null) ? inventory.isGearRestored() : true;
+    }
+
+    public static inline function ensureRestored():Bool {
+        return (inventory != null) ? inventory.ensureRestored() : true;
+    }
+
+    public static inline function ensureRestoreGear():Bool {
+        return (inventory != null) ? inventory.ensureRestored() : true;
+    }
+
+    public static inline function hasGearSnapshot():Bool {
+        return (inventory != null) ? inventory.hasGearSnapshot() : false;
+    }
+
+    public static inline function getGearSnapshot():Array<Dynamic> {
+        return (inventory != null) ? cast inventory.getGearSnapshot() : [];
+    }
+
+    public static inline function clearGearSnapshot():Void {
+        if (inventory != null) inventory.clearGearSnapshot();
+    }
+
+    public static inline function cancelRestoreGear():Void {
+        if (inventory != null) inventory.cancelRestoreGear();
+    }
+
     public static var transport(default, null):TransportAdapter;
     public static var hscript(default, null):HScriptEngine;
 

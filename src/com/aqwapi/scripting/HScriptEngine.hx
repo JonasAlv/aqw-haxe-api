@@ -239,6 +239,7 @@ class HScriptEngine {
         }
         if (Api.inventory != null) {
             Api.inventory.clearBankQueue();
+            Api.inventory.cancelRestoreGear();
         }
         ScriptBindings.resetStoryData();
 
