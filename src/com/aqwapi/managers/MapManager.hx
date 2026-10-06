@@ -1,5 +1,7 @@
 package com.aqwapi.managers;
 
+import flash.utils.Timer;
+import flash.events.TimerEvent;
 import com.aqwapi.utils.ApiTimings;
 
 import com.aqwapi.Api;
@@ -8,11 +10,16 @@ import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiLogger;
 
 class MapManager {
+    private static var PAD_CLASS_REGEX:EReg = ~/Pad_\d+$/;
+
     private var _game:Game;
     private var _lastJoinTime:Float = 0;
     private var _lastJumpTime:Float = 0;
     private var _lastMapItemTime:Float = 0;
     private var _lastCombatCooldownLogTime:Float = 0;
+    private var _jumpCorrectionTimer:Timer = null;
+    private var _jumpCorrectionHandler:Dynamic = null;
+    private var _autoCorrectJump:Bool = true;
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -32,6 +39,39 @@ class MapManager {
                 engine.sleep(ms);
             }
         } catch (_:Dynamic) {}
+    }
+
+    private inline function _getClassName(obj:Dynamic):String {
+        if (obj == null) return "";
+        try {
+            return Std.string(untyped __global__["flash.utils.getQualifiedClassName"](obj));
+        } catch (_:Dynamic) {
+            return "";
+        }
+    }
+
+    private function _getMapMovieClip():Dynamic {
+        var g = _g();
+        if (g == null || g.world == null || g.world.map == null) return null;
+        var mapObj:Dynamic = g.world.map;
+        try {
+            if (mapObj.mc != null) return mapObj.mc;
+            if (mapObj.mC != null) return mapObj.mC;
+        } catch (_:Dynamic) {}
+        return mapObj;
+    }
+
+    public function stopJumpCorrection():Void {
+        if (_jumpCorrectionTimer != null) {
+            try {
+                _jumpCorrectionTimer.stop();
+                if (_jumpCorrectionHandler != null) {
+                    _jumpCorrectionTimer.removeEventListener(TimerEvent.TIMER, _jumpCorrectionHandler);
+                }
+            } catch (_:Dynamic) {}
+        }
+        _jumpCorrectionTimer = null;
+        _jumpCorrectionHandler = null;
     }
 
     public function isMap(mapName:String):Bool {
@@ -115,6 +155,7 @@ class MapManager {
     public function join(mapName:String, cell:String = null, pad:String = null, force:Bool = false):Void {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return;
+        stopJumpCorrection();
 
         if (mapName != null && StringTools.trim(mapName).toLowerCase() == "house") {
             joinHouse();
@@ -189,6 +230,7 @@ class MapManager {
     public function joinHouse(username:String = ""):Void {
         var g = _g();
         if (g == null || g.world == null) return;
+        stopJumpCorrection();
 
         // If in combat or combat recently ended (< 2000ms), drop combat and safely wait for server combat cooldown
         var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
@@ -259,26 +301,156 @@ class MapManager {
         }
     }
 
-    public function jump(cell:String, pad:String = null, force:Bool = false):Void {
+    public function jump(cell:String, pad:String = null, force:Bool = false, autoCorrect:Bool = true, clientOnly:Bool = false):Void {
         var g = _g();
         if (g == null || g.world == null) return;
+        stopJumpCorrection();
+
         var p:String = pad;
         if (p == null || p == "" || (cell != null && cell.toLowerCase() != "enter" && p == "Spawn")) {
             p = (cell != null && cell.toLowerCase() == "enter") ? "Spawn" : "Left";
         }
-        if (g.world.moveToCell != null) {
-            if (cell != null && (force || !isCell(cell))) {
-                var now = ApiTime.now();
-                if (!force && (now - _lastJumpTime < ApiTimings.CELL_JUMP_MS)) return;
-                _lastJumpTime = now;
-                _pauseScriptIfRunning(500);
+
+        var isSameCell = (cell != null && isCell(cell));
+        var isDifferentPad = (p != null && Api.player != null && Api.player.pad != null && Api.player.pad.toLowerCase() != p.toLowerCase());
+        var shouldJump = cell != null && (force || !isSameCell || isDifferentPad);
+
+        if (g.world.moveToCell != null && shouldJump) {
+            var now = ApiTime.now();
+            if (!force && !isSameCell && (now - _lastJumpTime < ApiTimings.CELL_JUMP_MS)) return;
+            _lastJumpTime = now;
+            _pauseScriptIfRunning(500);
+            try {
+                g.world.moveToCell(cell, p, clientOnly);
+            } catch (_:Dynamic) {
                 g.world.moveToCell(cell, p);
             }
         }
+
         if (_autoDeathSpawn && cell != null && cell != "" && cell.toLowerCase().indexOf("cut") == -1) {
             _lastSpawnCell = cell;
             Api.player.setSpawnPoint(cell, p);
         }
+
+        if (!_autoCorrectJump || !autoCorrect || cell == null || cell == "") {
+            return;
+        }
+
+        var world:Dynamic = g.world;
+        var mapName:String = (world.strMapName != null) ? Std.string(world.strMapName) : "";
+        var mc:Dynamic = _getMapMovieClip();
+        if (mc == null) return;
+
+        var targetCell:String = StringTools.trim(cell);
+        var targetPad:String = StringTools.trim(p);
+
+        var timer = new Timer(50, 40);
+        _jumpCorrectionTimer = timer;
+
+        var handler:Dynamic = null;
+        handler = function(e:TimerEvent):Void {
+            if (_jumpCorrectionTimer != timer) {
+                try {
+                    timer.stop();
+                    timer.removeEventListener(TimerEvent.TIMER, handler);
+                } catch (_:Dynamic) {}
+                return;
+            }
+
+            var curG = _g();
+            if (curG == null || curG.world == null) {
+                stopJumpCorrection();
+                return;
+            }
+
+            var curWorld:Dynamic = curG.world;
+            var curMapName:String = (curWorld.strMapName != null) ? Std.string(curWorld.strMapName) : "";
+            var curMc:Dynamic = _getMapMovieClip();
+
+            if (curWorld != world || curMapName != mapName || curMc != mc) {
+                stopJumpCorrection();
+                return;
+            }
+
+            var curLabel:String = (mc.currentLabel != null) ? Std.string(mc.currentLabel) : "";
+            var isPlaying:Bool = false;
+            try {
+                isPlaying = (mc.isPlaying == true);
+            } catch (_:Dynamic) {}
+
+            // Wait until the map timeline reaches the target frame and stops playing
+            if (curLabel.toLowerCase() != targetCell.toLowerCase() || isPlaying) {
+                if (timer.currentCount >= timer.repeatCount) {
+                    stopJumpCorrection();
+                }
+                return;
+            }
+
+            var validPads = getValidCellPads();
+            if (validPads.length == 0) {
+                validPads = getCellPads();
+            }
+            if (validPads.length == 0) {
+                if (timer.currentCount >= timer.repeatCount) {
+                    stopJumpCorrection();
+                }
+                return;
+            }
+
+            // Check if requested target pad exists in valid pads (case-insensitive)
+            var foundValid:Bool = false;
+            for (vp in validPads) {
+                if (vp.toLowerCase() == targetPad.toLowerCase()) {
+                    foundValid = true;
+                    break;
+                }
+            }
+
+            if (foundValid) {
+                // Requested pad is valid, no correction needed
+                stopJumpCorrection();
+                return;
+            }
+
+            // Select best fallback pad
+            var selectedPad:String = "";
+            for (vp in validPads) {
+                if (vp.toLowerCase() == "left") {
+                    selectedPad = vp;
+                    break;
+                }
+            }
+            if (selectedPad == "") {
+                for (vp in validPads) {
+                    if (vp.toLowerCase() == "spawn") {
+                        selectedPad = vp;
+                        break;
+                    }
+                }
+            }
+            if (selectedPad == "") {
+                selectedPad = validPads[0];
+            }
+
+            stopJumpCorrection();
+
+            if (selectedPad != "" && selectedPad.toLowerCase() != targetPad.toLowerCase()) {
+                ApiLogger.debug("Map", "AutoCorrecting jump pad in " + targetCell + ": '" + targetPad + "' -> '" + selectedPad + "' (valid: " + validPads.join(", ") + ")");
+                try {
+                    curWorld.moveToCell(targetCell, selectedPad, clientOnly);
+                } catch (_:Dynamic) {
+                    curWorld.moveToCell(targetCell, selectedPad);
+                }
+                if (_autoDeathSpawn && targetCell.toLowerCase().indexOf("cut") == -1) {
+                    _lastSpawnCell = targetCell;
+                    Api.player.setSpawnPoint(targetCell, selectedPad);
+                }
+            }
+        };
+
+        _jumpCorrectionHandler = handler;
+        timer.addEventListener(TimerEvent.TIMER, handler);
+        timer.start();
     }
 
     public function reload(pad:String = null):Void {
@@ -472,6 +644,49 @@ class MapManager {
     public function get_skipCutscenes():Bool { return _skipCutscenes; }
     public function set_skipCutscenes(v:Bool):Bool { _skipCutscenes = v; if (v) checkSkipCutscenes(); return v; }
 
+    public var autoCorrectJump(get, set):Bool;
+    @:getter(autoCorrectJump)
+    public function get_autoCorrectJump_prop():Bool { return _autoCorrectJump; }
+    @:setter(autoCorrectJump)
+    public function set_autoCorrectJump_prop(v:Bool):Void { _autoCorrectJump = v; }
+    public function get_autoCorrectJump():Bool { return _autoCorrectJump; }
+    public function set_autoCorrectJump(v:Bool):Bool { _autoCorrectJump = v; return v; }
+
+    public function getValidCellPads():Array<String> {
+        var pads:Array<String> = [];
+        var mc:Dynamic = _getMapMovieClip();
+        if (mc == null) return pads;
+
+        try {
+            if (mc.numChildren == null) return pads;
+            var count:Int = Std.int(mc.numChildren);
+            for (i in 0...count) {
+                var child:Dynamic = mc.getChildAt(i);
+                if (child == null || child.name == null) continue;
+                var childName:String = Std.string(child.name);
+                if (childName == "") continue;
+
+                var className = _getClassName(child);
+                if (!PAD_CLASS_REGEX.match(className)) continue;
+
+                var isNamedProperty:Bool = false;
+                try {
+                    isNamedProperty = (untyped mc[childName] == child);
+                } catch (_:Dynamic) {
+                    try {
+                        isNamedProperty = (Reflect.field(mc, childName) == child);
+                    } catch (_:Dynamic) {}
+                }
+                if (!isNamedProperty) continue;
+
+                if (pads.indexOf(childName) == -1) {
+                    pads.push(childName);
+                }
+            }
+        } catch (e:Dynamic) {}
+        return pads;
+    }
+
     public function getMapCells():Array<String> {
         var cells:Array<String> = [];
         var g = _g();
@@ -494,6 +709,9 @@ class MapManager {
     }
 
     public function getCellPads():Array<String> {
+        var valid = getValidCellPads();
+        if (valid.length > 0) return valid;
+
         var pads:Array<String> = [];
         var g = _g();
         if (g != null && g.world != null && g.world.map != null) {

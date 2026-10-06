@@ -107,8 +107,27 @@ class ScriptBindings {
         bind("isHouse", function():Bool {
             return Api.map != null ? Api.map.isHouse() : false;
         });
-        bind("jump", function(cell:String, pad:String = null):Void {
-            if (Api.map != null) Api.map.jump(cell, pad);
+        bind("jump", function(cell:String, pad:String = null, autoCorrect:Bool = true):Void {
+            if (Api.map != null) Api.map.jump(cell, pad, false, autoCorrect);
+        });
+        bind("jumpCorrect", function(cell:String, pad:String = null):Void {
+            if (Api.map != null) Api.map.jump(cell, pad, true, true);
+        });
+        bind("autoCorrectJump", function(enable:Dynamic = null):Dynamic {
+            if (Api.map == null) return false;
+            if (enable != null) {
+                Api.map.autoCorrectJump = (enable == true);
+            }
+            return Api.map.autoCorrectJump;
+        });
+        bind("getValidCellPads", function():Array<String> {
+            return Api.map != null ? Api.map.getValidCellPads() : [];
+        });
+        bind("getCellPads", function():Array<String> {
+            return Api.map != null ? Api.map.getCellPads() : [];
+        });
+        bind("getMapCells", function():Array<String> {
+            return Api.map != null ? Api.map.getMapCells() : [];
         });
         bind("ensureMap", function(mapName:String, cell:String = null, pad:String = null):Bool {
             return Api.map != null ? Api.map.ensure(mapName, cell, pad) : false;

@@ -74,8 +74,16 @@ class Api {
     public static function get_isInCombat_prop():Bool { return player != null && player.isInCombat; }
     public static function get_isInCombat():Bool { return player != null && player.isInCombat; }
 
-    public static inline function jump(c:String, p:String = null):Void {
-        if (map != null) map.jump(c, p);
+    public static inline function jump(c:String, p:String = null, force:Bool = false, autoCorrect:Bool = true):Void {
+        if (map != null) map.jump(c, p, force, autoCorrect);
+    }
+
+    public static inline function getValidCellPads():Array<String> {
+        return map != null ? map.getValidCellPads() : [];
+    }
+
+    public static inline function getCellPads():Array<String> {
+        return map != null ? map.getCellPads() : [];
     }
 
     public static inline function join(m:String, c:String = null, p:String = null):Void {
