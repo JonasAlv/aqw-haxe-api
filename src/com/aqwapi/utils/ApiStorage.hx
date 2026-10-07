@@ -4,6 +4,92 @@ class ApiStorage {
     private static var _dataDir:Dynamic = null;
     private static var _provisioned:Bool = false;
 
+    public static var currentAccount(default, null):String = null;
+
+    public static function isAccountBoundFile(fileName:String):Bool {
+        if (fileName == null) return false;
+        var clean = cleanFileName(fileName).toLowerCase();
+        if (clean == "item_presets.json" || clean == "api_blacklist.json" || clean == "blacklist.json" || clean == "config.json") {
+            return true;
+        }
+        if (clean.indexOf("accounts/") == 0 || clean.indexOf("account/") == 0) {
+            return true;
+        }
+        return false;
+    }
+
+    public static function getAccountDirectory(accountName:String = null):Dynamic {
+        var acc = (accountName != null && accountName != "") ? StringTools.trim(accountName.toLowerCase()) : currentAccount;
+        if (acc == null || acc == "") return null;
+        var dir = getDataDirectory();
+        if (dir == null) return null;
+        try {
+            var accDir = dir.resolvePath("accounts/" + acc);
+            if (!accDir.exists) accDir.createDirectory();
+            return accDir;
+        } catch (_:Dynamic) {}
+        return null;
+    }
+
+    public static function setAccount(accountName:String):Void {
+        var acc = (accountName != null) ? StringTools.trim(accountName.toLowerCase()) : "";
+        if (acc == "" || acc == currentAccount) return;
+        currentAccount = acc;
+        ApiLogger.info("Storage", "Active account set to: " + acc);
+
+        var dir = getDataDirectory();
+        if (dir != null) {
+            try {
+                var accDir = dir.resolvePath("accounts/" + acc);
+                if (!accDir.exists) {
+                    accDir.createDirectory();
+                    ApiLogger.info("Storage", "Created account directory: accounts/" + acc);
+                }
+
+                // Auto-migrate / seed existing root presets and blacklist if not present in account folder
+                var filesToMigrate = ["item_presets.json", "api_blacklist.json", "config.json"];
+                for (fname in filesToMigrate) {
+                    try {
+                        var target = accDir.resolvePath(fname);
+                        if (!target.exists) {
+                            var rootFile = dir.resolvePath(fname);
+                            if (rootFile != null && rootFile.exists) {
+                                var content = readFileStream(rootFile);
+                                if (content != null && StringTools.trim(content).length > 0) {
+                                    writeFileStream(target, content);
+                                    ApiLogger.info("Storage", "Migrated root " + fname + " to accounts/" + acc + "/");
+                                }
+                            }
+                        }
+                    } catch (err:Dynamic) {
+                        ApiLogger.warn("Storage", "Error migrating " + fname + " for " + acc + ": " + err);
+                    }
+                }
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Storage", "Error initializing account directory for " + acc + ": " + e);
+            }
+        }
+
+        // Reload managers that rely on account-bound data
+        try {
+            if (com.aqwapi.managers.PresetManager.instance != null) {
+                com.aqwapi.managers.PresetManager.instance.loadPresets();
+            }
+        } catch (_:Dynamic) {}
+        try {
+            if (com.aqwapi.managers.BlacklistManager.instance != null) {
+                com.aqwapi.managers.BlacklistManager.instance.load();
+            }
+        } catch (_:Dynamic) {}
+        try {
+            com.aqwapi.utils.ApiConfig.reload();
+        } catch (_:Dynamic) {}
+
+        if (com.aqwapi.Api.dispatcher != null) {
+            com.aqwapi.Api.dispatcher.dispatchEvent(new com.aqwapi.events.ApiEvent(com.aqwapi.events.ApiEvent.ACCOUNT_CHANGED, acc));
+        }
+    }
+
     public static inline function cleanFileName(name:String):String {
         if (name == null) return "";
         var n = StringTools.replace(name, "\\", "/");
@@ -201,6 +287,10 @@ class ApiStorage {
         var dir = getDataDirectory();
         if (dir == null) return null;
         try {
+            if (isAccountBoundFile(clean) && currentAccount != null && currentAccount != "") {
+                var accFile = dir.resolvePath("accounts/" + currentAccount + "/" + clean);
+                if (accFile.exists) return accFile;
+            }
             return dir.resolvePath(clean);
         } catch (_:Dynamic) {}
         return null;
@@ -315,9 +405,22 @@ class ApiStorage {
         var clean = cleanFileName(fileName);
         if (clean == "") return null;
 
-        // 1. Try reading from user storage (applicationStorageDirectory)
         var dir = getDataDirectory();
         if (dir != null) {
+            // 1. If it's an account-bound file and an account is active, check accounts/<currentAccount>/<clean>
+            if (isAccountBoundFile(clean) && currentAccount != null && currentAccount != "") {
+                try {
+                    var accFile = dir.resolvePath("accounts/" + currentAccount + "/" + clean);
+                    var txt = readFileStream(accFile);
+                    if (txt != null && StringTools.trim(txt).length > 0) {
+                        return txt;
+                    }
+                } catch (e:Dynamic) {
+                    ApiLogger.warn("Storage", "Error reading account file " + clean + ": " + e);
+                }
+            }
+
+            // 2. Try reading from root user storage (applicationStorageDirectory)
             try {
                 var f = dir.resolvePath(clean);
                 var txt = readFileStream(f);
@@ -329,7 +432,7 @@ class ApiStorage {
             }
         }
 
-        // 2. Fallback to bundled app directory (File.applicationDirectory/assets/<clean> or File.applicationDirectory/<clean>)
+        // 3. Fallback to bundled app directory (File.applicationDirectory/assets/<clean> or File.applicationDirectory/<clean>)
         try {
             var FileClass:Dynamic = getFileClass();
             if (FileClass != null) {
@@ -364,7 +467,12 @@ class ApiStorage {
         var dir = getDataDirectory();
         if (dir != null) {
             try {
-                var target = dir.resolvePath(clean);
+                var target:Dynamic = null;
+                if (isAccountBoundFile(clean) && currentAccount != null && currentAccount != "") {
+                    target = dir.resolvePath("accounts/" + currentAccount + "/" + clean);
+                } else {
+                    target = dir.resolvePath(clean);
+                }
                 if (target != null) {
                     if (target.parent != null && !target.parent.exists) {
                         try { target.parent.createDirectory(); } catch (_:Dynamic) {}

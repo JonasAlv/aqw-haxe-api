@@ -347,6 +347,23 @@ class Api {
         if (transport != null) transport.start();
         if (drop != null) drop.start();
         if (aura != null) aura.startAutoClean(5000);
+
+        var curUser:String = (player != null) ? player.username : "";
+        if (curUser == "" && game != null && game.sfc != null && game.sfc.myUserName != null) {
+            curUser = Std.string(game.sfc.myUserName);
+        }
+        if (curUser != "") {
+            com.aqwapi.utils.ApiStorage.setAccount(curUser);
+        }
+    }
+
+    public static inline function setAccount(username:String):Void {
+        com.aqwapi.utils.ApiStorage.setAccount(username);
+    }
+
+    public static var currentAccount(get, never):String;
+    public static function get_currentAccount():String {
+        return com.aqwapi.utils.ApiStorage.currentAccount;
     }
 
     public static function notify(message:String):Void {

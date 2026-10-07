@@ -63,7 +63,7 @@ class CombatEngine {
     private static var _pausedByTargetAura:Bool = false;
     private static var _waitUntil:Dynamic = {};
     private static var _lastFallbackWarnTime:Float = 0;
-    
+    private static var _lastWarnedMismatchClass:String = "";
     private static var _temporaryIgnore:Map<String, Float> = new Map<String, Float>();
 
     private static function isTemporarilyIgnored(mmid:String):Bool {
@@ -822,9 +822,8 @@ class CombatEngine {
         }
         if (!isCurrentClass && className != SkillManager.getCurrentClassName()) {
             var equipped:String = SkillManager.getCurrentClassName();
-            var mismatchNow = ApiTime.now();
-            if (mismatchNow - _lastFallbackWarnTime > ApiTimings.WARN_THROTTLE_MS) {
-                _lastFallbackWarnTime = mismatchNow;
+            if (_lastWarnedMismatchClass != equipped) {
+                _lastWarnedMismatchClass = equipped;
                 ApiLogger.warn("Combat", "Class mismatch! smartClass is set to '" + className + "' but player is wearing '"
                     + equipped + "'. Using the equipped class's rotation instead.");
             }
@@ -832,6 +831,8 @@ class CombatEngine {
             isCurrentClass = true;
             className = equipped;
             activeModeConfig = SkillManager.resolveActiveModeConfig(world, avatar, target, "Current", skillMode);
+        } else {
+            _lastWarnedMismatchClass = "";
         }
         var modeConfig:Dynamic = (activeModeConfig != null) ? activeModeConfig : SkillManager.resolveActiveModeConfig(world, avatar, target, confClass, skillMode);
         if (modeConfig == null) {

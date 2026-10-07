@@ -73,6 +73,13 @@ class TransportAdapter {
 
         switch (cmd) {
             case "moveToArea":
+                var curUser:String = (Api.player != null) ? Api.player.username : "";
+                if (curUser == "" && _game != null && _game.sfc != null && _game.sfc.myUserName != null) {
+                    curUser = Std.string(_game.sfc.myUserName);
+                }
+                if (curUser != "") {
+                    com.aqwapi.utils.ApiStorage.setAccount(curUser);
+                }
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.ZONE_ENTERED, dataObj));
             case "getQuests", "getQuests2", "getQuest", "acceptQuest", "cc":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));
