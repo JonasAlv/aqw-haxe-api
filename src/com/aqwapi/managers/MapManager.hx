@@ -77,7 +77,11 @@ class MapManager {
     public function isMap(mapName:String):Bool {
         if (mapName == null || mapName == "") return false;
         var cur = (name != null) ? name.toLowerCase() : "";
-        return cur == StringTools.trim(mapName).toLowerCase();
+        var target = StringTools.trim(mapName).toLowerCase();
+        if (cur == target) return true;
+        var curBase = (cur.indexOf("-") != -1) ? cur.split("-")[0] : cur;
+        var targetBase = (target.indexOf("-") != -1) ? target.split("-")[0] : target;
+        return curBase == targetBase;
     }
 
     public function isCell(cellName:String):Bool {
@@ -261,6 +265,12 @@ class MapManager {
         if (un == "" && g.world.myAvatar != null && g.world.myAvatar.objData != null && g.world.myAvatar.objData.strUsername != null) {
             un = Std.string(g.world.myAvatar.objData.strUsername);
         }
+
+        var now = ApiTime.now();
+        if (now - _lastJoinTime < ApiTimings.MAP_JOIN_MS) return;
+        _lastJoinTime = now;
+        _pauseScriptIfRunning(2000);
+
         if (g.world.gotoHouse != null) {
             try { g.world.gotoHouse(un); return; } catch (e:Dynamic) {}
         }
@@ -755,6 +765,29 @@ class MapManager {
         if (g.sfc != null && g.sfc.activeRoomId != null) return Std.int(g.sfc.activeRoomId);
         if (g.world != null && g.world.curRoom != null) return Std.int(g.world.curRoom);
         return 1;
+    }
+
+    public var lastJoinTime(get, never):Float;
+    @:getter(lastJoinTime)
+    public inline function get_lastJoinTime_prop():Float return _lastJoinTime;
+    public inline function get_lastJoinTime():Float return _lastJoinTime;
+
+    public var timeSinceLastJoin(get, never):Float;
+    @:getter(timeSinceLastJoin)
+    public inline function get_timeSinceLastJoin_prop():Float return ApiTime.now() - _lastJoinTime;
+    public inline function get_timeSinceLastJoin():Float return ApiTime.now() - _lastJoinTime;
+
+    public inline function canJoin():Bool {
+        return (ApiTime.now() - _lastJoinTime >= ApiTimings.MAP_JOIN_MS);
+    }
+
+    public inline function remainingJoinCooldown():Float {
+        var diff = ApiTimings.MAP_JOIN_MS - (ApiTime.now() - _lastJoinTime);
+        return diff > 0 ? diff : 0;
+    }
+
+    public function recordJoinTime():Void {
+        _lastJoinTime = ApiTime.now();
     }
 
     public var usePrivateRoom(get, set):Bool;

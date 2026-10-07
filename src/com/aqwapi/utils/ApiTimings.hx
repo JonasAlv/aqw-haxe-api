@@ -40,8 +40,8 @@ class ApiTimings {
     /** Single sell request. */
     public static inline var SHOP_SELL_MS:Float = 1000;
 
-    /** Map join / travel request. */
-    public static inline var MAP_JOIN_MS:Float = 2000;
+    /** Map join / travel request. AQW server enforces a 5000ms cooldown on map transfers. */
+    public static inline var MAP_JOIN_MS:Float = 5000;
 
     /** Map item pickup request. */
     public static inline var MAP_ITEM_MS:Float = 2000;

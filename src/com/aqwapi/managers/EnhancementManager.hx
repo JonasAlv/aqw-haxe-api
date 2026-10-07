@@ -32,6 +32,10 @@ class EnhancementManager {
     private var _originMap:String = null;
     private var _originCell:String = null;
     private var _originPad:String = null;
+    private var _originIsHouse:Bool = false;
+    private var _returnJoinSent:Bool = false;
+    private var _returnWaitCount:Int = 0;
+    private var _mapJoinWaitCount:Int = 0;
     private var _cachedDb:Dynamic = null;
 
     public var isBusy(default, null):Bool = false;
@@ -394,6 +398,12 @@ class EnhancementManager {
         if (currentEqClass.toLowerCase() != targetClass.toLowerCase()) {
             if (Api.inventory != null && Api.inventory.hasItem(targetClass)) {
                 Api.inventory.equip(targetClass);
+                // Allow class equip to settle on server before reading equipped slots
+                var rec = getRecommendation(targetClass);
+                ApiTime.delay(800, function() {
+                    enhanceEquipped(rec.type, rec.cape, rec.helm, rec.weapon, cb);
+                });
+                return;
             }
         }
 
@@ -544,16 +554,21 @@ class EnhancementManager {
         _onCompleteCallback = onComplete;
         _stepTimer = 0;
         _shopWaitCount = 0;
+        _returnJoinSent = false;
+        _returnWaitCount = 0;
+        _mapJoinWaitCount = 0;
         isBusy = true;
         lastStatus = "Starting...";
 
-        // Remember origin map to return if forge was joined
-        if (Api.map != null && Api.map.name != null && Api.map.name.toLowerCase() != "forge") {
+        // Remember origin map or house to return if forge was joined
+        if (Api.map != null && !Api.map.isMap("forge")) {
+            _originIsHouse = Api.map.isHouse();
             _originMap = Api.map.name;
-            _originCell = (Api.player != null) ? Api.player.cell : "Enter";
-            _originPad = (Api.player != null) ? Api.player.pad : "Spawn";
+            _originCell = (Api.player != null && Api.player.cell != null) ? Api.player.cell : "Enter";
+            _originPad = (Api.player != null && Api.player.pad != null) ? Api.player.pad : "Spawn";
         } else {
             _originMap = null;
+            _originIsHouse = false;
         }
 
         ApiLogger.info("Enhancement", "Beginning enhancement queue (" + _queue.length + " items)...");
@@ -569,7 +584,69 @@ class EnhancementManager {
         var now = ApiTime.now();
         if (now < _stepTimer) return;
 
+        // When all enhancement tasks are done, handle returning to origin map/house if needed
         if (_queue.length == 0) {
+            var inForge = (Api.map != null && Api.map.isMap("forge"));
+
+            if (inForge && (_originMap != null || _originIsHouse)) {
+                var timeSinceJoin = (Api.map != null) ? Api.map.timeSinceLastJoin : 999999.0;
+                var minCooldown:Float = 5200; // AQW 5000ms server map transfer cooldown + 200ms latency buffer
+
+                if (!_returnJoinSent) {
+                    if (timeSinceJoin < minCooldown) {
+                        var remainingSec = Math.ceil((minCooldown - timeSinceJoin) / 1000.0);
+                        lastStatus = "Waiting map cooldown (" + remainingSec + "s)...";
+                        _stepTimer = now + 400;
+                        return;
+                    }
+
+                    var destName = _originIsHouse ? "House" : _originMap;
+                    lastStatus = "Returning to " + destName + "...";
+                    ApiLogger.info("Enhancement", "Returning to " + destName + "...");
+
+                    if (_originIsHouse) {
+                        if (Api.map != null) Api.map.joinHouse();
+                    } else {
+                        var oMap = _originMap;
+                        var oCell = (_originCell != null) ? _originCell : "Enter";
+                        var oPad = (_originPad != null) ? _originPad : "Spawn";
+                        if (Api.map != null) Api.map.join(oMap, oCell, oPad);
+                    }
+
+                    _returnJoinSent = true;
+                    _returnWaitCount = 0;
+                    _stepTimer = now + 1500;
+                    return;
+                }
+
+                // Return join packet was sent; wait for map arrival and full asset load
+                var isReturned = false;
+                if (_originIsHouse) {
+                    isReturned = (Api.map != null && Api.map.isHouse());
+                } else {
+                    isReturned = (Api.map != null && Api.map.isMap(_originMap));
+                }
+
+                if (isReturned && Api.map != null && Api.map.isLoaded) {
+                    ApiLogger.info("Enhancement", "Returned to origin location successfully.");
+                    finishQueue();
+                    return;
+                }
+
+                _returnWaitCount++;
+                if (_returnWaitCount > 50) { // 7.5s timeout
+                    var destName = _originIsHouse ? "House" : _originMap;
+                    ApiLogger.warn("Enhancement", "Timed out waiting for " + destName + " to load. Completing queue.");
+                    finishQueue();
+                    return;
+                }
+
+                var destName = _originIsHouse ? "House" : _originMap;
+                lastStatus = "Loading " + destName + "...";
+                _stepTimer = now + 300;
+                return;
+            }
+
             finishQueue();
             return;
         }
@@ -578,19 +655,44 @@ class EnhancementManager {
 
         // 1. Check Map requirement (Forge map for Forge shops)
         if (currentTask.targetMap != null && currentTask.targetMap != "") {
-            var curMap = (Api.map != null && Api.map.name != null) ? Api.map.name.toLowerCase() : "";
-            if (curMap != currentTask.targetMap.toLowerCase()) {
+            var isAtTarget = (Api.map != null && Api.map.isMap(currentTask.targetMap));
+
+            if (!isAtTarget) {
+                var timeSinceJoin = (Api.map != null) ? Api.map.timeSinceLastJoin : 999999.0;
+                var minCooldown:Float = 5200;
+                if (timeSinceJoin < minCooldown) {
+                    var remainingSec = Math.ceil((minCooldown - timeSinceJoin) / 1000.0);
+                    lastStatus = "Waiting map cooldown (" + remainingSec + "s)...";
+                    _stepTimer = now + 400;
+                    return;
+                }
+
                 lastStatus = "Joining " + currentTask.targetMap + "...";
-                if (Api.map != null) Api.map.join(currentTask.targetMap + "-100000", "Enter", "Spawn");
+                if (Api.map != null) {
+                    Api.map.join(currentTask.targetMap + "-100000", "Enter", "Spawn");
+                }
+                _mapJoinWaitCount = 0;
                 _stepTimer = now + 1500;
                 return;
+            }
+
+            // In target map, wait until map is loaded
+            if (Api.map == null || !Api.map.isLoaded) {
+                _mapJoinWaitCount++;
+                if (_mapJoinWaitCount > 50) { // 7.5s timeout
+                    ApiLogger.warn("Enhancement", "Map " + currentTask.targetMap + " loading timed out. Proceeding.");
+                } else {
+                    lastStatus = "Waiting for " + currentTask.targetMap + " to load...";
+                    _stepTimer = now + 300;
+                    return;
+                }
             }
         }
 
         // 2. Check Shop loaded
         if (!Api.shop.isShopLoaded || Api.shop.loadedShopId != currentTask.shopId) {
             lastStatus = "Loading shop " + currentTask.shopId + "...";
-            if (_shopWaitCount == 0 || _shopWaitCount % 12 == 0) {
+            if (_shopWaitCount == 0 || _shopWaitCount % 10 == 0) {
                 Api.shop.loadShop(currentTask.shopId);
             }
             _shopWaitCount++;
@@ -674,22 +776,18 @@ class EnhancementManager {
         }
 
         _queue.shift();
-        _stepTimer = now + 700; // 700ms cooldown between item enhancements
+        _stepTimer = now + 800; // 800ms safe cooldown between item enhancements
     }
 
     private function finishQueue():Void {
         isBusy = false;
         _timer.stop();
         lastStatus = "Done";
-
-        // Return to origin map if we moved away to forge
-        if (_originMap != null && Api.map != null && Api.map.name != null && Api.map.name.toLowerCase() == "forge") {
-            var oMap = _originMap;
-            var oCell = (_originCell != null) ? _originCell : "Enter";
-            var oPad = (_originPad != null) ? _originPad : "Spawn";
-            _originMap = null;
-            Api.map.join(oMap, oCell, oPad);
-        }
+        _originMap = null;
+        _originIsHouse = false;
+        _returnJoinSent = false;
+        _returnWaitCount = 0;
+        _mapJoinWaitCount = 0;
 
         ApiLogger.info("Enhancement", "Enhancement queue completed successfully!");
         if (_onCompleteCallback != null) {
@@ -697,6 +795,21 @@ class EnhancementManager {
             _onCompleteCallback = null;
             try { cb(); } catch (_:Dynamic) {}
         }
+    }
+
+    public function cancel():Void {
+        if (!isBusy) return;
+        isBusy = false;
+        _timer.stop();
+        _queue = [];
+        _originMap = null;
+        _originIsHouse = false;
+        _returnJoinSent = false;
+        _returnWaitCount = 0;
+        _mapJoinWaitCount = 0;
+        _onCompleteCallback = null;
+        lastStatus = "Cancelled";
+        ApiLogger.info("Enhancement", "Enhancement queue cancelled.");
     }
 
     private function getLoadedShopItems():Array<Dynamic> {
