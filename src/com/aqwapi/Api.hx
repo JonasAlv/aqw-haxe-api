@@ -26,6 +26,7 @@ class Api {
     public static var presets(default, null):PresetManager = PresetManager.instance;
     public static var blacklist(default, null):BlacklistManager = BlacklistManager.instance;
     public static var script(default, null):com.aqwapi.modules.ScriptManager = com.aqwapi.modules.ScriptManager.SINGLETON;
+    public static var visual(default, null):VisualManager = new VisualManager(null);
 
     // Plural aliases
     public static var quests(get, never):QuestManager;
@@ -52,6 +53,54 @@ class Api {
     @:getter(enhancements)
     public static function get_enhancements_prop():EnhancementManager { return enhancement; }
     public static function get_enhancements():EnhancementManager { return enhancement; }
+
+    public static var lagKiller(get, set):Bool;
+    @:getter(lagKiller)
+    public static function get_lagKiller_prop():Bool { return visual != null ? visual.lagKiller : false; }
+    public static function get_lagKiller():Bool { return visual != null ? visual.lagKiller : false; }
+    @:setter(lagKiller)
+    public static function set_lagKiller_prop(v:Bool):Void { if (visual != null) visual.lagKiller = v; }
+    public static function set_lagKiller(v:Bool):Bool { if (visual != null) visual.lagKiller = v; return v; }
+
+    public static var hidePlayers(get, set):Bool;
+    @:getter(hidePlayers)
+    public static function get_hidePlayers_prop():Bool { return visual != null ? visual.hidePlayers : false; }
+    public static function get_hidePlayers():Bool { return visual != null ? visual.hidePlayers : false; }
+    @:setter(hidePlayers)
+    public static function set_hidePlayers_prop(v:Bool):Void { if (visual != null) visual.hidePlayers = v; }
+    public static function set_hidePlayers(v:Bool):Bool { if (visual != null) visual.hidePlayers = v; return v; }
+
+    public static var disableSkillAnims(get, set):Bool;
+    @:getter(disableSkillAnims)
+    public static function get_disableSkillAnims_prop():Bool { return visual != null ? visual.disableSkillAnims : false; }
+    public static function get_disableSkillAnims():Bool { return visual != null ? visual.disableSkillAnims : false; }
+    @:setter(disableSkillAnims)
+    public static function set_disableSkillAnims_prop(v:Bool):Void { if (visual != null) visual.disableSkillAnims = v; }
+    public static function set_disableSkillAnims(v:Bool):Bool { if (visual != null) visual.disableSkillAnims = v; return v; }
+
+    public static var disableMonsterAnims(get, set):Bool;
+    @:getter(disableMonsterAnims)
+    public static function get_disableMonsterAnims_prop():Bool { return visual != null ? visual.disableMonsterAnims : false; }
+    public static function get_disableMonsterAnims():Bool { return visual != null ? visual.disableMonsterAnims : false; }
+    @:setter(disableMonsterAnims)
+    public static function set_disableMonsterAnims_prop(v:Bool):Void { if (visual != null) visual.disableMonsterAnims = v; }
+    public static function set_disableMonsterAnims(v:Bool):Bool { if (visual != null) visual.disableMonsterAnims = v; return v; }
+
+    public static var cleanArena(get, set):Bool;
+    @:getter(cleanArena)
+    public static function get_cleanArena_prop():Bool { return visual != null ? visual.cleanArena : false; }
+    public static function get_cleanArena():Bool { return visual != null ? visual.cleanArena : false; }
+    @:setter(cleanArena)
+    public static function set_cleanArena_prop(v:Bool):Void { if (visual != null) visual.cleanArena = v; }
+    public static function set_cleanArena(v:Bool):Bool { if (visual != null) visual.cleanArena = v; return v; }
+
+    public static inline function toggleLagKiller():Bool {
+        if (visual != null) {
+            visual.lagKiller = !visual.lagKiller;
+            return visual.lagKiller;
+        }
+        return false;
+    }
 
     // Direct script helpers and forwarders on bot / api
     public static var cell(get, never):String;
@@ -343,6 +392,13 @@ class Api {
         monster = new MonsterManager(game);
         enhancement = new EnhancementManager(game);
         hscript = HScriptEngine.SINGLETON;
+
+        if (visual != null) {
+            visual.setGame(game);
+        } else {
+            visual = new VisualManager(game);
+        }
+        visual.apply();
 
         if (transport != null) transport.start();
         if (drop != null) drop.start();

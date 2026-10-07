@@ -23,6 +23,7 @@ class ScriptInterp extends Interp {
             case "enhancement", "enhancements": return Api.enhancement;
             case "skills": return Api.skills;
             case "aura", "auras": return Api.aura;
+            case "visual": return Api.visual;
             case "blacklist": return Api.blacklist;
             case "script": return Api.script;
             case "events": return Api.dispatcher;
@@ -109,6 +110,20 @@ class ScriptInterp extends Interp {
                             if (Api.drop != null) {
                                 if (id == "acceptAllDrops") Api.drop.acceptAllDrops(v == true);
                                 else Api.drop.acceptAcDrops(v == true);
+                            }
+                            return v;
+                        }
+                        if (id == "lagKiller" || id == "hidePlayers" || id == "disableSkillAnims" || id == "disableMonsterAnims" || id == "cleanArena" || id == "hideMonsters") {
+                            var v:Dynamic = expr(e2);
+                            if (Api.visual != null) {
+                                switch (id) {
+                                    case "lagKiller": Api.visual.lagKiller = (v == true);
+                                    case "hidePlayers": Api.visual.hidePlayers = (v == true);
+                                    case "disableSkillAnims": Api.visual.disableSkillAnims = (v == true);
+                                    case "disableMonsterAnims": Api.visual.disableMonsterAnims = (v == true);
+                                    case "cleanArena": Api.visual.cleanArena = (v == true);
+                                    case "hideMonsters": Api.visual.hideMonsters = (v == true);
+                                }
                             }
                             return v;
                         }

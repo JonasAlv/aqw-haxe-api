@@ -74,6 +74,7 @@ class ScriptBindings {
         registerShopAndBankShortcuts();
         registerPlayerStatusShortcuts();
         registerLoggingAndSystem();
+        registerVisualShortcuts();
     }
 
     public static function registerAll(interp:ScriptInterp):Void {
@@ -1199,7 +1200,73 @@ class ScriptBindings {
     }
 
     // -------------------------------------------------------------------------
-    // 8. Standard Libraries & Helpers
+    // 8. Visual, Rendering & Lag Killer Primitives
+    // -------------------------------------------------------------------------
+
+    private static function registerVisualShortcuts():Void {
+        bind("lagKiller", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.lagKiller = (enabled == true);
+            }
+            return Api.visual.lagKiller;
+        });
+        bind("toggleLagKiller", function():Bool {
+            return Api.toggleLagKiller();
+        });
+        bind("hidePlayers", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.hidePlayers = (enabled == true);
+            }
+            return Api.visual.hidePlayers;
+        });
+        bind("disableSkillAnims", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.disableSkillAnims = (enabled == true);
+            }
+            return Api.visual.disableSkillAnims;
+        });
+        bind("disableMonsterAnims", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.disableMonsterAnims = (enabled == true);
+            }
+            return Api.visual.disableMonsterAnims;
+        });
+        bind("disableWeaponAnims", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.disableWeaponAnims = (enabled == true);
+            }
+            return Api.visual.disableWeaponAnims;
+        });
+        bind("disableGround", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.disableGround = (enabled == true);
+            }
+            return Api.visual.disableGround;
+        });
+        bind("hideMonsters", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.hideMonsters = (enabled == true);
+            }
+            return Api.visual.hideMonsters;
+        });
+        bind("cleanArena", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.cleanArena = (enabled == true);
+            }
+            return Api.visual.cleanArena;
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // 9. Standard Libraries & Helpers
     // -------------------------------------------------------------------------
 
     private static function registerStdLibraries(interp:ScriptInterp):Void {
