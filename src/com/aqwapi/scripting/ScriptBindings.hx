@@ -244,6 +244,46 @@ class ScriptBindings {
             }
             return Api.combat.hunt(monster, kills);
         });
+        bind("farmItem", function(monster:Dynamic, item:String, quantity:Int = 1, isTemp:Bool = false, ?onComplete:Dynamic):Bool {
+            return Api.combat != null ? Api.combat.farmItem(monster, item, quantity, isTemp, onComplete) : false;
+        });
+        bind("huntForItem", function(monster:Dynamic, item:String, quantity:Int = 1, isTemp:Bool = false, ?onComplete:Dynamic):Bool {
+            return Api.combat != null ? Api.combat.farmItem(monster, item, quantity, isTemp, onComplete) : false;
+        });
+        bind("provokeAll", function(enabled:Bool = true):Void {
+            if (Api.combat != null) Api.combat.provokeAll(enabled);
+        });
+        bind("cellFarm", function(?cellName:String):Void {
+            if (Api.combat != null) Api.combat.farmCell(cellName);
+        });
+        bind("farmCell", function(?cellName:String):Void {
+            if (Api.combat != null) Api.combat.farmCell(cellName);
+        });
+        bind("usePotion", function(name:String):Bool {
+            return Api.combat != null ? Api.combat.usePotion(name) : false;
+        });
+        bind("autoPotion", function(name:String, intervalMs:Float = 15000, hpThreshold:Float = 0):Void {
+            if (Api.combat != null) Api.combat.autoPotion(name, intervalMs, hpThreshold);
+        });
+        bind("stopAutoPotion", function():Void {
+            if (Api.combat != null) Api.combat.stopAutoPotion();
+        });
+        bind("enableTaunt", function(presetOrBoss:String, ?announceParty:Bool):Void {
+            if (Api.combat != null) Api.combat.enableTaunt(presetOrBoss, announceParty);
+        });
+        bind("disableTaunt", function():Void {
+            if (Api.combat != null) Api.combat.disableTaunt();
+        });
+        bind("tauntBoss", function(presetOrBoss:String, ?announceParty:Bool):Void {
+            if (Api.combat != null) Api.combat.enableTaunt(presetOrBoss, announceParty);
+        });
+        bind("taunt", function(?presetOrBoss:Dynamic, ?announceParty:Bool):Void {
+            if (presetOrBoss == null || Std.string(presetOrBoss) == "") {
+                if (Api.combat != null && Api.combat.taunt != null) Api.combat.taunt.fireTaunt();
+            } else {
+                if (Api.combat != null) Api.combat.enableTaunt(Std.string(presetOrBoss), announceParty);
+            }
+        });
         bind("attack", function(monster:Dynamic):Void {
             if (Api.combat != null) Api.combat.attack(Std.string(monster));
         });

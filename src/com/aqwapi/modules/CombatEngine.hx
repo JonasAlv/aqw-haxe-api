@@ -540,6 +540,14 @@ class CombatEngine {
         var avatar:Dynamic = world.myAvatar;
         if (avatar.dataLeaf != null && avatar.dataLeaf.intState == 0) return;
         _avatarBusyAnim = avatarInCombatAnim(world, avatar);
+        var nowTick:Float = ApiTime.now();
+        if (Api.combat != null) {
+            Api.combat.checkAutoProvoke(nowTick);
+            Api.combat.checkAutoPotion(nowTick);
+            if (Api.combat.taunt != null && Api.combat.taunt.enabled && avatar.target == null) {
+                Api.combat.taunt.checkTauntTick(nowTick);
+            }
+        }
         var target:Dynamic = avatar.target;
         noteTargetAction(world, target);
         if (target != null) {
@@ -779,6 +787,13 @@ class CombatEngine {
                 if (Api.monster != null) {
                     Api.monster.aggroMonsters((aggroTargets != null && aggroTargets.length > 0) ? aggroTargets : "*");
                 }
+            }
+        }
+
+        var nowCombat = ApiTime.now();
+        if (Api.combat != null && Api.combat.taunt != null && Api.combat.taunt.enabled) {
+            if (Api.combat.taunt.checkTauntTick(nowCombat)) {
+                return;
             }
         }
 

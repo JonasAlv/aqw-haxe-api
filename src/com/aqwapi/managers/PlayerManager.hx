@@ -48,6 +48,14 @@ class PlayerManager {
     public function get_maxHp_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intHPMax) : 0; }
     public function get_maxHp():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intHPMax) : 0; }
 
+    public var hpPercent(get, never):Float;
+    @:getter(hpPercent)
+    public function get_hpPercent_prop():Float { return get_hpPercent(); }
+    public function get_hpPercent():Float {
+        var m = maxHp;
+        return m > 0 ? (hp / m) * 100.0 : 0.0;
+    }
+
     public var mp(get, never):Int;
     @:getter(mp)
     public function get_mp_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intMP) : 0; }
@@ -124,6 +132,22 @@ class PlayerManager {
         var a = _avatar();
         if (a != null && a.target != null) return new EntityDTO(a.target);
         return null;
+    }
+
+    public var hasTarget(get, never):Bool;
+    @:getter(hasTarget)
+    public function get_hasTarget_prop():Bool { return get_hasTarget(); }
+    public function get_hasTarget():Bool {
+        var a = _avatar();
+        return (a != null && a.target != null);
+    }
+
+    public var targetName(get, never):String;
+    @:getter(targetName)
+    public function get_targetName_prop():String { return get_targetName(); }
+    public function get_targetName():String {
+        var t = target;
+        return (t != null) ? t.name : "";
     }
 
     public function getAura(auraName:String):Dynamic {

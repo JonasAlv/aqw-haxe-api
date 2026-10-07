@@ -8,13 +8,26 @@ import com.aqwapi.Game;
 
 class CombatManager {
     private var _game:Game;
+    public var taunt(default, null):com.aqwapi.combat.TauntCoordinator;
 
-    public function new(gameReference:Game) {
-        _game = gameReference;
-    }
+    // Cell Farm / Provoke All
+    public var autoProvoke(default, set):Bool = false;
+    private var _lastProvokeTime:Float = 0;
+
+    // Potion / Consumable Auto-Use
+    public var autoPotionEnabled:Bool = false;
+    public var autoPotionName:String = null;
+    public var autoPotionIntervalMs:Float = 15000;
+    public var autoPotionHpThreshold:Float = 0;
+    private var _lastPotionUseTime:Float = 0;
 
     private var _infiniteRange:Bool = true;
     public var lastCombatExitTime:Float = 0;
+
+    public function new(gameReference:Game) {
+        _game = gameReference;
+        taunt = new com.aqwapi.combat.TauntCoordinator(_game);
+    }
 
     public function applyInfiniteRange():Void {
         if (!_infiniteRange || _game == null || _game.world == null || _game.world.actions == null) return;
@@ -66,6 +79,112 @@ class CombatManager {
 
     public inline function pull(targets:Dynamic = null):Void {
         pullMonsters(targets);
+    }
+
+    public function set_autoProvoke(v:Bool):Bool {
+        autoProvoke = v;
+        CombatEngine.aggroAll = v;
+        CombatEngine.pullAll = v;
+        if (v) {
+            aggroMonsters("*");
+            magnetizeAll("*");
+        }
+        return autoProvoke;
+    }
+
+    public function provokeAll(enabled:Bool = true):Void {
+        set_autoProvoke(enabled);
+    }
+
+    public function farmCell(cellName:String = null):Void {
+        if (cellName != null && cellName != "" && Api.map != null) {
+            if (!Api.map.isCell(cellName)) {
+                Api.map.jump(cellName);
+            }
+        }
+        provokeAll(true);
+        CombatEngine.targetName = "*";
+        startSmart();
+    }
+
+    public function usePotion(potionName:String):Bool {
+        if (potionName == null || potionName == "") return false;
+        var now = com.aqwapi.utils.ApiTime.now();
+        if (now - _lastPotionUseTime < 1500) return false;
+
+        if (Api.inventory != null) {
+            if (!Api.inventory.hasItem(potionName)) {
+                ApiLogger.warn("Combat", "usePotion: Item '" + potionName + "' not found in inventory.");
+                return false;
+            }
+            Api.inventory.equipUsable(potionName);
+        }
+
+        var success = false;
+        try {
+            success = CombatEngine.tryFireSkillPublic(5);
+        } catch (_:Dynamic) {}
+
+        if (success) {
+            _lastPotionUseTime = now;
+            ApiLogger.info("Combat", "Used potion/scroll: " + potionName);
+        }
+        return success;
+    }
+
+    public function autoPotion(potionName:String, intervalMs:Float = 15000, hpThreshold:Float = 0):Void {
+        autoPotionEnabled = true;
+        autoPotionName = potionName;
+        autoPotionIntervalMs = intervalMs > 2000 ? intervalMs : 15000;
+        autoPotionHpThreshold = hpThreshold;
+        if (potionName != null && potionName != "" && Api.inventory != null) {
+            Api.inventory.equipUsable(potionName);
+        }
+        ApiLogger.info("Combat", "AutoPotion enabled for '" + potionName + "' (Interval: " + autoPotionIntervalMs + "ms, HP%: " + autoPotionHpThreshold + ")");
+    }
+
+    public function stopAutoPotion():Void {
+        autoPotionEnabled = false;
+        autoPotionName = null;
+        ApiLogger.info("Combat", "AutoPotion disabled.");
+    }
+
+    public function checkAutoPotion(now:Float):Bool {
+        if (!autoPotionEnabled || autoPotionName == null || autoPotionName == "") return false;
+        if (now - _lastPotionUseTime < 2500) return false;
+
+        var shouldFire = false;
+        if (autoPotionHpThreshold > 0) {
+            var curHp = (Api.player != null) ? Api.player.hpPercent : 100.0;
+            if (curHp <= autoPotionHpThreshold) {
+                shouldFire = true;
+            }
+        } else {
+            if (now - _lastPotionUseTime >= autoPotionIntervalMs) {
+                shouldFire = true;
+            }
+        }
+
+        if (shouldFire) {
+            return usePotion(autoPotionName);
+        }
+        return false;
+    }
+
+    public function checkAutoProvoke(now:Float):Void {
+        if (!autoProvoke) return;
+        if (now - _lastProvokeTime < 800) return;
+        _lastProvokeTime = now;
+        aggroMonsters("*");
+        magnetizeAll("*");
+    }
+
+    public inline function enableTaunt(presetOrBoss:String, ?announceParty:Bool):Void {
+        if (taunt != null) taunt.configurePreset(presetOrBoss, announceParty);
+    }
+
+    public inline function disableTaunt():Void {
+        if (taunt != null) taunt.disable();
     }
 
     public function attack(monsterName:String):Void {
@@ -434,6 +553,12 @@ class CombatManager {
         } else if (Reflect.hasField(opts, "magnetizeAll")) {
             CombatEngine.pullAll = (Reflect.field(opts, "magnetizeAll") == true);
         }
+
+        if (Reflect.hasField(opts, "temp")) {
+            _huntIsTemp = (Reflect.field(opts, "temp") == true);
+        } else if (Reflect.hasField(opts, "isTemp")) {
+            _huntIsTemp = (Reflect.field(opts, "isTemp") == true);
+        }
     }
 
     private var _huntMonster:String = null;
@@ -443,12 +568,14 @@ class CombatManager {
     private var _huntMonAliveMap:Map<String, Bool> = new Map();
     private var _activeHuntKey:String = null;
     private var _completedHunts:Map<String, Bool> = new Map();
+    private var _huntIsTemp:Bool = false;
 
     public function resetHunt():Void {
         _huntMonster = null;
         _huntTargetKills = 0;
         _huntCurrentKills = 0;
         _huntLastCell = null;
+        _huntIsTemp = false;
         _activeHuntKey = null;
         _completedHunts = new Map();
         _huntMonAliveMap = new Map();
@@ -592,7 +719,15 @@ class CombatManager {
         // 1b. If tracking an individual item drop
         if (!isKillCount && !isArrayItems && itemOrCount != null && Std.string(itemOrCount) != "") {
             var itemName:String = Std.string(itemOrCount);
-            if (Api.inventory != null && Api.inventory.hasItem(itemName, targetQuantity)) {
+            var hasEnough:Bool = false;
+            if (Api.inventory != null) {
+                if (_huntIsTemp) {
+                    hasEnough = Api.inventory.hasTempItem(itemName, targetQuantity);
+                } else {
+                    hasEnough = (Api.inventory.getQuantity(itemName) + Api.inventory.getBankQuantity(itemName)) >= targetQuantity;
+                }
+            }
+            if (hasEnough) {
                 if (CombatEngine.targetName != null && monsterName != null
                     && CombatEngine.targetName.toLowerCase() == monsterName.toLowerCase()) {
                     CombatEngine.targetName = null;
@@ -789,6 +924,63 @@ class CombatManager {
 
     public function kill(monsterName:String, itemOrCount:Dynamic = null, quantity:Dynamic = null, mmid:Dynamic = null):Bool {
         return hunt(monsterName, itemOrCount, quantity, mmid);
+    }
+
+    /**
+     * Universal farming method (Skua-style FarmItem / HuntForItem).
+     * Whitelists item drops, sweeps screen drops, monitors temp/inventory/bank counts,
+     * and hunts monsters until target quantity is reached.
+     */
+    public function farmItem(monster:Dynamic, item:String, quantity:Int = 1, isTemp:Bool = false, ?onComplete:Dynamic):Bool {
+        if (item == null || item == "") return true;
+
+        // 1. Ensure item is in drop whitelist so incoming drops are auto-accepted
+        if (Api.drop != null) {
+            var found = false;
+            if (Api.drop.targetDrops != null) {
+                for (d in Api.drop.targetDrops) {
+                    if (d != null && Std.string(d).toLowerCase() == item.toLowerCase()) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    Api.drop.targetDrops.push(item);
+                }
+            }
+            Api.drop.pickup(item);
+        }
+
+        // 2. Check current owned count across inventory / bank / temp
+        var curQty = 0;
+        if (Api.inventory != null) {
+            if (isTemp) {
+                curQty = Api.inventory.getTempQuantity(item);
+            } else {
+                curQty = Api.inventory.getQuantity(item) + Api.inventory.getBankQuantity(item);
+            }
+        }
+
+        if (curQty >= quantity) {
+            if (CombatEngine.targetName != null && monster != null
+                && CombatEngine.targetName.toLowerCase() == Std.string(monster).toLowerCase()) {
+                CombatEngine.targetName = null;
+            }
+            CombatEngine.lockedMMID = null;
+            stopCombat();
+            if (onComplete != null && Reflect.isFunction(onComplete)) {
+                try { onComplete(); } catch (_:Dynamic) {}
+            }
+            return true;
+        }
+
+        // 3. Delegate to hunt with temp option
+        _huntIsTemp = isTemp;
+        return hunt(monster, item, quantity, { temp: isTemp }, onComplete);
+    }
+
+    public inline function huntForItem(monster:Dynamic, item:String, quantity:Int = 1, isTemp:Bool = false, ?onComplete:Dynamic):Bool {
+        return farmItem(monster, item, quantity, isTemp, onComplete);
     }
 
     public function huntQuest(questId:Int, monsterName:String = null, ?callback:Dynamic):Bool {
