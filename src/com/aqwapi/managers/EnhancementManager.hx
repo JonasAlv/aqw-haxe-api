@@ -124,7 +124,9 @@ class EnhancementManager {
         return isForgeUnlocked(special);
     }
 
-    private function isAweSpecial(normalizedKey:String):Bool {
+    public function isAweSpecial(specialName:String):Bool {
+        if (specialName == null || specialName == "" || specialName == "None") return false;
+        var normalizedKey = normalizeKey(specialName);
         return normalizedKey == "spiral_carve" || normalizedKey == "awe_blast" ||
                normalizedKey == "health_vamp" || normalizedKey == "mana_vamp" ||
                normalizedKey == "powerword_die";
@@ -832,11 +834,43 @@ class EnhancementManager {
     // CHECKERS & CONVERTERS
     // ==========================================
 
+    public function getMaxAvailableLevel(slot:String, baseType:String, special:String):Int {
+        var playerLvl = (Api.player != null) ? Api.player.level : 100;
+
+        // 1. Blade of Awe enhancements max out at Level 90 in AQW
+        if (isAweSpecial(special)) {
+            var aweLevels = [90, 85, 80, 70, 60, 50, 40, 30, 20, 10];
+            for (lvl in aweLevels) {
+                if (playerLvl >= lvl) return lvl;
+            }
+            return 10;
+        }
+
+        // 2. Forge special traits (all fixed at level 100 in AQW Forge shops)
+        if (special != null && special != "" && special != "None") {
+            var sNorm = normalizeKey(special);
+            if (FORGE_QUESTS.exists(sNorm) || sNorm == "forge") {
+                return 100;
+            }
+        }
+
+        // 3. Normal base enhancements (tiers in shop: 50, 53, 56, 59, 62, 65, 68, 71, 74, 77, 80, 83, 86, 89, 92, 95, 98, 100)
+        if (playerLvl >= 50) {
+            var normalTiers = [100, 98, 95, 92, 89, 86, 83, 80, 77, 74, 71, 68, 65, 62, 59, 56, 53, 50];
+            for (t in normalTiers) {
+                if (playerLvl >= t) return t;
+            }
+        }
+
+        return playerLvl;
+    }
+
     public function isAlreadyEnhanced(item:ItemDTO, baseType:String, special:String):Bool {
         if (item == null) return false;
-        var playerLvl = (Api.player != null) ? Api.player.level : 100;
+        var slot = getItemSlot(item);
+        var maxLvl = getMaxAvailableLevel(slot, baseType, special);
         var itemLvl = item.enhLevel;
-        if (itemLvl < playerLvl) return false;
+        if (itemLvl < maxLvl) return false;
 
         var patternId = item.enhPatternId;
         var procId = item.procId;
