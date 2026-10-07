@@ -136,6 +136,19 @@ class ApiConfig {
         set(key, value);
     }
 
+    public static function has(key:String):Bool {
+        if (!_loaded) load();
+        return _cache.exists(key);
+    }
+
+    public static function delete(key:String):Void {
+        if (!_loaded) load();
+        if (_cache.exists(key)) {
+            _cache.remove(key);
+            save();
+        }
+    }
+
     public static function getInt(key:String, defaultValue:Int = 0):Int {
         var v = get(key, defaultValue);
         if (v == null) return defaultValue;
@@ -143,6 +156,18 @@ class ApiConfig {
     }
 
     public static function setInt(key:String, value:Int):Void {
+        set(key, value);
+    }
+
+    public static function getFloat(key:String, defaultValue:Float = 0.0):Float {
+        var v = get(key, defaultValue);
+        if (v == null) return defaultValue;
+        if (Std.isOfType(v, Float) || Std.isOfType(v, Int)) return cast v;
+        var f = Std.parseFloat(Std.string(v));
+        return Math.isNaN(f) ? defaultValue : f;
+    }
+
+    public static function setFloat(key:String, value:Float):Void {
         set(key, value);
     }
 }
