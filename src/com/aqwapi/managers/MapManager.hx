@@ -798,13 +798,40 @@ class MapManager {
         if (g == null) return;
         try {
             if (g.world != null && g.world.cHandle != null) {
-                try { g.world.cHandle.cancel(); } catch (e:Dynamic) {}
+                try {
+                    if (Reflect.hasField(g.world.cHandle, "cancel")) {
+                        g.world.cHandle.cancel();
+                    }
+                } catch (e:Dynamic) {}
             }
+
+            var cleared:Bool = false;
+
+            // Check game.mcExtSWF
             if (g.mcExtSWF != null && g.mcExtSWF.numChildren != null && untyped g.mcExtSWF.numChildren > 0) {
                 while (untyped g.mcExtSWF.numChildren > 0) {
-                    untyped g.mcExtSWF.removeChildAt(0);
+                    try { untyped g.mcExtSWF.removeChildAt(0); } catch (_:Dynamic) { break; }
                 }
-                if (g.showInterface != null) untyped g.showInterface();
+                cleared = true;
+            }
+
+            // Check game.world.mcExtSWF
+            if (g.world != null && g.world.mcExtSWF != null && g.world.mcExtSWF != g.mcExtSWF) {
+                if (g.world.mcExtSWF.numChildren != null && untyped g.world.mcExtSWF.numChildren > 0) {
+                    while (untyped g.world.mcExtSWF.numChildren > 0) {
+                        try { untyped g.world.mcExtSWF.removeChildAt(0); } catch (_:Dynamic) { break; }
+                    }
+                    cleared = true;
+                }
+            }
+
+            if (cleared) {
+                if (g.world != null && Reflect.hasField(g.world, "showInterface")) {
+                    try { g.world.showInterface(); } catch (_:Dynamic) {}
+                }
+                if (Reflect.hasField(g, "showInterface")) {
+                    try { untyped g.showInterface(); } catch (_:Dynamic) {}
+                }
             }
         } catch (e:Dynamic) {}
     }
@@ -815,14 +842,37 @@ class MapManager {
         var dismissed:Bool = false;
         try {
             if (g.world != null && g.world.cHandle != null) {
-                try { g.world.cHandle.cancel(); dismissed = true; } catch (e:Dynamic) {}
+                try {
+                    if (Reflect.hasField(g.world.cHandle, "cancel")) {
+                        g.world.cHandle.cancel();
+                    }
+                    dismissed = true;
+                } catch (e:Dynamic) {}
             }
+
             if (g.mcExtSWF != null && g.mcExtSWF.numChildren != null && untyped g.mcExtSWF.numChildren > 0) {
                 while (untyped g.mcExtSWF.numChildren > 0) {
-                    untyped g.mcExtSWF.removeChildAt(0);
+                    try { untyped g.mcExtSWF.removeChildAt(0); } catch (_:Dynamic) { break; }
                 }
-                if (g.showInterface != null) untyped g.showInterface();
                 dismissed = true;
+            }
+
+            if (g.world != null && g.world.mcExtSWF != null && g.world.mcExtSWF != g.mcExtSWF) {
+                if (g.world.mcExtSWF.numChildren != null && untyped g.world.mcExtSWF.numChildren > 0) {
+                    while (untyped g.world.mcExtSWF.numChildren > 0) {
+                        try { untyped g.world.mcExtSWF.removeChildAt(0); } catch (_:Dynamic) { break; }
+                    }
+                    dismissed = true;
+                }
+            }
+
+            if (dismissed) {
+                if (g.world != null && Reflect.hasField(g.world, "showInterface")) {
+                    try { g.world.showInterface(); } catch (_:Dynamic) {}
+                }
+                if (Reflect.hasField(g, "showInterface")) {
+                    try { untyped g.showInterface(); } catch (_:Dynamic) {}
+                }
             }
         } catch (e:Dynamic) {}
         return dismissed;
