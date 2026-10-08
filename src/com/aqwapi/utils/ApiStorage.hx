@@ -6,6 +6,28 @@ class ApiStorage {
 
     public static var currentAccount(default, null):String = null;
 
+    public static function getActiveAccount():String {
+        if (currentAccount != null && currentAccount != "") return currentAccount;
+        try {
+            var g:Dynamic = com.aqwapi.Api.game;
+            if (g != null && g.sfc != null && g.sfc.myUserName != null) {
+                var s:String = StringTools.trim(Std.string(g.sfc.myUserName).toLowerCase());
+                if (s != "" && s != "null" && s != "undefined") {
+                    setAccount(s);
+                    return s;
+                }
+            }
+            if (com.aqwapi.Api.player != null && com.aqwapi.Api.player.username != null) {
+                var s:String = StringTools.trim(com.aqwapi.Api.player.username.toLowerCase());
+                if (s != "" && s != "null" && s != "undefined") {
+                    setAccount(s);
+                    return s;
+                }
+            }
+        } catch (_:Dynamic) {}
+        return null;
+    }
+
     public static function isAccountBoundFile(fileName:String):Bool {
         if (fileName == null) return false;
         var clean = cleanFileName(fileName).toLowerCase();
@@ -19,7 +41,7 @@ class ApiStorage {
     }
 
     public static function getAccountDirectory(accountName:String = null):Dynamic {
-        var acc = (accountName != null && accountName != "") ? StringTools.trim(accountName.toLowerCase()) : currentAccount;
+        var acc = (accountName != null && accountName != "") ? StringTools.trim(accountName.toLowerCase()) : getActiveAccount();
         if (acc == null || acc == "") return null;
         var dir = getDataDirectory();
         if (dir == null) return null;
@@ -287,8 +309,9 @@ class ApiStorage {
         var dir = getDataDirectory();
         if (dir == null) return null;
         try {
-            if (isAccountBoundFile(clean) && currentAccount != null && currentAccount != "") {
-                var accFile = dir.resolvePath("accounts/" + currentAccount + "/" + clean);
+            var acc = getActiveAccount();
+            if (isAccountBoundFile(clean) && acc != null && acc != "") {
+                var accFile = dir.resolvePath("accounts/" + acc + "/" + clean);
                 if (accFile.exists) return accFile;
             }
             return dir.resolvePath(clean);
@@ -407,10 +430,11 @@ class ApiStorage {
 
         var dir = getDataDirectory();
         if (dir != null) {
-            // 1. If it's an account-bound file and an account is active, check accounts/<currentAccount>/<clean>
-            if (isAccountBoundFile(clean) && currentAccount != null && currentAccount != "") {
+            // 1. If it's an account-bound file and an account is active, check accounts/<acc>/<clean>
+            var acc = getActiveAccount();
+            if (isAccountBoundFile(clean) && acc != null && acc != "") {
                 try {
-                    var accFile = dir.resolvePath("accounts/" + currentAccount + "/" + clean);
+                    var accFile = dir.resolvePath("accounts/" + acc + "/" + clean);
                     var txt = readFileStream(accFile);
                     if (txt != null && StringTools.trim(txt).length > 0) {
                         return txt;
@@ -468,8 +492,9 @@ class ApiStorage {
         if (dir != null) {
             try {
                 var target:Dynamic = null;
-                if (isAccountBoundFile(clean) && currentAccount != null && currentAccount != "") {
-                    target = dir.resolvePath("accounts/" + currentAccount + "/" + clean);
+                var acc = getActiveAccount();
+                if (isAccountBoundFile(clean) && acc != null && acc != "") {
+                    target = dir.resolvePath("accounts/" + acc + "/" + clean);
                 } else {
                     target = dir.resolvePath(clean);
                 }
