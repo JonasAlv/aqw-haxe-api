@@ -883,7 +883,16 @@ class SkillManager {
                     // Skip class-level metadata scalars (autoattack / hasAutoAttack).
                     if (!isModeConfigObject(mObj)) continue;
                     if (mObj.mode != null && mObj.skillUseMode == null) mObj.skillUseMode = mObj.mode;
-                    if (mObj.timeout != null && mObj.skillTimeout == null) mObj.skillTimeout = mObj.timeout;
+                    if (mObj.timeout != null) {
+                        var rawTo = ApiUtils.parseInt(mObj.timeout, 0);
+                        var safeTo = (rawTo > 1500) ? rawTo : 0;
+                        mObj.timeout = safeTo;
+                        if (mObj.skillTimeout == null) mObj.skillTimeout = safeTo;
+                    }
+                    if (mObj.skillTimeout != null) {
+                        var rawSto = ApiUtils.parseInt(mObj.skillTimeout, 0);
+                        mObj.skillTimeout = (rawSto > 1500) ? rawSto : 0;
+                    }
                     if (mObj.resetComboOnTargetChange != null && mObj.resetOnTarget == null) mObj.resetOnTarget = mObj.resetComboOnTargetChange;
                     if (mObj.stopOnTargetAuras != null && mObj.stopTargetAuras == null) mObj.stopTargetAuras = mObj.stopOnTargetAuras;
 

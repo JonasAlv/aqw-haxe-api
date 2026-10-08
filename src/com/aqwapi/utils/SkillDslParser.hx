@@ -76,9 +76,9 @@ class SkillDslParser {
 
                 case "timeout", "skilltimeout":
                     var pTo:Null<Int> = Std.parseInt(val);
-                    // 0 (or an unparseable value) means "wait indefinitely", matching the
-                    // runtime gate in CombatEngine.runWaitForCooldown.
-                    currentData.skillTimeout = (pTo != null) ? pTo : 0;
+                    // 0 (or an unparseable value or legacy value <= 1500ms) means "wait indefinitely",
+                    // matching the runtime gate in CombatEngine.runWaitForCooldown.
+                    currentData.skillTimeout = (pTo != null && pTo > 1500) ? pTo : 0;
 
                 case "stopontargetauras", "stop_on_target_auras", "stopauras":
                     currentData.stopOnTargetAuras = val;
@@ -117,8 +117,13 @@ class SkillDslParser {
             if (bracketStart != -1 && bracketEnd > bracketStart) {
                 var sidStr:String = StringTools.trim(part.substring(0, bracketStart));
                 var rulesStr:String = StringTools.trim(part.substring(bracketStart + 1, bracketEnd));
-                var pSid:Null<Int> = Std.parseInt(sidStr);
-                var sid:Int = (pSid != null) ? pSid : 1;
+                var sid:Int = 1;
+                if (sidStr.toLowerCase() == "aa") {
+                    sid = 0;
+                } else {
+                    var pSid:Null<Int> = Std.parseInt(sidStr);
+                    sid = (pSid != null) ? pSid : 1;
+                }
 
                 var isOr:Bool = (rulesStr.indexOf("|") != -1);
                 var ruleSep:String = isOr ? "|" : "&";
@@ -150,8 +155,12 @@ class SkillDslParser {
                 }
                 skills.push(skillObj);
             } else {
-                var pPart:Null<Int> = Std.parseInt(part);
-                skills.push({ skillId: (pPart != null) ? pPart : 1 });
+                if (part.toLowerCase() == "aa") {
+                    skills.push({ skillId: 0 });
+                } else {
+                    var pPart:Null<Int> = Std.parseInt(part);
+                    skills.push({ skillId: (pPart != null) ? pPart : 1 });
+                }
             }
         }
 

@@ -62,6 +62,7 @@ class ApiConfig {
         if (Api.combat != null) {
             Api.combat.infiniteRange = getBool("api_infinite_range", false);
         }
+        CombatEngine.counterHandler = getBool("api_counter_handler", false);
         if (Api.map != null) {
             Api.map.autoDeathSpawn = getBool("api_death_spawn", false);
             Api.map.usePrivateRoom = getBool("api_private_rooms", true);

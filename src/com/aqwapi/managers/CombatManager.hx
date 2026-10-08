@@ -3,6 +3,7 @@ package com.aqwapi.managers;
 import com.aqwapi.modules.CombatEngine;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.ApiLogger;
+import com.aqwapi.utils.ApiConfig;
 import com.aqwapi.Api;
 import com.aqwapi.Game;
 
@@ -406,10 +407,15 @@ class CombatManager {
     @:setter(counterHandler)
     public function set_counterHandler_prop(v:Bool):Void { CombatEngine.counterHandler = v; }
     public function get_counterHandler():Bool { return CombatEngine.counterHandler; }
-    public function set_counterHandler(v:Bool):Bool { CombatEngine.counterHandler = v; return v; }
+    public function set_counterHandler(v:Bool):Bool {
+        CombatEngine.counterHandler = v;
+        ApiConfig.setBool("api_counter_handler", v);
+        return v;
+    }
 
     public function enableCounterHandler(enable:Bool = true):Void {
         CombatEngine.counterHandler = enable;
+        ApiConfig.setBool("api_counter_handler", enable);
     }
 
     public function pauseOnAuras(auras:Dynamic):Void {
