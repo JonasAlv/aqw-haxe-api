@@ -840,21 +840,17 @@ class MapManager {
 
             var cleared:Bool = false;
 
-            // Check game.mcExtSWF
-            if (g.mcExtSWF != null && g.mcExtSWF.numChildren != null && untyped g.mcExtSWF.numChildren > 0) {
-                while (untyped g.mcExtSWF.numChildren > 0) {
-                    try { untyped g.mcExtSWF.removeChildAt(0); } catch (_:Dynamic) { break; }
-                }
-                cleared = true;
-            }
-
-            // Check game.world.mcExtSWF
-            if (g.world != null && g.world.mcExtSWF != null && g.world.mcExtSWF != g.mcExtSWF) {
-                if (g.world.mcExtSWF.numChildren != null && untyped g.world.mcExtSWF.numChildren > 0) {
-                    while (untyped g.world.mcExtSWF.numChildren > 0) {
-                        try { untyped g.world.mcExtSWF.removeChildAt(0); } catch (_:Dynamic) { break; }
+            // Check game.world.mcExtSWF (fast-forward cutscenes without destroying game.mcExtSWF required by walk controller)
+            if (g.world != null && g.world.mcExtSWF != null) {
+                var wExt = (untyped g.world.mcExtSWF.numChildren > 0) ? untyped g.world.mcExtSWF.getChildAt(0) : null;
+                if (wExt != null && Reflect.hasField(wExt, "totalFrames")) {
+                    var total:Dynamic = Reflect.field(wExt, "totalFrames");
+                    if (total != null && total > 1) {
+                        try {
+                            wExt.gotoAndPlay(total - 2);
+                            cleared = true;
+                        } catch (_:Dynamic) {}
                     }
-                    cleared = true;
                 }
             }
 
