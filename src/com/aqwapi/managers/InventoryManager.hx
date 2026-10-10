@@ -567,6 +567,10 @@ class InventoryManager {
         var result:Array<String> = [];
         for (item in items) {
             if (item == null || item.sName == null) continue;
+            // New game client (Skua e127162): when inventory categories (InvCat) are loaded,
+            // classes live in inventory only and cannot be banked. Banking a class silently
+            // fails, so skip them rather than queueing a doomed request.
+            if (!canBank(item)) continue;
             var isEquipped:Bool = (item.bEquip == 1 || item.bEquip == "1" || item.bEquip == true);
             var isWorn:Bool = (item.bWear == 1 || item.bWear == "1" || item.bWear == true);
             var isTemp:Bool = (item.bTemp == 1 || item.bTemp == "1" || item.bTemp == true);
@@ -762,12 +766,18 @@ class InventoryManager {
             }
 
             if (bItem != null) {
-                ApiLogger.info("Bank", "Deposited " + nextItem);
-                if (_game.world.sendBankFromInvRequest != null) {
-                    _game.world.sendBankFromInvRequest(bItem);
-                } else if (_game.sfc != null) {
-                    var curRoom:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
-                    _game.sfc.sendXtMessage("zm", "bankFromInv", [bItem.ItemID, bItem.CharItemID], "str", curRoom);
+                if (!canBank(bItem)) {
+                    // New game client: classes live in inventory only and cannot be banked.
+                    // Skip rather than sending a doomed bankFromInv request.
+                    ApiLogger.debug("Bank", "Skipping unbankable item: " + nextItem);
+                } else {
+                    ApiLogger.info("Bank", "Deposited " + nextItem);
+                    if (_game.world.sendBankFromInvRequest != null) {
+                        _game.world.sendBankFromInvRequest(bItem);
+                    } else if (_game.sfc != null) {
+                        var curRoom:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
+                        _game.sfc.sendXtMessage("zm", "bankFromInv", [bItem.ItemID, bItem.CharItemID], "str", curRoom);
+                    }
                 }
             }
         });
@@ -1645,5 +1655,31 @@ class InventoryManager {
         if (Api.shop != null) {
             Api.shop.sellItem(itemNameOrId, quantity);
         }
+    }
+
+    /**
+     * Whether an item can be banked under the current game client.
+     *
+     * Skua e127162 ("new game client compatibility changes"): when the game loads inventory
+     * categories (InvCat), classes live in inventory only and cannot be banked. Banking a class
+     * silently fails, so callers must skip them instead of queueing a doomed request.
+     *
+     * Mirrors Skua's `CanBank(item) => item.Category != ItemCategory.Class || !HasCategories`.
+     */
+    public function canBank(item:Dynamic):Bool {
+        if (item == null) return true;
+        if (_game == null) return true;
+        try {
+            var hasCategories:Bool = false;
+            var domain:Dynamic = _game.loaderInfo;
+            if (domain != null && domain.applicationDomain != null && domain.applicationDomain.hasDefinition != null) {
+                hasCategories = domain.applicationDomain.hasDefinition("InvCat");
+            }
+            if (hasCategories) {
+                var sType:String = (item.sType != null) ? Std.string(item.sType).toLowerCase() : "";
+                if (sType == "class") return false;
+            }
+        } catch (_:Dynamic) {}
+        return true;
     }
 }

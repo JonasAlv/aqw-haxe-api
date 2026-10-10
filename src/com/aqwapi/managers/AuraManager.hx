@@ -47,6 +47,9 @@ class AuraManager {
                 }
                 if (auras == null && avatar.auras != null) auras = avatar.auras;
                 if (auras == null && avatar.dataLeaf != null && avatar.dataLeaf.auras != null) auras = avatar.dataLeaf.auras;
+                // New game client (Skua e127162) populates hudAuras on the leaf instead of auras.
+                // Fall back to it so reads don't go stale.
+                if (auras == null && avatar.dataLeaf != null && avatar.dataLeaf.hudAuras != null) auras = avatar.dataLeaf.hudAuras;
             }
         } else {
             if (tObj != null) {
