@@ -367,4 +367,82 @@ var search:String = normalizeAuraName(auraName);
     public function set_autoClean_prop(v:Bool):Void { if (v) startAutoClean(); else stopAutoClean(); }
     public function get_autoClean():Bool { return _autoClean; }
     public function set_autoClean(v:Bool):Bool { if (v) startAutoClean(); else stopAutoClean(); return v; }
+
+    /**
+     * Read the current game HUD aura data for the target, including auSnap effects.
+     *
+     * Mirrors Skua's `Bot.Target.Snapshots`. Each snapshot has Name, Stacks, Duration,
+     * RemainingTime, Persistent, Icon, and Description. Duration and remaining time use seconds;
+     * a zero duration means no timed expiry.
+     */
+    public function getSnapshots(target:String = "player", ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):Array<Dynamic> {
+        var result:Array<Dynamic> = [];
+        try {
+            var g:Dynamic = (world != null) ? world : _game.world;
+            if (g == null) return result;
+            var leaf:Dynamic = (target == "target")
+                ? ((g.world != null && g.world.myAvatar != null) ? g.world.myAvatar.target : null)
+                : ((g.world != null && g.world.myAvatar != null) ? g.world.myAvatar : null);
+            if (leaf != null && leaf.dataLeaf != null && leaf.dataLeaf.hudAuras != null) {
+                var arr:Array<Dynamic> = cast leaf.dataLeaf.hudAuras;
+                for (raw in arr) {
+                    result.push(buildSnapshot(raw));
+                }
+                if (result.length > 0) return result;
+            }
+            var rawAuras:Dynamic = getRawAuras(target, world, avatar, targetObj);
+            if (rawAuras != null && Std.isOfType(rawAuras, Array)) {
+                var arr2:Array<Dynamic> = cast rawAuras;
+                for (raw in arr2) {
+                    result.push(buildSnapshot(raw));
+                }
+            }
+        } catch (_:Dynamic) {}
+        return result;
+    }
+
+    private function buildSnapshot(raw:Dynamic):Dynamic {
+        return {
+            Name: (raw.nam != null) ? Std.string(raw.nam) : "",
+            Stacks: (raw.n != null) ? Std.int(raw.n) : 0,
+            Duration: (raw.dur != null) ? Std.parseFloat(raw.dur) : 0.0,
+            RemainingTime: (raw.remaining != null) ? Std.parseFloat(raw.remaining) : 0.0,
+            Persistent: (raw.persist != null) ? (raw.persist == true || raw.persist == "1" || raw.persist == 1) : false,
+            Icon: (raw.icon != null) ? Std.string(raw.icon) : "",
+            Description: (raw.desc != null) ? Std.string(raw.desc) : "",
+            Value: (raw.value != null) ? Std.parseFloat(raw.value) : 0.0
+        };
+    }
+
+    /**
+     * The HUD stack count for an aura, or zero when absent. Case-insensitive name matching.
+     *
+     * Mirrors Skua's `Bot.Self.GetAuraStacks(string auraName)` / `Bot.Target.GetAuraStacks(...)`.
+     */
+    public function getAuraStacks(auraName:String, target:String = "player", ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):Int {
+        if (auraName == null || auraName == "") return 0;
+        var snapshots:Array<Dynamic> = getSnapshots(target, world, avatar, targetObj);
+        var lower:String = auraName.toLowerCase();
+        for (snap in snapshots) {
+            var name:String = (snap.Name != null) ? Std.string(snap.Name).toLowerCase() : "";
+            if (name == lower) return Std.int(snap.Stacks);
+        }
+        return 0;
+    }
+
+    /**
+     * The matching AuraSnapshot for an aura, or null when absent. Case-insensitive name matching.
+     *
+     * Mirrors Skua's `Bot.Self.GetAuraSnapshot(string auraName)` / `Bot.Target.GetAuraSnapshot(...)`.
+     */
+    public function getAuraSnapshot(auraName:String, target:String = "player", ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):Dynamic {
+        if (auraName == null || auraName == "") return null;
+        var snapshots:Array<Dynamic> = getSnapshots(target, world, avatar, targetObj);
+        var lower:String = auraName.toLowerCase();
+        for (snap in snapshots) {
+            var name:String = (snap.Name != null) ? Std.string(snap.Name).toLowerCase() : "";
+            if (name == lower) return snap;
+        }
+        return null;
+    }
 }

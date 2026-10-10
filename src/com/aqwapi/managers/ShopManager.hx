@@ -218,4 +218,108 @@ class ShopManager {
         } catch(e:Dynamic) {}
         return 0;
     }
+
+    /**
+     * Whether scripted sales should stop when the item is a favorite.
+     *
+     * Mirrors Skua's `Bot.Shop.ProtectFavorites` (default true). When true, a sale is blocked if the
+     * destination item is marked as a favorite on the current character.
+     */
+    public var protectFavorites(get, set):Bool;
+    @:getter(protectFavorites)
+    public function get_protectFavorites():Bool {
+        return _protectFavorites;
+    }
+    @:setter(protectFavorites)
+    public function set_protectFavorites(v:Bool):Bool {
+        _protectFavorites = v;
+        return v;
+    }
+    private var _protectFavorites:Bool = true;
+
+    /**
+     * Missing inventory materials, missing tokens, and unmet quest requirements for a purchase.
+     *
+     * Mirrors Skua's `Bot.Shop.GetUnmetPurchaseRequirements(ShopItem item, int quantity = -1)`.
+     * Returns an array of requirement descriptions; empty when the purchase is affordable. The
+     * default quantity selects the purchase bundle.
+     */
+    public function getUnmetPurchaseRequirements(item:Dynamic, quantity:Int = -1):Array<String> {
+        var result:Array<String> = [];
+        if (item == null) {
+            result.push("Invalid shop item");
+            return result;
+        }
+        try {
+            var qty:Int = (quantity <= 0) ? getDefaultQuantity(item) : quantity;
+            // Materials
+            var mats:Dynamic = Reflect.field(item, "matCost");
+            if (mats != null) {
+                if (Std.isOfType(mats, Array)) {
+                    var arr:Array<Dynamic> = cast mats;
+                    for (m in arr) {
+                        if (m == null) continue;
+                        var matId:Int = Std.int(Reflect.field(m, "id"));
+                        var matQty:Int = Std.int(Reflect.field(m, "qty")) * qty;
+                        if (matId > 0 && matQty > 0) {
+                            var inv = com.aqwapi.Api.inventory;
+                            if (inv != null && !inv.hasItemById(matId, matQty)) {
+                                result.push("Missing material x" + matQty + " (id " + matId + ")");
+                            }
+                        }
+                    }
+                }
+            }
+            // Tokens
+            var tokId:Dynamic = Reflect.field(item, "tID");
+            var tokQty:Dynamic = Reflect.field(item, "tQty");
+            if (tokId != null && tokQty != null) {
+                var tokIdNum:Int = Std.int(tokId);
+                var tokQtyNum:Float = Std.parseFloat(tokQty) * qty;
+                if (tokIdNum > 0 && tokQtyNum > 0) {
+                    var inv = com.aqwapi.Api.inventory;
+                    if (inv != null && !inv.hasItemById(tokIdNum, Std.int(Math.ceil(tokQtyNum)))) {
+                        result.push("Missing token x" + tokQtyNum + " (id " + tokIdNum + ")");
+                    }
+                }
+            }
+            // Quest requirements
+            var questReq:Dynamic = Reflect.field(item, "qReq");
+            if (questReq != null && Std.string(questReq) != "") {
+                var qm = com.aqwapi.Api.quest;
+                if (qm != null) {
+                    var questId:Int = Std.int(questReq);
+                    if (questId > 0) {
+                        try {
+                            if (!qm.isCompleted(questId)) {
+                                result.push("Unmet quest requirement (id " + questId + ")");
+                            }
+                        } catch (_:Dynamic) {
+                            result.push("Unmet quest requirement (id " + questId + ")");
+                        }
+                    }
+                }
+            }
+        } catch (err:Dynamic) {
+            result.push("Failed to read requirements: " + err);
+        }
+        return result;
+    }
+
+    private function getDefaultQuantity(item:Dynamic):Int {
+        try {
+            var bundles:Dynamic = Reflect.field(item, "bundles");
+            if (bundles != null && Std.isOfType(bundles, Array)) {
+                var arr:Array<Dynamic> = cast bundles;
+                if (arr.length > 0) {
+                    var first:Dynamic = arr[0];
+                    var q:Dynamic = Reflect.field(first, "qty");
+                    if (q != null) return Std.int(q);
+                }
+            }
+            var qty:Dynamic = Reflect.field(item, "qty");
+            if (qty != null) return Std.int(qty);
+        } catch (_:Dynamic) {}
+        return 1;
+    }
 }

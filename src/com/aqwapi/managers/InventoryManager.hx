@@ -1658,6 +1658,153 @@ class InventoryManager {
     }
 
     /**
+     * Whether the loaded game client separates bag, misc, class, and house inventories.
+     *
+     * Mirrors Skua's `Bot.Inventory.HasCategories`. Category clients return true; older clients
+     * return false.
+     */
+    public function hasCategories():Bool {
+        if (_game == null) return false;
+        try {
+            var domain:Dynamic = _game.loaderInfo;
+            if (domain != null && domain.applicationDomain != null && domain.applicationDomain.hasDefinition != null) {
+                return domain.applicationDomain.hasDefinition("InvCat");
+            }
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    /**
+     * Total misc inventory capacity, including the current server limit.
+     *
+     * Mirrors Skua's `Bot.Inventory.MiscSlots`. Older clients return zero.
+     */
+    public function getMiscSlots():Int {
+        try {
+            if (_game != null && _game.world != null && _game.world.myAvatar != null) {
+                var av:Dynamic = _game.world.myAvatar;
+                if (av.miscSlots != null) return Std.int(av.miscSlots);
+                if (av.dataLeaf != null && av.dataLeaf.miscSlots != null) return Std.int(av.dataLeaf.miscSlots);
+            }
+        } catch (_:Dynamic) {}
+        return 0;
+    }
+
+    /**
+     * Number of misc inventory slots currently in use.
+     *
+     * Mirrors Skua's `Bot.Inventory.MiscUsedSlots`. Older clients return zero.
+     */
+    public function getMiscUsedSlots():Int {
+        try {
+            if (_game != null && _game.world != null && _game.world.myAvatar != null) {
+                var av:Dynamic = _game.world.myAvatar;
+                if (av.miscUsedSlots != null) return Std.int(av.miscUsedSlots);
+                if (av.dataLeaf != null && av.dataLeaf.miscUsedSlots != null) return Std.int(av.dataLeaf.miscUsedSlots);
+            }
+        } catch (_:Dynamic) {}
+        return 0;
+    }
+
+    /**
+     * Free misc inventory slots (capacity minus usage).
+     *
+     * Mirrors Skua's `Bot.Inventory.MiscFreeSlots`. Older clients return zero.
+     */
+    public function getMiscFreeSlots():Int {
+        var cap = getMiscSlots();
+        var used = getMiscUsedSlots();
+        return (cap > 0) ? (cap - used) : 0;
+    }
+
+    /**
+     * Which inventory an item belongs to: bag, misc, class, or house.
+     *
+     * Mirrors Skua's `Bot.Inventory.GetPool(ItemBase item)`. Older clients return "bag".
+     */
+    public function getPool(item:Dynamic):String {
+        if (item == null) return "bag";
+        try {
+            if (item.bHouse == 1 || item.bHouse == "1" || item.bHouse == true) return "house";
+            var sType:String = (item.sType != null) ? Std.string(item.sType).toLowerCase() : "";
+            if (sType == "class") return "class";
+            if (item.bMisc == 1 || item.bMisc == "1" || item.bMisc == true) return "misc";
+        } catch (_:Dynamic) {}
+        return "bag";
+    }
+
+    /**
+     * Whether the destination inventory has room for the given item and quantity.
+     *
+     * Mirrors Skua's `Bot.Inventory.HasSpaceFor(ItemBase item, int quantity = 1)`. For shop items
+     * the check includes slots freed by purchase materials and tokens.
+     */
+    public function hasSpaceFor(item:Dynamic, quantity:Int = 1):Bool {
+        if (item == null || quantity <= 0) return false;
+        try {
+            var pool:String = getPool(item);
+            if (pool == "misc") {
+                return getMiscFreeSlots() >= quantity;
+            }
+            if (pool == "class") {
+                // Classes live in inventory only on category clients; bag capacity applies.
+                return true;
+            }
+            if (pool == "house") {
+                return true;
+            }
+            // bag: check against max slots minus used slots
+            var maxSlots:Int = get_maxSlots();
+            if (maxSlots > 0) {
+                return (maxSlots - get_usedSlots()) >= quantity;
+            }
+        } catch (_:Dynamic) {}
+        return true;
+    }
+
+    /**
+     * Whether the current character has marked an item as a favorite.
+     *
+     * Mirrors Skua's `Bot.Inventory.IsFavorited(int itemId)`. Clients without a favorite store
+     * return false.
+     */
+    public function isFavorited(itemId:Int):Bool {
+        try {
+            if (_game != null && _game.world != null && _game.world.myAvatar != null) {
+                var av:Dynamic = _game.world.myAvatar;
+                var fav:Dynamic = Reflect.field(av, "favoriteItems");
+                if (fav != null) {
+                    if (Std.isOfType(fav, Array)) {
+                        var arr:Array<Dynamic> = cast fav;
+                        for (id in arr) {
+                            if (Std.int(id) == itemId) return true;
+                        }
+                    } else if (Reflect.hasField(fav, "has")) {
+                        var has:Dynamic = Reflect.field(fav, "has");
+                        if (has != null) {
+                            var result:Dynamic = Reflect.callMethod(has, has, [itemId]);
+                            if (result == true) return true;
+                        }
+                    }
+                }
+                if (av.dataLeaf != null) {
+                    var leaf:Dynamic = av.dataLeaf;
+                    if (Reflect.hasField(leaf, "favoriteItems")) {
+                        var fav2:Dynamic = Reflect.field(leaf, "favoriteItems");
+                        if (fav2 != null && Std.isOfType(fav2, Array)) {
+                            var arr2:Array<Dynamic> = cast fav2;
+                            for (id in arr2) {
+                                if (Std.int(id) == itemId) return true;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    /**
      * Whether an item can be banked under the current game client.
      *
      * Skua e127162 ("new game client compatibility changes"): when the game loads inventory
