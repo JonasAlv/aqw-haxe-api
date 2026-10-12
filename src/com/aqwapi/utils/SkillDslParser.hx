@@ -70,15 +70,17 @@ class SkillDslParser {
                     var lowerVal:String = val.toLowerCase();
                     if (lowerVal == "useifavailable" || lowerVal == "priority" || lowerVal == "avail") {
                         currentData.skillUseMode = "UseIfAvailable";
+                        if (currentData.skillTimeout == 1500) currentData.skillTimeout = 0;
                     } else {
                         currentData.skillUseMode = "WaitForCooldown";
+                        if (currentData.skillTimeout < 1500) currentData.skillTimeout = 1500;
                     }
 
                 case "timeout", "skilltimeout":
                     var pTo:Null<Int> = Std.parseInt(val);
-                    // Any timeout < 1500ms (including 0 or legacy values) defaults to exactly 1 GCD (1500ms),
-                    // matching the runtime gate in CombatEngine.runWaitForCooldown.
-                    currentData.skillTimeout = (pTo != null && pTo >= 1500) ? pTo : 1500;
+                    var rawTo:Int = (pTo != null) ? pTo : 0;
+                    var isUseIfAvail:Bool = (currentData.skillUseMode != null && currentData.skillUseMode.toLowerCase() == "useifavailable");
+                    currentData.skillTimeout = isUseIfAvail ? ((rawTo > 0) ? rawTo : 0) : ((rawTo >= 1500) ? rawTo : 1500);
 
                 case "stopontargetauras", "stop_on_target_auras", "stopauras":
                     currentData.stopOnTargetAuras = val;

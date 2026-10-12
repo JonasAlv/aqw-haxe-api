@@ -861,7 +861,8 @@ class CombatEngine {
         }
         var skillUseMode:String = (modeConfig.mode != null) ? modeConfig.mode : ((modeConfig.skillUseMode != null) ? modeConfig.skillUseMode : "WaitForCooldown");
         var rawTimeout:Float = (modeConfig.timeout != null) ? ApiUtils.parseFloat(modeConfig.timeout, 0) : ((modeConfig.skillTimeout != null) ? ApiUtils.parseFloat(modeConfig.skillTimeout, 0) : 0);
-        var skillTimeout:Float = (rawTimeout >= 1500) ? rawTimeout : 1500;
+        var isUseIfAvail:Bool = (skillUseMode.toLowerCase() == "useifavailable");
+        var skillTimeout:Float = isUseIfAvail ? ((rawTimeout > 0) ? rawTimeout : 0) : ((rawTimeout >= 1500) ? rawTimeout : 1500);
         var skills:Array<Dynamic> = (modeConfig.skills != null && Std.isOfType(modeConfig.skills, Array)) ? cast modeConfig.skills : [];
         if (skills.length == 0 && modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
             skills = SkillDslParser.parseCombo(Std.string(modeConfig.combo));
@@ -892,10 +893,10 @@ class CombatEngine {
             runSimpleRotation(world, avatar);
             return;
         }
-        if (skillUseMode.toLowerCase() == "waitforcooldown") {
-            runWaitForCooldown(world, avatar, target, skills, skillTimeout);
+        if (isUseIfAvail) {
+            runUseIfAvailable(world, avatar, target, skills, skillTimeout);
         } else {
-            runUseIfAvailable(world, avatar, target, skills);
+            runWaitForCooldown(world, avatar, target, skills, skillTimeout);
         }
     }
     
@@ -979,20 +980,68 @@ class CombatEngine {
         }
     }
     
-    private static function runUseIfAvailable(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>):Void {
-        if (isDisabled(avatar, world)) return;
+    private static function runUseIfAvailable(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float):Void {
+        if (isDisabled(avatar, world)) {
+            _skillWaitStart = ApiTime.now();
+            return;
+        }
         if (!skillGateOpen()) return;
         if (SkillCaster.isGcdActive(world)) return;
+        if (skills.length == 0) return;
+
+        var attempts = 0;
+        var maxAttempts = skills.length;
         var now:Float = ApiTime.now();
-        for (skill in skills) {
-            if (skill == null) continue;
+
+        while (attempts < maxAttempts) {
+            attempts++;
+            if (_skillIndex >= skills.length) _skillIndex = 0;
+            var skill:Dynamic = skills[_skillIndex];
+            if (skill == null) {
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                continue;
+            }
             var skillId:Int = (skill.skillId != null) ? ApiUtils.parseInt(skill.skillId, -1) : ((skill.idx != null) ? ApiUtils.parseInt(skill.idx, -1) : -1);
-            if (skillId < 0 || skillId > 5) continue;
-            if (!SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil)) continue;
-            if (SkillCaster.fireSkill(world, avatar, skillId) == SkillCaster.SR_FIRED) {
+            if (skillId < 0 || skillId > 5) {
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                continue;
+            }
+            var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
+            if (actObj == null || actObj.isOK == false) {
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                continue;
+            }
+
+            var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
+            if (!rulesPass) {
+                var elapsedWait:Float = now - _skillWaitStart;
+                if (skillTimeout > 0 && elapsedWait < skillTimeout) {
+                    return;
+                }
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                continue;
+            }
+
+            var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
+            if (fireResult == SkillCaster.SR_FIRED) {
                 noteSkillCast();
+                if (SkillRules.hasHardLockRule(skill)) ActionFeed.consumeForTarget();
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
                 return;
             }
+
+            var elapsedWait:Float = now - _skillWaitStart;
+            if (skillTimeout > 0 && elapsedWait < skillTimeout) {
+                return;
+            }
+
+            _skillIndex = (_skillIndex + 1) % skills.length;
+            _skillWaitStart = now;
         }
     }
 
