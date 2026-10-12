@@ -354,6 +354,7 @@ class SkillManager {
             Reflect.setField(_skillsData, targetKey, targetClass);
         }
 
+        var parsedBranches:Array<Array<Dynamic>> = SkillDslParser.parseBranches(combo);
         var parsedCombo:Array<Dynamic> = SkillDslParser.parseCombo(combo);
         var safeTimeout:Int = sanitizeTimeout(skillUseMode, timeout);
         var modeObj:Dynamic = {
@@ -362,6 +363,7 @@ class SkillManager {
             skillUseMode: skillUseMode,
             skillTimeout: safeTimeout,
             skills: parsedCombo,
+            branches: parsedBranches,
             combo: combo
         };
         if (stopOnTargetAuras != null && stopOnTargetAuras != "") modeObj.stopOnTargetAuras = stopOnTargetAuras;
@@ -944,12 +946,14 @@ class SkillManager {
         if (modeConfig == null && isExplicitMode) {
             var details = getModeDetails(className, skillMode);
             if (details != null && details.combo != null && details.combo != "") {
+                var parsedBranches = SkillDslParser.parseBranches(details.combo);
                 var parsedSkills = SkillDslParser.parseCombo(details.combo);
                 if (parsedSkills != null && parsedSkills.length > 0) {
                     modeConfig = {
                         skillUseMode: details.skillUseMode,
                         skillTimeout: details.timeout,
                         skills: parsedSkills,
+                        branches: parsedBranches,
                         combo: details.combo,
                         stopOnTargetAuras: details.stopOnTargetAuras,
                         resetComboOnTargetChange: details.resetComboOnTargetChange
@@ -983,6 +987,11 @@ class SkillManager {
         }
 
         if (modeConfig != null) {
+            if (modeConfig.branches == null || !Std.isOfType(modeConfig.branches, Array) || (cast(modeConfig.branches, Array<Dynamic>)).length == 0) {
+                if (modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
+                    modeConfig.branches = SkillDslParser.parseBranches(Std.string(modeConfig.combo));
+                }
+            }
             if (modeConfig.skills == null || !Std.isOfType(modeConfig.skills, Array) || (cast(modeConfig.skills, Array<Dynamic>)).length == 0) {
                 if (modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
                     modeConfig.skills = SkillDslParser.parseCombo(Std.string(modeConfig.combo));

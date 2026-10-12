@@ -57,6 +57,10 @@ class CombatEngine {
     private static var _stepFirstFailTime:Float = -1;
     private static var _lastTimeoutSkipLogTime:Float = -10000;
     private static var _lastHardLockLogTime:Float = -10000;
+    private static var _activeBranch:Int = -1;
+    private static var _branchSkillIndex:Int = 0;
+    private static var _branchWaitStart:Float = 0;
+    private static var _lastActiveModeConfig:Dynamic = null;
     private static var _lastTargetMMID:String = null;
     private static var _targetChanged:Bool = false;
     private static var _lastDetectedClass:String = "";
@@ -121,6 +125,10 @@ class CombatEngine {
         _skillIndex = 0;
         _skillWaitStart = ApiTime.now();
         _stepFirstFailTime = -1;
+        _activeBranch = -1;
+        _branchSkillIndex = 0;
+        _branchWaitStart = ApiTime.now();
+        _lastActiveModeConfig = null;
         _targetChanged = false;
         _pausedByTargetAura = false;
         pausedAuraName = null;
@@ -151,6 +159,10 @@ class CombatEngine {
         priorityTargets = [];
         _pausedByTargetAura = false;
         pausedAuraName = null;
+        _activeBranch = -1;
+        _branchSkillIndex = 0;
+        _branchWaitStart = 0;
+        _lastActiveModeConfig = null;
         _temporaryIgnore = new Map<String, Float>();
         if (_timer != null && _timer.running) {
             _timer.stop();
@@ -859,15 +871,34 @@ class CombatEngine {
             runSimpleRotation(world, avatar);
             return;
         }
+
+        if (modeConfig != _lastActiveModeConfig) {
+            _lastActiveModeConfig = modeConfig;
+            _skillIndex = 0;
+            _skillWaitStart = ApiTime.now();
+            _stepFirstFailTime = -1;
+            _activeBranch = -1;
+            _branchSkillIndex = 0;
+            _branchWaitStart = ApiTime.now();
+        }
+
         var skillUseMode:String = (modeConfig.mode != null) ? modeConfig.mode : ((modeConfig.skillUseMode != null) ? modeConfig.skillUseMode : "WaitForCooldown");
         var rawTimeout:Float = (modeConfig.timeout != null) ? ApiUtils.parseFloat(modeConfig.timeout, 0) : ((modeConfig.skillTimeout != null) ? ApiUtils.parseFloat(modeConfig.skillTimeout, 0) : 0);
         var isUseIfAvail:Bool = (skillUseMode.toLowerCase() == "useifavailable");
         var skillTimeout:Float = isUseIfAvail ? ((rawTimeout > 0) ? rawTimeout : 0) : ((rawTimeout >= 1500) ? rawTimeout : 1500);
+
+        var branches:Array<Array<Dynamic>> = (modeConfig.branches != null && Std.isOfType(modeConfig.branches, Array)) ? cast modeConfig.branches : [];
+        if (branches.length == 0 && modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
+            branches = SkillDslParser.parseBranches(Std.string(modeConfig.combo));
+            modeConfig.branches = branches;
+        }
+
         var skills:Array<Dynamic> = (modeConfig.skills != null && Std.isOfType(modeConfig.skills, Array)) ? cast modeConfig.skills : [];
         if (skills.length == 0 && modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
             skills = SkillDslParser.parseCombo(Std.string(modeConfig.combo));
             modeConfig.skills = skills;
         }
+
         // Consume the target-change latch before the empty-combo bail-out. Leaving it set would apply a
         // stale target change the moment the mode is fixed or the reset flag is switched on, which
         // reads as the rotation jumping for no reason.
@@ -881,9 +912,18 @@ class CombatEngine {
                 _skillIndex = 0;
                 _skillWaitStart = ApiTime.now();
                 _stepFirstFailTime = -1;
+                _activeBranch = -1;
+                _branchSkillIndex = 0;
+                _branchWaitStart = ApiTime.now();
             }
             _targetChanged = false;
         }
+
+        if (branches.length > 1) {
+            runBranchingRotation(world, avatar, target, branches, isUseIfAvail, skillTimeout);
+            return;
+        }
+
         if (skills.length == 0) {
             var now = ApiTime.now();
             if (now - _lastFallbackWarnTime > ApiTimings.WARN_THROTTLE_MS) {
@@ -897,6 +937,221 @@ class CombatEngine {
             runUseIfAvailable(world, avatar, target, skills, skillTimeout);
         } else {
             runWaitForCooldown(world, avatar, target, skills, skillTimeout);
+        }
+    }
+
+    private static function runBranchingRotation(world:Dynamic, avatar:Dynamic, target:Dynamic, branches:Array<Array<Dynamic>>, isUseIfAvail:Bool, skillTimeout:Float):Void {
+        if (isDisabled(avatar, world)) {
+            _branchWaitStart = ApiTime.now();
+            return;
+        }
+        if (!skillGateOpen()) return;
+        if (SkillCaster.isGcdActive(world)) return;
+        if (branches == null || branches.length == 0) return;
+
+        var now:Float = ApiTime.now();
+
+        // 1. Branch selection if no active branch is currently locked
+        if (_activeBranch < 0 || _activeBranch >= branches.length) {
+            _activeBranch = -1;
+            _branchSkillIndex = 0;
+
+            for (i in 0...branches.length) {
+                var bSkills:Array<Dynamic> = branches[i];
+                if (bSkills == null || bSkills.length == 0) continue;
+
+                var firstSkill:Dynamic = bSkills[0];
+                if (firstSkill == null) continue;
+
+                var firstSkillId:Int = (firstSkill.skillId != null) ? ApiUtils.parseInt(firstSkill.skillId, -1) : ((firstSkill.idx != null) ? ApiUtils.parseInt(firstSkill.idx, -1) : -1);
+                if (firstSkillId < 0 || firstSkillId > 5) continue;
+
+                // Entry condition evaluation on firstSkill
+                var rulesPass:Bool = SkillRules.evaluateSkillRules(firstSkill, world, avatar, target, firstSkillId, _waitUntil);
+                if (!rulesPass) continue;
+
+                var actObj:Dynamic = SkillCaster.getSkillAction(firstSkillId);
+                if (actObj == null || actObj.isOK == false) continue;
+
+                // Cooldown / readiness gate for first skill:
+                // Slot 0 (Auto Attack) has no cooldown.
+                // For slots 1..5, ensure the skill is ready or within the acceptable wait window.
+                if (firstSkillId > 0) {
+                    var canFire:Bool = SkillCaster.canFireSkill(firstSkillId);
+                    if (!canFire) {
+                        var cdRemaining:Float = SkillCaster.getCooldownRemaining(firstSkillId);
+                        if (isUseIfAvail) {
+                            if (skillTimeout <= 0 || cdRemaining > skillTimeout) continue;
+                        } else {
+                            if (cdRemaining > skillTimeout) continue;
+                        }
+                    }
+                }
+
+                // Branch matched! Lock this branch.
+                _activeBranch = i;
+                _branchSkillIndex = 0;
+                _branchWaitStart = now;
+                break;
+            }
+        }
+
+        if (_activeBranch < 0 || _activeBranch >= branches.length) return;
+
+        // 2. Execute within the locked branch
+        var activeSkills:Array<Dynamic> = branches[_activeBranch];
+        if (activeSkills == null || activeSkills.length == 0) {
+            _activeBranch = -1;
+            _branchSkillIndex = 0;
+            return;
+        }
+
+        if (isUseIfAvail) {
+            var attempts:Int = 0;
+            var maxAttempts:Int = activeSkills.length;
+            while (attempts < maxAttempts) {
+                attempts++;
+                if (_branchSkillIndex >= activeSkills.length) {
+                    _activeBranch = -1;
+                    _branchSkillIndex = 0;
+                    return;
+                }
+                var skill:Dynamic = activeSkills[_branchSkillIndex];
+                if (skill == null) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    continue;
+                }
+                var skillId:Int = (skill.skillId != null) ? ApiUtils.parseInt(skill.skillId, -1) : ((skill.idx != null) ? ApiUtils.parseInt(skill.idx, -1) : -1);
+                if (skillId < 0 || skillId > 5) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    continue;
+                }
+                var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
+                if (actObj == null || actObj.isOK == false) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    continue;
+                }
+
+                var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
+                if (!rulesPass) {
+                    var elapsedWait:Float = now - _branchWaitStart;
+                    if (skillTimeout > 0 && elapsedWait < skillTimeout) return;
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    continue;
+                }
+
+                var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
+                if (fireResult == SkillCaster.SR_FIRED) {
+                    noteSkillCast();
+                    if (SkillRules.hasHardLockRule(skill)) ActionFeed.consumeForTarget();
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    if (_branchSkillIndex >= activeSkills.length) {
+                        _activeBranch = -1;
+                        _branchSkillIndex = 0;
+                    }
+                    return;
+                }
+
+                var elapsedWait:Float = now - _branchWaitStart;
+                if (skillTimeout > 0 && elapsedWait < skillTimeout) return;
+
+                _branchSkillIndex++;
+                _branchWaitStart = now;
+            }
+
+            if (_branchSkillIndex >= activeSkills.length) {
+                _activeBranch = -1;
+                _branchSkillIndex = 0;
+            }
+        } else {
+            // WaitForCooldown mode
+            if (_branchSkillIndex >= activeSkills.length) {
+                _activeBranch = -1;
+                _branchSkillIndex = 0;
+                return;
+            }
+            var skill:Dynamic = activeSkills[_branchSkillIndex];
+            if (skill == null) {
+                _branchSkillIndex++;
+                _branchWaitStart = now;
+                if (_branchSkillIndex >= activeSkills.length) {
+                    _activeBranch = -1;
+                    _branchSkillIndex = 0;
+                }
+                return;
+            }
+            var skillId:Int = (skill.skillId != null) ? ApiUtils.parseInt(skill.skillId, -1) : ((skill.idx != null) ? ApiUtils.parseInt(skill.idx, -1) : -1);
+            if (skillId < 0 || skillId > 5) {
+                _branchSkillIndex++;
+                _branchWaitStart = now;
+                if (_branchSkillIndex >= activeSkills.length) {
+                    _activeBranch = -1;
+                    _branchSkillIndex = 0;
+                }
+                return;
+            }
+            var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
+            if (actObj == null || actObj.isOK == false) {
+                _branchSkillIndex++;
+                _branchWaitStart = now;
+                if (_branchSkillIndex >= activeSkills.length) {
+                    _activeBranch = -1;
+                    _branchSkillIndex = 0;
+                }
+                return;
+            }
+
+            var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
+            if (!rulesPass) {
+                if (target != null && SkillRules.hasHardLockRule(skill)) {
+                    return;
+                }
+                _branchSkillIndex++;
+                _branchWaitStart = now;
+                if (_branchSkillIndex >= activeSkills.length) {
+                    _activeBranch = -1;
+                    _branchSkillIndex = 0;
+                }
+                return;
+            }
+
+            var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
+            if (fireResult == SkillCaster.SR_FIRED) {
+                noteSkillCast();
+                if (SkillRules.hasHardLockRule(skill)) ActionFeed.consumeForTarget();
+                _branchSkillIndex++;
+                _branchWaitStart = now;
+                if (_branchSkillIndex >= activeSkills.length) {
+                    _activeBranch = -1;
+                    _branchSkillIndex = 0;
+                }
+                return;
+            }
+
+            var elapsedWait:Float = now - _branchWaitStart;
+            if (skillTimeout > 0 && elapsedWait >= skillTimeout) {
+                _branchSkillIndex++;
+                _branchWaitStart = now;
+                if (_branchSkillIndex >= activeSkills.length) {
+                    _activeBranch = -1;
+                    _branchSkillIndex = 0;
+                }
+                return;
+            }
+            if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
+                _branchSkillIndex++;
+                _branchWaitStart = now;
+                if (_branchSkillIndex >= activeSkills.length) {
+                    _activeBranch = -1;
+                    _branchSkillIndex = 0;
+                }
+                return;
+            }
         }
     }
     

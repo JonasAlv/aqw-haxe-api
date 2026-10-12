@@ -1,6 +1,7 @@
 package com.aqwapi.combat;
 
 import com.aqwapi.Api;
+import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 
 class SkillCaster {
@@ -188,6 +189,32 @@ class SkillCaster {
         }
 
         return true;
+    }
+
+    /**
+     * Returns remaining cooldown in milliseconds for skill `idx`.
+     * Returns 0 if ready, auto attack, or action not found.
+     */
+    public static function getCooldownRemaining(idx:Int):Float {
+        if (Api.game == null || Api.game.world == null) return 0;
+        var world:Dynamic = Api.game.world;
+        var actObj:Dynamic = getSkillAction(idx);
+        if (actObj == null || actObj.isOK == false) return 0;
+        if (isGenuineAutoAttack(actObj)) return 0;
+        try {
+            if (world.actionTimeCheck != null && world.actionTimeCheck(actObj) == true) {
+                return 0;
+            }
+        } catch (_:Dynamic) {}
+        try {
+            var cd:Float = ApiUtils.parseFloat(actObj.cd, 0);
+            if (cd <= 0) return 0;
+            var lastTime:Float = ApiUtils.parseFloat(actObj.time, 0);
+            var now:Float = ApiTime.now();
+            var remaining:Float = cd - (now - lastTime);
+            return (remaining > 0) ? remaining : 0;
+        } catch (_:Dynamic) {}
+        return 0;
     }
 
     /**

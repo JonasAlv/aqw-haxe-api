@@ -49,6 +49,7 @@ class SkillDslParser {
                         skillUseMode: "WaitForCooldown",
                         skillTimeout: 1500,
                         skills: [],
+                        branches: [],
                         combo: ""
                     };
                     Reflect.setField(classObj, currentMode, currentData);
@@ -96,6 +97,7 @@ class SkillDslParser {
 
                 case "combo", "skills", "rotation":
                     currentData.combo = val;
+                    currentData.branches = parseBranches(val);
                     currentData.skills = parseCombo(val);
             }
         }
@@ -103,11 +105,85 @@ class SkillDslParser {
         return result;
     }
 
+    /**
+     * Parses a combo string into an Array of skill objects.
+     * If the combo contains multiple '|' branches, flattens all branch skills
+     * into a single array for backwards-compatibility with single-rotation callers.
+     */
     public static function parseCombo(comboStr:String):Array<Dynamic> {
-        var skills:Array<Dynamic> = [];
-        if (comboStr == null || comboStr.length == 0) return skills;
+        var branches:Array<Array<Dynamic>> = parseBranches(comboStr);
+        if (branches.length == 0) return [];
+        if (branches.length == 1) return branches[0];
 
-        var tokens:Array<String> = splitCombo(comboStr);
+        var flat:Array<Dynamic> = [];
+        for (b in branches) {
+            for (s in b) {
+                flat.push(s);
+            }
+        }
+        return flat;
+    }
+
+    /**
+     * Parses a combo string with '|' branch separators into an Array of sub-rotations.
+     * Each sub-rotation is an Array of skill objects.
+     */
+    public static function parseBranches(comboStr:String):Array<Array<Dynamic>> {
+        var branches:Array<Array<Dynamic>> = [];
+        if (comboStr == null || comboStr.length == 0) return branches;
+
+        var branchStrs:Array<String> = splitBranches(comboStr);
+        for (bStr in branchStrs) {
+            var bSkills:Array<Dynamic> = parseSequence(bStr);
+            if (bSkills != null && bSkills.length > 0) {
+                branches.push(bSkills);
+            }
+        }
+        return branches;
+    }
+
+    /**
+     * Splits a combo string on '|' delimiters into individual branch strings,
+     * ignoring any '|' inside square brackets '[...]'.
+     */
+    public static function splitBranches(comboStr:String):Array<String> {
+        var branches:Array<String> = [];
+        if (comboStr == null || comboStr.length == 0) return branches;
+
+        var cur:StringBuf = new StringBuf();
+        var depth:Int = 0;
+
+        for (i in 0...comboStr.length) {
+            var c:String = comboStr.charAt(i);
+            if (c == "[") {
+                depth++;
+                cur.add(c);
+            } else if (c == "]") {
+                if (depth > 0) depth--;
+                cur.add(c);
+            } else if (c == "|" && depth == 0) {
+                var s:String = StringTools.trim(cur.toString());
+                if (s.length > 0) branches.push(s);
+                cur = new StringBuf();
+            } else {
+                cur.add(c);
+            }
+        }
+
+        var remaining:String = StringTools.trim(cur.toString());
+        if (remaining.length > 0) branches.push(remaining);
+
+        return branches;
+    }
+
+    /**
+     * Parses a single sequence of skills separated by '>' (e.g. "0[!aura(self:Buff)] > 2 > 3").
+     */
+    public static function parseSequence(seqStr:String):Array<Dynamic> {
+        var skills:Array<Dynamic> = [];
+        if (seqStr == null || seqStr.length == 0) return skills;
+
+        var tokens:Array<String> = splitCombo(seqStr);
 
         for (token in tokens) {
             var part:String = StringTools.trim(token);
@@ -139,11 +215,10 @@ class SkillDslParser {
                     if (rObj != null) {
                         ruleObjs.push(rObj);
                     } else {
-                        // parseRule returns null for anything it does not recognise. Dropping
-                        // it silently made a typo'd condition vanish and the surrounding
-                        // bracket fire far more often than it was written to.
+                        #if flash
                         ApiLogger.warn("Skills", "Unrecognised condition '" + rTrimmed
-                            + "' in combo '" + comboStr + "' - ignored.");
+                            + "' in sequence '" + seqStr + "' - ignored.");
+                        #end
                     }
                 }
 
