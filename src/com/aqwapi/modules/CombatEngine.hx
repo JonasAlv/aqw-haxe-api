@@ -819,7 +819,7 @@ class CombatEngine {
                 }
             } catch (_:Dynamic) {}
             try {
-                runAdvancedRotation(world, avatar, target, activeModeConfig);
+                runAdvancedRotation(world, avatar, target, activeModeConfig, allowAuto);
             } catch (rotErr:Dynamic) {
                 ApiLogger.error("Combat", "Advanced rotation error: " + rotErr);
             }
@@ -832,11 +832,11 @@ class CombatEngine {
                     if (SkillCaster.fireAutoAttack(world, avatar, aaAct)) noteCast();
                 }
             } catch (_:Dynamic) {}
-            runSimpleRotation(world, avatar);
+            runSimpleRotation(world, avatar, allowAuto);
         }
     }
     
-    private static function runAdvancedRotation(world:Dynamic, avatar:Dynamic, target:Dynamic, activeModeConfig:Dynamic = null):Void {
+    private static function runAdvancedRotation(world:Dynamic, avatar:Dynamic, target:Dynamic, activeModeConfig:Dynamic = null, ?allowAuto:Null<Bool> = null):Void {
         var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : "Current";
         var isCurrentClass = (confClass == "Current");
         var className:String = isCurrentClass ? SkillManager.getCurrentClassName() : confClass;
@@ -868,9 +868,11 @@ class CombatEngine {
                 _lastFallbackWarnTime = now;
                 ApiLogger.warn("Combat", "Smart Combat: mode config not found for class '" + className + "' mode '" + skillMode + "'. Falling back to custom rotation.");
             }
-            runSimpleRotation(world, avatar);
+            runSimpleRotation(world, avatar, allowAuto != null ? allowAuto : true);
             return;
         }
+
+        var isAutoAllowed:Bool = (allowAuto != null && modeConfig == activeModeConfig) ? allowAuto : SkillManager.modeHasAutoAttack(modeConfig, className, skillMode);
 
         if (modeConfig != _lastActiveModeConfig) {
             _lastActiveModeConfig = modeConfig;
@@ -920,7 +922,7 @@ class CombatEngine {
         }
 
         if (branches.length > 1) {
-            runBranchingRotation(world, avatar, target, branches, isUseIfAvail, skillTimeout);
+            runBranchingRotation(world, avatar, target, branches, isUseIfAvail, skillTimeout, isAutoAllowed);
             return;
         }
 
@@ -930,17 +932,17 @@ class CombatEngine {
                 _lastFallbackWarnTime = now;
                 ApiLogger.warn("Combat", "Smart Combat: combo skills empty for class '" + className + "'. Falling back to custom rotation.");
             }
-            runSimpleRotation(world, avatar);
+            runSimpleRotation(world, avatar, isAutoAllowed);
             return;
         }
         if (isUseIfAvail) {
-            runUseIfAvailable(world, avatar, target, skills, skillTimeout);
+            runUseIfAvailable(world, avatar, target, skills, skillTimeout, isAutoAllowed);
         } else {
-            runWaitForCooldown(world, avatar, target, skills, skillTimeout);
+            runWaitForCooldown(world, avatar, target, skills, skillTimeout, isAutoAllowed);
         }
     }
 
-    private static function runBranchingRotation(world:Dynamic, avatar:Dynamic, target:Dynamic, branches:Array<Array<Dynamic>>, isUseIfAvail:Bool, skillTimeout:Float):Void {
+    private static function runBranchingRotation(world:Dynamic, avatar:Dynamic, target:Dynamic, branches:Array<Array<Dynamic>>, isUseIfAvail:Bool, skillTimeout:Float, allowAuto:Bool = true):Void {
         if (isDisabled(avatar, world)) {
             _branchWaitStart = ApiTime.now();
             return;
@@ -974,12 +976,13 @@ class CombatEngine {
                 if (actObj == null || actObj.isOK == false) continue;
 
                 // Cooldown / readiness gate for first skill:
-                // Slot 0 (Auto Attack) has no cooldown.
-                // For slots 1..5, ensure the skill is ready or within the acceptable wait window.
-                if (firstSkillId > 0) {
+                // When allowAuto == true: slot 0 is handled separately by the autoattack routine and has no GCD/cooldown gate.
+                // When allowAuto == false: slot 0 is a real skill with GCD and cooldown just like slots 1..5.
+                var shouldGateCooldown:Bool = (firstSkillId > 0) || (firstSkillId == 0 && !allowAuto);
+                if (shouldGateCooldown) {
                     var canFire:Bool = SkillCaster.canFireSkill(firstSkillId);
                     if (!canFire) {
-                        var cdRemaining:Float = SkillCaster.getCooldownRemaining(firstSkillId);
+                        var cdRemaining:Float = SkillCaster.getCooldownRemaining(firstSkillId, allowAuto);
                         if (isUseIfAvail) {
                             if (skillTimeout <= 0 || cdRemaining > skillTimeout) continue;
                         } else {
@@ -1028,6 +1031,20 @@ class CombatEngine {
                     _branchWaitStart = now;
                     continue;
                 }
+
+                // When autoattack is ON (allowAuto == true), slot 0 is handled separately by the autoattack
+                // routine and has no GCD. Skip slot 0 immediately so it is not evaluated.
+                // When autoattack is OFF (allowAuto == false), slot 0 is a real skill with GCD and must be evaluated.
+                if (skillId == 0 && allowAuto) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    if (_branchSkillIndex >= activeSkills.length) {
+                        _activeBranch = -1;
+                        _branchSkillIndex = 0;
+                    }
+                    continue;
+                }
+
                 var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
                 if (actObj == null || actObj.isOK == false) {
                     _branchSkillIndex++;
@@ -1070,172 +1087,213 @@ class CombatEngine {
             }
         } else {
             // WaitForCooldown mode
-            if (_branchSkillIndex >= activeSkills.length) {
-                _activeBranch = -1;
-                _branchSkillIndex = 0;
-                return;
-            }
-            var skill:Dynamic = activeSkills[_branchSkillIndex];
-            if (skill == null) {
-                _branchSkillIndex++;
-                _branchWaitStart = now;
+            var attempts:Int = 0;
+            var maxAttempts:Int = activeSkills.length;
+            while (attempts < maxAttempts) {
+                attempts++;
                 if (_branchSkillIndex >= activeSkills.length) {
                     _activeBranch = -1;
                     _branchSkillIndex = 0;
-                }
-                return;
-            }
-            var skillId:Int = (skill.skillId != null) ? ApiUtils.parseInt(skill.skillId, -1) : ((skill.idx != null) ? ApiUtils.parseInt(skill.idx, -1) : -1);
-            if (skillId < 0 || skillId > 5) {
-                _branchSkillIndex++;
-                _branchWaitStart = now;
-                if (_branchSkillIndex >= activeSkills.length) {
-                    _activeBranch = -1;
-                    _branchSkillIndex = 0;
-                }
-                return;
-            }
-            var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
-            if (actObj == null || actObj.isOK == false) {
-                _branchSkillIndex++;
-                _branchWaitStart = now;
-                if (_branchSkillIndex >= activeSkills.length) {
-                    _activeBranch = -1;
-                    _branchSkillIndex = 0;
-                }
-                return;
-            }
-
-            var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
-            if (!rulesPass) {
-                if (target != null && SkillRules.hasHardLockRule(skill)) {
                     return;
                 }
-                _branchSkillIndex++;
-                _branchWaitStart = now;
-                if (_branchSkillIndex >= activeSkills.length) {
-                    _activeBranch = -1;
-                    _branchSkillIndex = 0;
+                var skill:Dynamic = activeSkills[_branchSkillIndex];
+                if (skill == null) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    continue;
                 }
-                return;
-            }
+                var skillId:Int = (skill.skillId != null) ? ApiUtils.parseInt(skill.skillId, -1) : ((skill.idx != null) ? ApiUtils.parseInt(skill.idx, -1) : -1);
+                if (skillId < 0 || skillId > 5) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    continue;
+                }
 
-            var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
-            if (fireResult == SkillCaster.SR_FIRED) {
-                noteSkillCast();
-                if (SkillRules.hasHardLockRule(skill)) ActionFeed.consumeForTarget();
-                _branchSkillIndex++;
-                _branchWaitStart = now;
-                if (_branchSkillIndex >= activeSkills.length) {
-                    _activeBranch = -1;
-                    _branchSkillIndex = 0;
+                // When autoattack is ON (allowAuto == true), slot 0 is handled separately by the autoattack
+                // routine and has no GCD. Skip slot 0 immediately so it is not evaluated.
+                // When autoattack is OFF (allowAuto == false), slot 0 is a real skill with GCD and must be evaluated.
+                if (skillId == 0 && allowAuto) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    if (_branchSkillIndex >= activeSkills.length) {
+                        _activeBranch = -1;
+                        _branchSkillIndex = 0;
+                    }
+                    continue;
                 }
-                return;
-            }
 
-            var elapsedWait:Float = now - _branchWaitStart;
-            if (skillTimeout > 0 && elapsedWait >= skillTimeout) {
-                _branchSkillIndex++;
-                _branchWaitStart = now;
-                if (_branchSkillIndex >= activeSkills.length) {
-                    _activeBranch = -1;
-                    _branchSkillIndex = 0;
+                var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
+                if (actObj == null || actObj.isOK == false) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    if (_branchSkillIndex >= activeSkills.length) {
+                        _activeBranch = -1;
+                        _branchSkillIndex = 0;
+                    }
+                    return;
                 }
-                return;
-            }
-            if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
-                _branchSkillIndex++;
-                _branchWaitStart = now;
-                if (_branchSkillIndex >= activeSkills.length) {
-                    _activeBranch = -1;
-                    _branchSkillIndex = 0;
+
+                var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
+                if (!rulesPass) {
+                    if (target != null && SkillRules.hasHardLockRule(skill)) {
+                        return;
+                    }
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    if (_branchSkillIndex >= activeSkills.length) {
+                        _activeBranch = -1;
+                        _branchSkillIndex = 0;
+                    }
+                    return;
                 }
+
+                var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
+                if (fireResult == SkillCaster.SR_FIRED) {
+                    noteSkillCast();
+                    if (SkillRules.hasHardLockRule(skill)) ActionFeed.consumeForTarget();
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    if (_branchSkillIndex >= activeSkills.length) {
+                        _activeBranch = -1;
+                        _branchSkillIndex = 0;
+                    }
+                    return;
+                }
+
+                var elapsedWait:Float = now - _branchWaitStart;
+                if (skillTimeout > 0 && elapsedWait >= skillTimeout) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    if (_branchSkillIndex >= activeSkills.length) {
+                        _activeBranch = -1;
+                        _branchSkillIndex = 0;
+                    }
+                    return;
+                }
+                if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
+                    _branchSkillIndex++;
+                    _branchWaitStart = now;
+                    if (_branchSkillIndex >= activeSkills.length) {
+                        _activeBranch = -1;
+                        _branchSkillIndex = 0;
+                    }
+                    return;
+                }
+                // Still waiting within timeout
                 return;
             }
         }
     }
     
-    private static function runWaitForCooldown(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float):Void {
+    private static function runWaitForCooldown(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float, allowAuto:Bool = true):Void {
         if (isDisabled(avatar, world)) {
             _skillWaitStart = ApiTime.now();
             return;
         }
         if (!skillGateOpen()) return;
-        if (_skillIndex >= skills.length) _skillIndex = 0;
-        var skill:Dynamic = skills[_skillIndex];
-        if (skill == null) { _skillIndex = 0; return; }
-        var skillId:Int = (skill.skillId != null) ? ApiUtils.parseInt(skill.skillId, -1) : ((skill.idx != null) ? ApiUtils.parseInt(skill.idx, -1) : -1);
-        if (skillId < 0 || skillId > 5) {
-            _skillIndex = (_skillIndex + 1) % skills.length;
-            _skillWaitStart = ApiTime.now();
-            _stepFirstFailTime = -1;
-            return;
-        }
-        var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
-        if (actObj == null || actObj.isOK == false) {
-            _skillIndex = (_skillIndex + 1) % skills.length;
-            _skillWaitStart = ApiTime.now();
-            _stepFirstFailTime = -1;
-            return;
-        }
-        var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
+        if (skills == null || skills.length == 0) return;
+
+        var attempts:Int = 0;
+        var maxAttempts:Int = skills.length;
         var now:Float = ApiTime.now();
-        if (!rulesPass) {
-            // A window-less `[counter]` is a hard lock: the slot is not "not ready", it is waiting for
-            // the mob to actually attack. Advancing here is what made riposte skills get skipped
-            // mid-combo, so stay put and retry next tick instead.
-            // Guarded on `target` so losing the mob releases the lock rather than deadlocking forever.
-            if (target != null && SkillRules.hasHardLockRule(skill)) {
-                if (now - _lastHardLockLogTime > ApiTimings.WARN_THROTTLE_MS) {
-                    _lastHardLockLogTime = now;
-                    ApiLogger.diag("Combat", "Hard lock: holding slot " + _skillIndex + " (skill " + skillId
-                        + ") until the target lands an attack. Waiting " + Std.string(Math.round(now - _skillWaitStart)) + "ms.");
+
+        while (attempts < maxAttempts) {
+            attempts++;
+            if (_skillIndex >= skills.length) _skillIndex = 0;
+            var skill:Dynamic = skills[_skillIndex];
+            if (skill == null) {
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                _stepFirstFailTime = -1;
+                continue;
+            }
+            var skillId:Int = (skill.skillId != null) ? ApiUtils.parseInt(skill.skillId, -1) : ((skill.idx != null) ? ApiUtils.parseInt(skill.idx, -1) : -1);
+            if (skillId < 0 || skillId > 5) {
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                _stepFirstFailTime = -1;
+                continue;
+            }
+
+            // When autoattack is ON (allowAuto == true), slot 0 is handled separately by the autoattack
+            // routine and has no GCD. Skip slot 0 immediately so it is not evaluated.
+            // When autoattack is OFF (allowAuto == false), slot 0 is a real skill with GCD and must be evaluated.
+            if (skillId == 0 && allowAuto) {
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                _stepFirstFailTime = -1;
+                continue;
+            }
+
+            var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
+            if (actObj == null || actObj.isOK == false) {
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                _stepFirstFailTime = -1;
+                continue;
+            }
+
+            var rulesPass:Bool = SkillRules.evaluateSkillRules(skill, world, avatar, target, skillId, _waitUntil);
+            if (!rulesPass) {
+                // A window-less `[counter]` is a hard lock: the slot is not "not ready", it is waiting for
+                // the mob to actually attack. Advancing here is what made riposte skills get skipped
+                // mid-combo, so stay put and retry next tick instead.
+                // Guarded on `target` so losing the mob releases the lock rather than deadlocking forever.
+                if (target != null && SkillRules.hasHardLockRule(skill)) {
+                    if (now - _lastHardLockLogTime > ApiTimings.WARN_THROTTLE_MS) {
+                        _lastHardLockLogTime = now;
+                        ApiLogger.diag("Combat", "Hard lock: holding slot " + _skillIndex + " (skill " + skillId
+                            + ") until the target lands an attack. Waiting " + Std.string(Math.round(now - _skillWaitStart)) + "ms.");
+                    }
+                    return;
                 }
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                _stepFirstFailTime = -1;
                 return;
             }
-            _skillIndex = (_skillIndex + 1) % skills.length;
-            _skillWaitStart = now;
             _stepFirstFailTime = -1;
-            return;
-        }
-        _stepFirstFailTime = -1;
-        if (SkillCaster.isGcdActive(world)) return;
-        var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
-        if (fireResult == SkillCaster.SR_FIRED) {
-            noteSkillCast();
-            // A hard-locked `[counter]` is edge-triggered: this riposte answers the attack we just saw,
-            // so mark that attack spent. Without this the very next `[counter]` slot in the rotation
-            // would pass immediately on the same attack and the skills would chain with no mob hit in
-            // between. Only hard locks consume - a timed `[counter <= 1.5s]` is a freshness check and
-            // is meant to stay passable for its whole window.
-            if (SkillRules.hasHardLockRule(skill)) ActionFeed.consumeForTarget();
-            _skillIndex = (_skillIndex + 1) % skills.length;
-            _skillWaitStart = now;
-            _stepFirstFailTime = -1;
-            return;
-        }
-        var elapsedWait:Float = now - _skillWaitStart;
-        if (skillTimeout > 0 && elapsedWait >= skillTimeout) {
-            if (now - _lastTimeoutSkipLogTime > ApiTimings.WARN_THROTTLE_MS) {
-                _lastTimeoutSkipLogTime = now;
-                ApiLogger.warn("Combat", "WaitForCooldown: slot " + _skillIndex + " (skill " + skillId
-                    + ") still blocked after " + Std.string(Math.round(elapsedWait)) + "ms, skipping (timeout "
-                    + Std.string(Math.round(skillTimeout)) + "ms).");
+            if (SkillCaster.isGcdActive(world)) return;
+
+            var fireResult:Int = SkillCaster.fireSkill(world, avatar, skillId);
+            if (fireResult == SkillCaster.SR_FIRED) {
+                noteSkillCast();
+                // A hard-locked `[counter]` is edge-triggered: this riposte answers the attack we just saw,
+                // so mark that attack spent. Without this the very next `[counter]` slot in the rotation
+                // would pass immediately on the same attack and the skills would chain with no mob hit in
+                // between. Only hard locks consume - a timed `[counter <= 1.5s]` is a freshness check and
+                // is meant to stay passable for its whole window.
+                if (SkillRules.hasHardLockRule(skill)) ActionFeed.consumeForTarget();
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                _stepFirstFailTime = -1;
+                return;
             }
-            _skillIndex = (_skillIndex + 1) % skills.length;
-            _skillWaitStart = now;
-            _stepFirstFailTime = -1;
-            return;
-        }
-        if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
-            _skillIndex = (_skillIndex + 1) % skills.length;
-            _skillWaitStart = now;
-            _stepFirstFailTime = -1;
+            var elapsedWait:Float = now - _skillWaitStart;
+            if (skillTimeout > 0 && elapsedWait >= skillTimeout) {
+                if (now - _lastTimeoutSkipLogTime > ApiTimings.WARN_THROTTLE_MS) {
+                    _lastTimeoutSkipLogTime = now;
+                    ApiLogger.warn("Combat", "WaitForCooldown: slot " + _skillIndex + " (skill " + skillId
+                        + ") still blocked after " + Std.string(Math.round(elapsedWait)) + "ms, skipping (timeout "
+                        + Std.string(Math.round(skillTimeout)) + "ms).");
+                }
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                _stepFirstFailTime = -1;
+                return;
+            }
+            if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                _stepFirstFailTime = -1;
+                return;
+            }
+            // Still waiting for cooldown within timeout
             return;
         }
     }
     
-    private static function runUseIfAvailable(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float):Void {
+    private static function runUseIfAvailable(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float, allowAuto:Bool = true):Void {
         if (isDisabled(avatar, world)) {
             _skillWaitStart = ApiTime.now();
             return;
@@ -1263,6 +1321,16 @@ class CombatEngine {
                 _skillWaitStart = now;
                 continue;
             }
+
+            // When autoattack is ON (allowAuto == true), slot 0 is handled separately by the autoattack
+            // routine and has no GCD. Skip slot 0 immediately so it is not evaluated.
+            // When autoattack is OFF (allowAuto == false), slot 0 is a real skill with GCD and must be evaluated.
+            if (skillId == 0 && allowAuto) {
+                _skillIndex = (_skillIndex + 1) % skills.length;
+                _skillWaitStart = now;
+                continue;
+            }
+
             var actObj:Dynamic = SkillCaster.getSkillAction(skillId);
             if (actObj == null || actObj.isOK == false) {
                 _skillIndex = (_skillIndex + 1) % skills.length;
@@ -1300,7 +1368,7 @@ class CombatEngine {
         }
     }
 
-    private static function runSimpleRotation(world:Dynamic, avatar:Dynamic):Void {
+    private static function runSimpleRotation(world:Dynamic, avatar:Dynamic, allowAuto:Bool = true):Void {
         if (_customRotation == null || _customRotation.length == 0) return;
         // Always restarts on a new target. This is the global custom rotation, which has no mode config
         // and therefore no `resetComboOnTargetChange` flag to read - the toggle only applies to mode-based
@@ -1312,24 +1380,37 @@ class CombatEngine {
         if (!skillGateOpen()) return;
         if (customMode == "priority") {
             for (idx in _customRotation) {
+                if (idx == 0 && allowAuto) continue;
                 if (SkillCaster.fireSkill(world, avatar, idx) == SkillCaster.SR_FIRED) {
                     noteSkillCast();
                     return;
                 }
             }
         } else {
-            if (_rotationIndex >= _customRotation.length) _rotationIndex = 0;
-            var targetIdx:Int = _customRotation[_rotationIndex];
-            var res:Int = SkillCaster.fireSkill(world, avatar, targetIdx);
-            if (res == SkillCaster.SR_FIRED || res == SkillCaster.SR_RESOURCE) {
-                if (res == SkillCaster.SR_FIRED) noteSkillCast();
-                _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
-                _sequenceStepStartTime = ApiTime.now();
-            } else {
-                var now:Float = ApiTime.now();
-                if ((now - _sequenceStepStartTime) > 8000) {
+            var attempts = 0;
+            var maxAttempts = _customRotation.length;
+            while (attempts < maxAttempts) {
+                attempts++;
+                if (_rotationIndex >= _customRotation.length) _rotationIndex = 0;
+                var targetIdx:Int = _customRotation[_rotationIndex];
+                if (targetIdx == 0 && allowAuto) {
                     _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
-                    _sequenceStepStartTime = now;
+                    _sequenceStepStartTime = ApiTime.now();
+                    continue;
+                }
+                var res:Int = SkillCaster.fireSkill(world, avatar, targetIdx);
+                if (res == SkillCaster.SR_FIRED || res == SkillCaster.SR_RESOURCE) {
+                    if (res == SkillCaster.SR_FIRED) noteSkillCast();
+                    _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
+                    _sequenceStepStartTime = ApiTime.now();
+                    return;
+                } else {
+                    var now:Float = ApiTime.now();
+                    if ((now - _sequenceStepStartTime) > 8000) {
+                        _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
+                        _sequenceStepStartTime = now;
+                    }
+                    return;
                 }
             }
         }

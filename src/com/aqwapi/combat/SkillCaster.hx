@@ -195,12 +195,12 @@ class SkillCaster {
      * Returns remaining cooldown in milliseconds for skill `idx`.
      * Returns 0 if ready, auto attack, or action not found.
      */
-    public static function getCooldownRemaining(idx:Int):Float {
+    public static function getCooldownRemaining(idx:Int, allowAuto:Bool = true):Float {
         if (Api.game == null || Api.game.world == null) return 0;
         var world:Dynamic = Api.game.world;
         var actObj:Dynamic = getSkillAction(idx);
         if (actObj == null || actObj.isOK == false) return 0;
-        if (isGenuineAutoAttack(actObj)) return 0;
+        if (allowAuto && isGenuineAutoAttack(actObj)) return 0;
         try {
             if (world.actionTimeCheck != null && world.actionTimeCheck(actObj) == true) {
                 return 0;
