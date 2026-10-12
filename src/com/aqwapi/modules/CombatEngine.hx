@@ -949,6 +949,7 @@ class CombatEngine {
     private static function runBranchingRotation(world:Dynamic, avatar:Dynamic, target:Dynamic, branches:Array<Array<Dynamic>>, isUseIfAvail:Bool, skillTimeout:Float, allowAuto:Bool = true):Void {
         if (isDisabled(avatar, world)) {
             _branchWaitStart = ApiTime.now();
+            _branchStepFirstFailTime = -1;
             return;
         }
         if (!skillGateOpen()) return;
@@ -1199,6 +1200,7 @@ class CombatEngine {
     private static function runWaitForCooldown(world:Dynamic, avatar:Dynamic, target:Dynamic, skills:Array<Dynamic>, skillTimeout:Float, allowAuto:Bool = true):Void {
         if (isDisabled(avatar, world)) {
             _skillWaitStart = ApiTime.now();
+            _stepFirstFailTime = -1;
             return;
         }
         if (!skillGateOpen()) return;
