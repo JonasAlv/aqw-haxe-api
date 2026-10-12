@@ -60,6 +60,7 @@ class CombatEngine {
     private static var _activeBranch:Int = -1;
     private static var _branchSkillIndex:Int = 0;
     private static var _branchWaitStart:Float = 0;
+    private static var _branchStepFirstFailTime:Float = -1;
     private static var _lastActiveModeConfig:Dynamic = null;
     private static var _lastTargetMMID:String = null;
     private static var _targetChanged:Bool = false;
@@ -162,6 +163,7 @@ class CombatEngine {
         _activeBranch = -1;
         _branchSkillIndex = 0;
         _branchWaitStart = 0;
+        _branchStepFirstFailTime = -1;
         _lastActiveModeConfig = null;
         _temporaryIgnore = new Map<String, Float>();
         if (_timer != null && _timer.running) {
@@ -882,6 +884,7 @@ class CombatEngine {
             _activeBranch = -1;
             _branchSkillIndex = 0;
             _branchWaitStart = ApiTime.now();
+            _branchStepFirstFailTime = -1;
         }
 
         var skillUseMode:String = (modeConfig.mode != null) ? modeConfig.mode : ((modeConfig.skillUseMode != null) ? modeConfig.skillUseMode : "WaitForCooldown");
@@ -917,6 +920,7 @@ class CombatEngine {
                 _activeBranch = -1;
                 _branchSkillIndex = 0;
                 _branchWaitStart = ApiTime.now();
+                _branchStepFirstFailTime = -1;
             }
             _targetChanged = false;
         }
@@ -995,6 +999,7 @@ class CombatEngine {
                 _activeBranch = i;
                 _branchSkillIndex = 0;
                 _branchWaitStart = now;
+                _branchStepFirstFailTime = -1;
                 break;
             }
         }
@@ -1153,6 +1158,7 @@ class CombatEngine {
                     if (SkillRules.hasHardLockRule(skill)) ActionFeed.consumeForTarget();
                     _branchSkillIndex++;
                     _branchWaitStart = now;
+                    _branchStepFirstFailTime = -1;
                     if (_branchSkillIndex >= activeSkills.length) {
                         _activeBranch = -1;
                         _branchSkillIndex = 0;
@@ -1160,10 +1166,14 @@ class CombatEngine {
                     return;
                 }
 
-                var elapsedWait:Float = now - _branchWaitStart;
+                if (_branchStepFirstFailTime < 0) {
+                    _branchStepFirstFailTime = now;
+                }
+                var elapsedWait:Float = now - _branchStepFirstFailTime;
                 if (skillTimeout > 0 && elapsedWait >= skillTimeout) {
                     _branchSkillIndex++;
                     _branchWaitStart = now;
+                    _branchStepFirstFailTime = -1;
                     if (_branchSkillIndex >= activeSkills.length) {
                         _activeBranch = -1;
                         _branchSkillIndex = 0;
@@ -1173,6 +1183,7 @@ class CombatEngine {
                 if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
                     _branchSkillIndex++;
                     _branchWaitStart = now;
+                    _branchStepFirstFailTime = -1;
                     if (_branchSkillIndex >= activeSkills.length) {
                         _activeBranch = -1;
                         _branchSkillIndex = 0;
@@ -1269,7 +1280,10 @@ class CombatEngine {
                 _stepFirstFailTime = -1;
                 return;
             }
-            var elapsedWait:Float = now - _skillWaitStart;
+            if (_stepFirstFailTime < 0) {
+                _stepFirstFailTime = now;
+            }
+            var elapsedWait:Float = now - _stepFirstFailTime;
             if (skillTimeout > 0 && elapsedWait >= skillTimeout) {
                 if (now - _lastTimeoutSkipLogTime > ApiTimings.WARN_THROTTLE_MS) {
                     _lastTimeoutSkipLogTime = now;
