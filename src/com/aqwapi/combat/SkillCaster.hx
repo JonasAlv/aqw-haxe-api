@@ -174,7 +174,7 @@ class SkillCaster {
         if (dl != null && dl.intState == 0) return false;
 
         var timingReady:Bool = false;
-        try { timingReady = (world.actionTimeCheck(actObj) == true); } catch (_:Dynamic) {}
+        try { timingReady = (world.actionTimeCheck(actObj, true) == true); } catch (_:Dynamic) {}
         if (!timingReady) return false;
 
         var rawMp:Int = actObj.mp != null ? ApiUtils.parseInt(actObj.mp, 0) : 0;
@@ -202,15 +202,30 @@ class SkillCaster {
         if (actObj == null || actObj.isOK == false) return 0;
         if (allowAuto && isGenuineAutoAttack(actObj)) return 0;
         try {
-            if (world.actionTimeCheck != null && world.actionTimeCheck(actObj) == true) {
+            if (world.actionTimeCheck != null && world.actionTimeCheck(actObj, true) == true) {
                 return 0;
             }
         } catch (_:Dynamic) {}
         try {
-            var cd:Float = ApiUtils.parseFloat(actObj.cd, 0);
-            if (cd <= 0) return 0;
-            var lastTime:Float = ApiUtils.parseFloat(actObj.time, 0);
-            var now:Float = ApiTime.now();
+            var rawCd:Float = (actObj.OldCD != null) ? ApiUtils.parseFloat(actObj.OldCD, 0) : ApiUtils.parseFloat(actObj.cd, 0);
+            if (rawCd <= 0) return 0;
+            var haste:Float = 1.0;
+            try {
+                var av:Dynamic = (world.myAvatar != null) ? world.myAvatar : null;
+                var dl:Dynamic = (av != null) ? av.dataLeaf : null;
+                if (dl != null && dl.sta != null) {
+                    var tha:Dynamic = Reflect.field(dl.sta, "$tha");
+                    if (tha != null) {
+                        var thaVal:Float = ApiUtils.parseFloat(tha, 0);
+                        haste = 1.0 - Math.min(Math.max(thaVal, -1.0), 0.5);
+                    }
+                }
+            } catch (_:Dynamic) {}
+            var cd:Float = rawCd * haste;
+            var ts:Dynamic = (actObj.ts != null) ? actObj.ts : actObj.time;
+            var lastTime:Float = ApiUtils.parseFloat(ts, 0);
+            if (lastTime <= 0) return 0;
+            var now:Float = (world.dateObj != null && world.dateObj.getTime != null) ? ApiUtils.parseFloat(world.dateObj.getTime(), ApiTime.now()) : ApiTime.now();
             var remaining:Float = cd - (now - lastTime);
             return (remaining > 0) ? remaining : 0;
         } catch (_:Dynamic) {}
