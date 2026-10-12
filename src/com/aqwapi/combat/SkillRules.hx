@@ -124,6 +124,21 @@ class SkillRules {
                 var threshold:Float = ApiUtils.parseFloat(rule.value, 0);
                 return compare(remainingSec, threshold, Std.string(rule.comparison));
 
+            case "Cooldown", "SkillCooldown", "Ready":
+                var targetSkillId:Int = (rule.skillId != null && rule.skillId >= 0) ? ApiUtils.parseInt(rule.skillId, skillId) : skillId;
+                if (targetSkillId < 0 || targetSkillId > 5) return false;
+                var actObj:Dynamic = SkillCaster.getSkillAction(targetSkillId);
+                if (actObj == null || actObj.isOK == false) return false;
+                var cdRemainingMs:Float = SkillCaster.getCooldownRemaining(targetSkillId, false);
+                if (rule.isReadyCheck == true) {
+                    var isReady:Bool = (cdRemainingMs <= 0);
+                    return (rule.isNegated == true) ? !isReady : isReady;
+                } else {
+                    var cdRemainingSec:Float = cdRemainingMs / 1000.0;
+                    var threshold:Float = ApiUtils.parseFloat(rule.value, 0.0);
+                    return compare(cdRemainingSec, threshold, Std.string(rule.comparison));
+                }
+
             case "Counter", "TargetAction", "Hit":
                 // The server resolved one of the target's attacks against us and we are inside the
                 // reaction window. Driven by the hit packet rather than our HP delta or the mob's

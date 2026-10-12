@@ -580,7 +580,118 @@ class SkillDslParser {
             }
         }
 
+        // 8. Cooldown / Ready: !onCooldown(4), onCooldown(4), ready(4), !ready(4), !cd(4), cd(4),
+        //    cd(4) <= 1.5s, cooldown(4) <= 2s, ready, !ready, !cd, cd <= 1.5s
+        var cdRule:Dynamic = parseCooldownRule(r);
+        if (cdRule != null) return cdRule;
+
         return null;
+    }
+
+    private static function parseCooldownRule(r:String):Dynamic {
+        if (r == null || r.length == 0) return null;
+        var lower:String = StringTools.trim(r).toLowerCase();
+
+        var isNeg:Bool = false;
+        var s:String = lower;
+        if (StringTools.startsWith(s, "!")) {
+            isNeg = true;
+            s = StringTools.trim(s.substring(1));
+        }
+
+        var matched:Bool = false;
+        var prefix:String = "";
+        var candidates:Array<String> = ["on_cooldown", "oncooldown", "cooldown", "ready", "cd"];
+        for (p in candidates) {
+            if (StringTools.startsWith(s, p)) {
+                var rest:String = StringTools.trim(s.substring(p.length));
+                if (rest.length == 0 || StringTools.startsWith(rest, "(") || StringTools.startsWith(rest, "<") || StringTools.startsWith(rest, ">") || StringTools.startsWith(rest, "=")) {
+                    matched = true;
+                    prefix = p;
+                    s = rest;
+                    break;
+                }
+            }
+        }
+
+        if (!matched) return null;
+
+        var skillId:Int = -1;
+        if (StringTools.startsWith(s, "(")) {
+            var closeP:Int = s.indexOf(")");
+            if (closeP != -1) {
+                var inside:String = StringTools.trim(s.substring(1, closeP));
+                s = StringTools.trim(s.substring(closeP + 1));
+                if (inside == "aa") {
+                    skillId = 0;
+                } else {
+                    var pId:Null<Int> = Std.parseInt(inside);
+                    if (pId != null) skillId = pId;
+                }
+            }
+        }
+
+        // Check for comparison operator: <=, >=, ==, =, <, >
+        var comp:String = null;
+        var valStr:String = "";
+        if (StringTools.startsWith(s, "<=")) {
+            comp = "less";
+            valStr = StringTools.trim(s.substring(2));
+        } else if (StringTools.startsWith(s, ">=")) {
+            comp = "greater";
+            valStr = StringTools.trim(s.substring(2));
+        } else if (StringTools.startsWith(s, "==")) {
+            comp = "equal";
+            valStr = StringTools.trim(s.substring(2));
+        } else if (StringTools.startsWith(s, "=")) {
+            comp = "equal";
+            valStr = StringTools.trim(s.substring(1));
+        } else if (StringTools.startsWith(s, "<")) {
+            comp = "less";
+            valStr = StringTools.trim(s.substring(1));
+        } else if (StringTools.startsWith(s, ">")) {
+            comp = "greater";
+            valStr = StringTools.trim(s.substring(1));
+        }
+
+        if (comp != null && valStr.length > 0) {
+            var valLower:String = valStr.toLowerCase();
+            var isMs:Bool = (valLower.indexOf("ms") != -1);
+            var numStr:String = StringTools.replace(valLower, "ms", "");
+            numStr = StringTools.replace(numStr, "s", "");
+            var parsedVal:Float = ApiUtils.parseFloat(StringTools.trim(numStr), 0.0);
+            if (isMs) {
+                parsedVal = parsedVal / 1000.0;
+            } else if (parsedVal > 60 && valLower.indexOf("s") == -1) {
+                parsedVal = parsedVal / 1000.0;
+            }
+            return {
+                type: "Cooldown",
+                skillId: skillId,
+                comparison: comp,
+                value: parsedVal,
+                isReadyCheck: false
+            };
+        }
+
+        // Boolean readiness check:
+        // ready: true if off cooldown (cd <= 0)
+        // !ready: true if on cooldown (cd > 0)
+        // !cd, !cooldown, !oncooldown: true if off cooldown (cd <= 0)
+        // cd, cooldown, oncooldown: true if on cooldown (cd > 0)
+        var negated:Bool = false;
+        if (prefix == "ready") {
+            negated = isNeg;
+        } else {
+            negated = !isNeg;
+        }
+
+        return {
+            type: "Cooldown",
+            skillId: skillId,
+            isReadyCheck: true,
+            isNegated: negated
+        };
     }
 
     private static function parseStatRule(type:String, expr:String):Dynamic {
