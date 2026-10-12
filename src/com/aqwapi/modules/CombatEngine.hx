@@ -861,7 +861,7 @@ class CombatEngine {
         }
         var skillUseMode:String = (modeConfig.mode != null) ? modeConfig.mode : ((modeConfig.skillUseMode != null) ? modeConfig.skillUseMode : "WaitForCooldown");
         var rawTimeout:Float = (modeConfig.timeout != null) ? ApiUtils.parseFloat(modeConfig.timeout, 0) : ((modeConfig.skillTimeout != null) ? ApiUtils.parseFloat(modeConfig.skillTimeout, 0) : 0);
-        var skillTimeout:Float = (rawTimeout > 1500) ? rawTimeout : 0;
+        var skillTimeout:Float = (rawTimeout >= 1500) ? rawTimeout : 1500;
         var skills:Array<Dynamic> = (modeConfig.skills != null && Std.isOfType(modeConfig.skills, Array)) ? cast modeConfig.skills : [];
         if (skills.length == 0 && modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
             skills = SkillDslParser.parseCombo(Std.string(modeConfig.combo));

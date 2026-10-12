@@ -47,7 +47,7 @@ class SkillDslParser {
                     }
                     currentData = {
                         skillUseMode: "WaitForCooldown",
-                        skillTimeout: 0,
+                        skillTimeout: 1500,
                         skills: [],
                         combo: ""
                     };
@@ -76,9 +76,9 @@ class SkillDslParser {
 
                 case "timeout", "skilltimeout":
                     var pTo:Null<Int> = Std.parseInt(val);
-                    // 0 (or an unparseable value or legacy value <= 1500ms) means "wait indefinitely",
+                    // Any timeout < 1500ms (including 0 or legacy values) defaults to exactly 1 GCD (1500ms),
                     // matching the runtime gate in CombatEngine.runWaitForCooldown.
-                    currentData.skillTimeout = (pTo != null && pTo > 1500) ? pTo : 0;
+                    currentData.skillTimeout = (pTo != null && pTo >= 1500) ? pTo : 1500;
 
                 case "stopontargetauras", "stop_on_target_auras", "stopauras":
                     currentData.stopOnTargetAuras = val;

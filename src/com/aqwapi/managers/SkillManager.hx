@@ -346,11 +346,12 @@ class SkillManager {
         }
 
         var parsedCombo:Array<Dynamic> = SkillDslParser.parseCombo(combo);
+        var safeTimeout:Int = (timeout >= 1500) ? timeout : 1500;
         var modeObj:Dynamic = {
             mode: skillUseMode,
-            timeout: timeout,
+            timeout: safeTimeout,
             skillUseMode: skillUseMode,
-            skillTimeout: timeout,
+            skillTimeout: safeTimeout,
             skills: parsedCombo,
             combo: combo
         };
@@ -442,7 +443,7 @@ class SkillManager {
 
                 var modeStr = (modeObj.mode != null) ? Std.string(modeObj.mode) : ((modeObj.skillUseMode != null) ? Std.string(modeObj.skillUseMode) : "WaitForCooldown");
                 var rawTo = (modeObj.timeout != null) ? ApiUtils.parseInt(modeObj.timeout, 0) : ((modeObj.skillTimeout != null) ? ApiUtils.parseInt(modeObj.skillTimeout, 0) : 0);
-                var timeoutInt = (rawTo > 1500) ? rawTo : 0;
+                var timeoutInt = (rawTo >= 1500) ? rawTo : 1500;
                 var comboStr = (modeObj.combo != null) ? StringTools.trim(Std.string(modeObj.combo)) : "";
 
                 if (comboStr == "" && modeObj.skills != null && Std.isOfType(modeObj.skills, Array)) {
@@ -619,7 +620,7 @@ class SkillManager {
                             skillUseMode: (mObj.mode != null) ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown"),
                             timeout: {
                                 var rawTo = (mObj.timeout != null) ? ApiUtils.parseInt(mObj.timeout, 0) : ((mObj.skillTimeout != null) ? ApiUtils.parseInt(mObj.skillTimeout, 0) : 0);
-                                (rawTo > 1500) ? rawTo : 0;
+                                (rawTo >= 1500) ? rawTo : 1500;
                             },
                             combo: (mObj.combo != null) ? Std.string(mObj.combo) : "",
                             stopOnTargetAuras: (mObj.stopOnTargetAuras != null) ? Std.string(mObj.stopOnTargetAuras) : null,
@@ -665,7 +666,7 @@ class SkillManager {
                     skillUseMode: (mObj.mode != null) ? Std.string(mObj.mode) : ((mObj.skillUseMode != null) ? Std.string(mObj.skillUseMode) : "WaitForCooldown"),
                     timeout: {
                         var rawTo = (mObj.timeout != null) ? ApiUtils.parseInt(mObj.timeout, 0) : ((mObj.skillTimeout != null) ? ApiUtils.parseInt(mObj.skillTimeout, 0) : 0);
-                        (rawTo > 1500) ? rawTo : 0;
+                        (rawTo >= 1500) ? rawTo : 1500;
                     },
                     combo: comboStr,
                     stopOnTargetAuras: (mObj.stopOnTargetAuras != null) ? Std.string(mObj.stopOnTargetAuras) : null,
@@ -700,7 +701,7 @@ class SkillManager {
             }
 
             var effectiveMode = (skillUseMode != null && skillUseMode != "") ? skillUseMode : "WaitForCooldown";
-            var effectiveTimeout = (timeout > 1500) ? timeout : 0;
+            var effectiveTimeout = (timeout >= 1500) ? timeout : 1500;
             var effectiveCombo = (combo != null) ? StringTools.trim(combo) : "";
 
             var existingEntry:Dynamic = Reflect.field(classObj, trimmedMode);
@@ -885,13 +886,13 @@ class SkillManager {
                     if (mObj.mode != null && mObj.skillUseMode == null) mObj.skillUseMode = mObj.mode;
                     if (mObj.timeout != null) {
                         var rawTo = ApiUtils.parseInt(mObj.timeout, 0);
-                        var safeTo = (rawTo > 1500) ? rawTo : 0;
+                        var safeTo = (rawTo >= 1500) ? rawTo : 1500;
                         mObj.timeout = safeTo;
                         if (mObj.skillTimeout == null) mObj.skillTimeout = safeTo;
                     }
                     if (mObj.skillTimeout != null) {
                         var rawSto = ApiUtils.parseInt(mObj.skillTimeout, 0);
-                        mObj.skillTimeout = (rawSto > 1500) ? rawSto : 0;
+                        mObj.skillTimeout = (rawSto >= 1500) ? rawSto : 1500;
                     }
                     if (mObj.resetComboOnTargetChange != null && mObj.resetOnTarget == null) mObj.resetOnTarget = mObj.resetComboOnTargetChange;
                     if (mObj.stopOnTargetAuras != null && mObj.stopTargetAuras == null) mObj.stopTargetAuras = mObj.stopOnTargetAuras;
