@@ -145,10 +145,13 @@ class ApiConfig {
         if (key == null) return false;
         var k = key.toLowerCase();
 
-        // UI & Widget screen positions, dimensions, and visual toggles
-        if (StringTools.startsWith(k, "api_widget_")) return true;
-        if (StringTools.startsWith(k, "api_unitframes_")) return true;
+        // UI & Widget screen positions, dimensions, custom widget definitions, and visual toggles
+        if (StringTools.startsWith(k, "api_widget")) return true;
+        if (StringTools.startsWith(k, "api_custom_widget")) return true;
+        if (StringTools.startsWith(k, "api_unitframe")) return true;
         if (StringTools.startsWith(k, "api_floating_")) return true;
+        if (StringTools.startsWith(k, "api_standalone_")) return true;
+        if (StringTools.startsWith(k, "api_topbar")) return true;
         if (StringTools.startsWith(k, "api_crt_")) return true;
         if (StringTools.startsWith(k, "api_tool_") || StringTools.startsWith(k, "api_tools_")) return true;
         if (StringTools.startsWith(k, "api_hud_")) return true;
@@ -317,6 +320,37 @@ class ApiConfig {
         if (!_loadedGlobal) loadGlobal();
         _globalCache.set(key, value);
         saveGlobal();
+    }
+
+    public static function getGlobalString(key:String, defaultValue:String = ""):String {
+        var v = getGlobal(key, defaultValue);
+        return (v != null) ? Std.string(v) : defaultValue;
+    }
+
+    public static function setGlobalString(key:String, value:String):Void {
+        setGlobal(key, value);
+    }
+
+    public static function getGlobalBool(key:String, defaultValue:Bool = false):Bool {
+        var v = getGlobal(key, defaultValue);
+        if (v == null) return defaultValue;
+        if (Std.isOfType(v, Bool)) return cast v;
+        var s = Std.string(v).toLowerCase();
+        return s == "true" || s == "1";
+    }
+
+    public static function setGlobalBool(key:String, value:Bool):Void {
+        setGlobal(key, value);
+    }
+
+    public static function getGlobalInt(key:String, defaultValue:Int = 0):Int {
+        var v = getGlobal(key, defaultValue);
+        if (v == null) return defaultValue;
+        return ApiUtils.parseInt(v, defaultValue);
+    }
+
+    public static function setGlobalInt(key:String, value:Int):Void {
+        setGlobal(key, value);
     }
 
     public static function getAccount(key:String, defaultValue:Dynamic = null):Dynamic {
