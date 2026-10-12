@@ -6,6 +6,7 @@ import com.aqwapi.utils.ApiTimings;
 
 import com.aqwapi.Api;
 import com.aqwapi.Game;
+import com.aqwapi.data.EntityDTO;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiLogger;
 
@@ -1057,5 +1058,16 @@ class MapManager {
             } catch (e:Dynamic) {}
         }
         return pads;
+    }
+
+    public function getEntitiesOnScreen():Array<EntityDTO> {
+        var list:Array<EntityDTO> = [];
+        if (Api.monster != null) {
+            for (m in Api.monster.getMonstersOnScreen()) list.push(m);
+        }
+        if (Api.player != null) {
+            for (p in Api.player.getPlayersOnScreen()) list.push(p);
+        }
+        return list;
     }
 }

@@ -16,6 +16,100 @@ class EntityDTO {
     public var monsterId:String = "";
     public var raw:Dynamic;
 
+    public var isMonster:Bool = false;
+    public var isPlayer:Bool = false;
+    public var isMyAvatar:Bool = false;
+    public var race:String = "";
+    public var guild:String = "";
+    public var isAfk:Bool = false;
+    public var level:Int = 1;
+
+    public var pMC(get, never):Dynamic;
+    @:getter(pMC)
+    public function get_pMC_prop():Dynamic { return get_pMC(); }
+    public function get_pMC():Dynamic {
+        if (raw == null) return null;
+        try {
+            var mc:Dynamic = _sf(raw, "pMC");
+            if (mc != null) return mc;
+        } catch (_:Dynamic) {}
+        return null;
+    }
+
+    public var isCurrentTarget(get, never):Bool;
+    @:getter(isCurrentTarget)
+    public function get_isCurrentTarget_prop():Bool { return get_isCurrentTarget(); }
+    public function get_isCurrentTarget():Bool {
+        try {
+            var g:Dynamic = Api.game;
+            if (g != null && g.world != null && g.world.myAvatar != null) {
+                var tgt:Dynamic = g.world.myAvatar.target;
+                if (tgt == null) return false;
+                return (tgt == this.raw);
+            }
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    public var isHostilePvP(get, never):Bool;
+    @:getter(isHostilePvP)
+    public function get_isHostilePvP_prop():Bool { return get_isHostilePvP(); }
+    public function get_isHostilePvP():Bool {
+        if (this.isMonster) return true;
+        try {
+            var g:Dynamic = Api.game;
+            if (g != null && g.world != null && g.world.bPvP == true && g.world.myAvatar != null) {
+                var myDl = _sf(g.world.myAvatar, "dataLeaf");
+                var myTeam = (myDl != null) ? _sf(myDl, "pvpTeam") : null;
+                var theirDl = _sf(this.raw, "dataLeaf");
+                var theirTeam = (theirDl != null) ? _sf(theirDl, "pvpTeam") : null;
+                if (myTeam != null && theirTeam != null && myTeam != theirTeam) return true;
+            }
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    public function select():Void {
+        try {
+            var g:Dynamic = Api.game;
+            if (g != null && g.world != null && this.raw != null) {
+                if (Reflect.isFunction(g.world.setTarget)) {
+                    g.world.setTarget(this.raw);
+                }
+            }
+        } catch (_:Dynamic) {}
+    }
+
+    public function hideNativeName():Void {
+        var mc = this.pMC;
+        if (mc == null) return;
+        try {
+            var pn = _sf(mc, "pname");
+            if (pn != null && pn.visible == true) pn.visible = false;
+        } catch (_:Dynamic) {}
+        try {
+            var hb = _sf(mc, "hpBar");
+            if (hb != null && hb.visible == true) hb.visible = false;
+        } catch (_:Dynamic) {}
+    }
+
+    public function showNativeName():Void {
+        var mc = this.pMC;
+        if (mc == null) return;
+        try {
+            var pn = _sf(mc, "pname");
+            if (pn != null && pn.visible == false) pn.visible = true;
+        } catch (_:Dynamic) {}
+        try {
+            var hb = _sf(mc, "hpBar");
+            if (hb != null) {
+                var g:Dynamic = Api.game;
+                var show:Bool = (g != null && g.world != null && g.world.showHPBar == true);
+                hb.visible = show;
+            }
+        } catch (_:Dynamic) {}
+    }
+
     private static inline function _sf(obj:Dynamic, field:String):Dynamic {
         if (obj == null) return null;
         return Reflect.field(obj, field);
@@ -203,6 +297,101 @@ class EntityDTO {
                 var entID = _sf(rawData, "entID");
                 if (entID != null) this.id = Std.string(entID);
             }
+        }
+
+        // 1. Classification (safe reflection, never using direct property access)
+        var monCheck:Bool = false;
+        if (pMC != null) {
+            try {
+                if (Reflect.hasField(pMC, "isMonster") && Reflect.field(pMC, "isMonster") == true) monCheck = true;
+            } catch (_:Dynamic) {}
+        }
+        if (!monCheck && rawData != null) {
+            try {
+                if (Reflect.hasField(rawData, "isMonster") && Reflect.field(rawData, "isMonster") == true) monCheck = true;
+            } catch (_:Dynamic) {}
+        }
+        if (!monCheck && (this.mapId != "" || this.monsterId != "")) {
+            monCheck = true;
+        }
+        if (!monCheck && objData != null && _sf(objData, "MonMapID") != null) {
+            monCheck = true;
+        }
+        this.isMonster = monCheck;
+        this.isPlayer = !monCheck;
+
+        // 2. Local avatar check
+        if (rawData != null) {
+            try {
+                if (Reflect.hasField(rawData, "isMyAvatar") && Reflect.field(rawData, "isMyAvatar") == true) this.isMyAvatar = true;
+            } catch (_:Dynamic) {}
+        }
+
+        // 3. Level
+        var lvlVal:Dynamic = null;
+        if (dataLeaf != null) lvlVal = _sf(dataLeaf, "intLevel");
+        if (lvlVal == null && objData != null) lvlVal = _sf(objData, "intLevel");
+        if (lvlVal != null) this.level = _di(lvlVal, 1);
+
+        // 4. Monster Race
+        if (this.isMonster) {
+            var r:Dynamic = null;
+            if (objData != null) r = _sf(objData, "sRace");
+            if (r == null && dataLeaf != null) r = _sf(dataLeaf, "sRace");
+            if (r != null) {
+                var strR = _ds(r);
+                if (strR != "" && strR != "None" && strR != "null") this.race = strR;
+            } else if (pMC != null) {
+                try {
+                    var pn = _sf(pMC, "pname");
+                    if (pn != null) {
+                        var typ = _sf(pn, "typ");
+                        if (typ != null && typ.text != null) {
+                            var strTyp = _ds(typ.text);
+                            if (strTyp.indexOf("None") == -1 && strTyp != "") {
+                                strTyp = StringTools.replace(strTyp, "<", "");
+                                strTyp = StringTools.replace(strTyp, ">", "");
+                                this.race = StringTools.trim(strTyp);
+                            }
+                        }
+                    }
+                } catch (_:Dynamic) {}
+            }
+        }
+
+        // 5. Player Guild & AFK
+        if (this.isPlayer) {
+            var gObj:Dynamic = null;
+            if (objData != null) gObj = _sf(objData, "guild");
+            if (gObj == null && dataLeaf != null) gObj = _sf(dataLeaf, "guild");
+            if (gObj != null) {
+                var gName = _sf(gObj, "Name");
+                if (gName != null && _ds(gName) != "" && _ds(gName) != "null") this.guild = _ds(gName);
+            } else if (pMC != null) {
+                try {
+                    var pn = _sf(pMC, "pname");
+                    if (pn != null) {
+                        var tg = _sf(pn, "tg");
+                        if (tg != null && tg.text != null) {
+                            var strTg = _ds(tg.text);
+                            if (strTg != "" && strTg != "null") {
+                                strTg = StringTools.replace(strTg, "<", "");
+                                strTg = StringTools.replace(strTg, ">", "");
+                                this.guild = StringTools.trim(strTg);
+                            }
+                        }
+                    }
+                } catch (_:Dynamic) {}
+            }
+
+            // AFK check
+            try {
+                var g:Dynamic = Api.game;
+                if (g != null && g.world != null && g.world.uoTree != null && this.name != "") {
+                    var uo = Reflect.field(g.world.uoTree, this.name.toLowerCase());
+                    if (uo != null && uo.afk == true) this.isAfk = true;
+                }
+            } catch (_:Dynamic) {}
         }
     }
 

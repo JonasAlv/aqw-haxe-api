@@ -551,4 +551,31 @@ class MonsterManager {
     public inline function pull(targets:Dynamic = null):Void {
         pullMonsters(targets);
     }
+
+    public function getMonstersOnScreen():Array<EntityDTO> {
+        var result:Array<EntityDTO> = [];
+        if (_game == null || _game.world == null || _game.world.monsters == null) return result;
+        var raw:Dynamic = _game.world.monsters;
+        var len:Int = 0;
+        try { len = (raw.length != null) ? Std.int(raw.length) : 0; } catch (_:Dynamic) {}
+        for (i in 0...len) {
+            var m:Dynamic = null;
+            try { m = raw[i]; } catch (_:Dynamic) {}
+            if (m == null) continue;
+            var mc:Dynamic = null;
+            try { mc = Reflect.field(m, "pMC"); } catch (_:Dynamic) {}
+            if (mc != null && mc.stage != null) {
+                result.push(new EntityDTO(m));
+            }
+        }
+        return result;
+    }
+
+    public function getAllMonsters():Array<EntityDTO> {
+        var result:Array<EntityDTO> = [];
+        for (m in _getRawMonsters()) {
+            if (m != null) result.push(new EntityDTO(m));
+        }
+        return result;
+    }
 }

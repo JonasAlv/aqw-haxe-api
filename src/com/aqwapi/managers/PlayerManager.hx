@@ -509,4 +509,62 @@ class PlayerManager {
             }
         }
     }
+
+    public function getPlayersOnScreen():Array<EntityDTO> {
+        var result:Array<EntityDTO> = [];
+        var g = _g();
+        if (g == null || g.world == null) return result;
+        var world:Dynamic = g.world;
+
+        // 1. Local player (myAvatar)
+        if (world.myAvatar != null) {
+            var myMc:Dynamic = null;
+            try { myMc = Reflect.field(world.myAvatar, "pMC"); } catch (_:Dynamic) {}
+            if (myMc != null && myMc.stage != null) {
+                result.push(new EntityDTO(world.myAvatar));
+            }
+        }
+
+        // 2. Other players in world.avatars
+        if (world.avatars != null) {
+            var raw:Dynamic = world.avatars;
+            var myAv = world.myAvatar;
+            try {
+                for (k in Reflect.fields(raw)) {
+                    var av:Dynamic = Reflect.field(raw, k);
+                    if (av == null || av == myAv) continue;
+                    var mc:Dynamic = null;
+                    try { mc = Reflect.field(av, "pMC"); } catch (_:Dynamic) {}
+                    if (mc != null && mc.stage != null) {
+                        result.push(new EntityDTO(av));
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+        return result;
+    }
+
+    public function getPlayersInRoom():Array<EntityDTO> {
+        var result:Array<EntityDTO> = [];
+        var g = _g();
+        if (g == null || g.world == null) return result;
+        var world:Dynamic = g.world;
+
+        if (world.myAvatar != null) {
+            result.push(new EntityDTO(world.myAvatar));
+        }
+
+        if (world.avatars != null) {
+            var raw:Dynamic = world.avatars;
+            var myAv = world.myAvatar;
+            try {
+                for (k in Reflect.fields(raw)) {
+                    var av:Dynamic = Reflect.field(raw, k);
+                    if (av == null || av == myAv) continue;
+                    result.push(new EntityDTO(av));
+                }
+            } catch (_:Dynamic) {}
+        }
+        return result;
+    }
 }
