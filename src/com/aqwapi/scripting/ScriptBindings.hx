@@ -1264,6 +1264,20 @@ class ScriptBindings {
             }
             return Api.visual.cleanArena;
         });
+        bind("cachePlayers", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.cachePlayers = (enabled == true);
+            }
+            return Api.visual.cachePlayers;
+        });
+        bind("cacheMonsters", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.cacheMonsters = (enabled == true);
+            }
+            return Api.visual.cacheMonsters;
+        });
     }
 
     private static function registerPartyShortcuts():Void {

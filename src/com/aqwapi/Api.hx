@@ -95,6 +95,30 @@ class Api {
     public static function set_cleanArena_prop(v:Bool):Void { if (visual != null) visual.cleanArena = v; }
     public static function set_cleanArena(v:Bool):Bool { if (visual != null) visual.cleanArena = v; return v; }
 
+    public static var hideMonsters(get, set):Bool;
+    @:getter(hideMonsters)
+    public static function get_hideMonsters_prop():Bool { return visual != null ? visual.hideMonsters : false; }
+    public static function get_hideMonsters():Bool { return visual != null ? visual.hideMonsters : false; }
+    @:setter(hideMonsters)
+    public static function set_hideMonsters_prop(v:Bool):Void { if (visual != null) visual.hideMonsters = v; }
+    public static function set_hideMonsters(v:Bool):Bool { if (visual != null) visual.hideMonsters = v; return v; }
+
+    public static var cachePlayers(get, set):Bool;
+    @:getter(cachePlayers)
+    public static function get_cachePlayers_prop():Bool { return visual != null ? visual.cachePlayers : false; }
+    public static function get_cachePlayers():Bool { return visual != null ? visual.cachePlayers : false; }
+    @:setter(cachePlayers)
+    public static function set_cachePlayers_prop(v:Bool):Void { if (visual != null) visual.cachePlayers = v; }
+    public static function set_cachePlayers(v:Bool):Bool { if (visual != null) visual.cachePlayers = v; return v; }
+
+    public static var cacheMonsters(get, set):Bool;
+    @:getter(cacheMonsters)
+    public static function get_cacheMonsters_prop():Bool { return visual != null ? visual.cacheMonsters : false; }
+    public static function get_cacheMonsters():Bool { return visual != null ? visual.cacheMonsters : false; }
+    @:setter(cacheMonsters)
+    public static function set_cacheMonsters_prop(v:Bool):Void { if (visual != null) visual.cacheMonsters = v; }
+    public static function set_cacheMonsters(v:Bool):Bool { if (visual != null) visual.cacheMonsters = v; return v; }
+
     public static var suppressTargetGlow(get, set):Bool;
     @:getter(suppressTargetGlow)
     public static function get_suppressTargetGlow_prop():Bool { return visual != null ? visual.suppressTargetGlow : false; }

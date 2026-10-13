@@ -2,6 +2,7 @@ package com.aqwapi.managers;
 
 import flash.events.TimerEvent;
 import flash.geom.ColorTransform;
+import flash.geom.Matrix;
 import flash.utils.Timer;
 import com.aqwapi.Api;
 import com.aqwapi.Game;
@@ -31,6 +32,10 @@ class VisualManager {
     public var hideMonsters(default, set):Bool = false;
     public var cleanArena(default, set):Bool = false;
 
+    // Bitmap Caching (rasterizes vector models into GPU/blit bitmaps)
+    public var cachePlayers(default, set):Bool = true;
+    public var cacheMonsters(default, set):Bool = true;
+
     // Target glow suppression (disables native avtMCT/avtPCT color wash when units are targeted)
     public var suppressTargetGlow(default, set):Bool = true;
 
@@ -58,6 +63,8 @@ class VisualManager {
         disableGround = ApiConfig.getBool("api_disable_ground", false);
         hideMonsters = ApiConfig.getBool("api_hide_monsters", false);
         cleanArena = ApiConfig.getBool("api_clean_arena", false);
+        cachePlayers = ApiConfig.getBool("api_cache_players", true);
+        cacheMonsters = ApiConfig.getBool("api_cache_monsters", true);
         suppressTargetGlow = ApiConfig.getBool("api_suppress_target_glow", ApiConfig.getBool("api_frame_nameplates_enabled", true));
         showNames = ApiConfig.getBool("api_visual_show_names", true);
         showShadows = ApiConfig.getBool("api_visual_show_shadows", true);
@@ -79,7 +86,7 @@ class VisualManager {
     }
 
     public inline function isActive():Bool {
-        return lagKiller || hidePlayers || disableSkillAnims || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena || suppressTargetGlow;
+        return lagKiller || hidePlayers || disableSkillAnims || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena || suppressTargetGlow || cachePlayers || cacheMonsters;
     }
 
     public function set_suppressTargetGlow(v:Bool):Bool {
@@ -183,6 +190,20 @@ class VisualManager {
         return hideMonsters;
     }
 
+    public function set_cachePlayers(v:Bool):Bool {
+        cachePlayers = v;
+        ApiConfig.setBool("api_cache_players", v);
+        apply();
+        return cachePlayers;
+    }
+
+    public function set_cacheMonsters(v:Bool):Bool {
+        cacheMonsters = v;
+        ApiConfig.setBool("api_cache_monsters", v);
+        apply();
+        return cacheMonsters;
+    }
+
     public function set_cleanArena(v:Bool):Bool {
         cleanArena = v;
         ApiConfig.setBool("api_clean_arena", v);
@@ -213,6 +234,7 @@ class VisualManager {
                 d.bDisWepAnim = effDisWepAnims;
                 d.bDisGround = effDisGround;
                 d.bHideMons = hideMonsters;
+                d.bCachePlayers = cachePlayers;
 
                 if (d.dOptions != null) {
                     Reflect.setField(d.dOptions, "showNames", showNames);
@@ -253,22 +275,36 @@ class VisualManager {
         var effDisSkills = lagKiller || disableSkillAnims;
         var effDisMonAnims = lagKiller || disableMonsterAnims;
 
-        // A. Other Player Avatars
+        // A. Player Avatars (self and other players)
         try {
             if (world.avatars != null) {
                 var avList:Array<Dynamic> = cast world.avatars;
                 var myAv = world.myAvatar;
                 for (av in avList) {
-                    if (av == null || av == myAv || av.pMC == null) continue;
+                    if (av == null || av.pMC == null) continue;
                     var pMC:Dynamic = av.pMC;
+                    var isMe:Bool = (av == myAv);
+
                     if (pMC.mcChar != null) {
-                        pMC.mcChar.visible = !effHidePlayers;
+                        if (!isMe) {
+                            pMC.mcChar.visible = !effHidePlayers;
+                        }
+                        // Bitmap Caching on avatar vector graphics
+                        if (pMC.mcChar.cacheAsBitmap != cachePlayers) {
+                            pMC.mcChar.cacheAsBitmap = cachePlayers;
+                            try {
+                                pMC.mcChar.cacheAsBitmapMatrix = cachePlayers ? new Matrix() : null;
+                            } catch (_:Dynamic) {}
+                        }
                     }
-                    if (pMC.shadow != null) {
-                        pMC.shadow.visible = (!effHidePlayers) || showShadows;
-                    }
-                    if (pMC.pname != null) {
-                        pMC.pname.visible = (!effHidePlayers) || showNames;
+
+                    if (!isMe) {
+                        if (pMC.shadow != null) {
+                            pMC.shadow.visible = (!effHidePlayers) || showShadows;
+                        }
+                        if (pMC.pname != null) {
+                            pMC.pname.visible = (!effHidePlayers) || showNames;
+                        }
                     }
                 }
             }
@@ -289,6 +325,13 @@ class VisualManager {
                             pMC.mcChar.visible = false;
                         } else if (!hideMonsters && !pMC.mcChar.visible) {
                             pMC.mcChar.visible = true;
+                        }
+                        // Bitmap Caching on monster vector graphics
+                        if (pMC.mcChar.cacheAsBitmap != cacheMonsters) {
+                            pMC.mcChar.cacheAsBitmap = cacheMonsters;
+                            try {
+                                pMC.mcChar.cacheAsBitmapMatrix = cacheMonsters ? new Matrix() : null;
+                            } catch (_:Dynamic) {}
                         }
                     }
                 }
