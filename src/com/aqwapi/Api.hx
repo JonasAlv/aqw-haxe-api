@@ -526,106 +526,28 @@ class Api {
                 } catch (_:Dynamic) {}
             }
 
-            // 3. Hook mcPopup.loadMap and mcPopup.loadNews to force loadBytes with ApplicationDomain.currentDomain
+            // 3. Hook spider_fla.mcPopup_355 prototype and mcPopup instance
+            try {
+                var appDom = flash.system.ApplicationDomain.currentDomain;
+                if (appDom != null && appDom.hasDefinition("spider_fla.mcPopup_355")) {
+                    var popCls:Dynamic = appDom.getDefinition("spider_fla.mcPopup_355");
+                    if (popCls != null && popCls.prototype != null && popCls.prototype.__mod_patched_loadmap != true) {
+                        popCls.prototype.__mod_patched_loadmap = true;
+                        popCls.prototype.loadMap = function(param1:String):Dynamic {
+                            openPatchedMap();
+                            return null;
+                        };
+                    }
+                }
+            } catch (_:Dynamic) {}
+
             var g:Dynamic = game;
             if (g != null && g.ui != null && g.ui.mcPopup != null) {
                 var popup:Dynamic = g.ui.mcPopup;
-                if (popup.loadMap != null && popup.__mod_patched_map != true) {
-                    popup.__mod_patched_map = true;
-                    popup.loadMap = function(param1:String):Dynamic {
-                        try {
-                            if (popup.mcMap != null) {
-                                while (popup.mcMap.numChildren > 0) {
-                                    popup.mcMap.removeChildAt(0);
-                                }
-                            }
-                            var baseFilePath:String = (g.serverFilePath != null && Std.string(g.serverFilePath) != "") ? Std.string(g.serverFilePath) : "https://game.aq.com/game/gamefiles/";
-                            var reqUrl:String = baseFilePath + param1;
-
-                            var uldr:flash.net.URLLoader = new flash.net.URLLoader();
-                            uldr.dataFormat = flash.net.URLLoaderDataFormat.BINARY;
-                            var ldr:flash.display.Loader = new flash.display.Loader();
-
-                            uldr.addEventListener(flash.events.Event.COMPLETE, function(ev:Dynamic):Void {
-                                try {
-                                    var bytes:flash.utils.ByteArray = cast uldr.data;
-                                    var curDom = flash.system.ApplicationDomain.currentDomain;
-                                    var ctx:flash.system.LoaderContext = new flash.system.LoaderContext(false, curDom);
-                                    Reflect.setField(ctx, "allowCodeImport", true);
-
-                                    ldr.contentLoaderInfo.addEventListener(flash.events.Event.COMPLETE, function(cEv:Dynamic):Void {
-                                        try {
-                                            if (curDom.hasDefinition("mapUI")) {
-                                                var mapUICls:Dynamic = curDom.getDefinition("mapUI");
-                                                if (mapUICls != null && mapUICls.prototype != null && mapUICls.prototype.__mod_patched_loadapp != true) {
-                                                    mapUICls.prototype.__mod_patched_loadapp = true;
-                                                    mapUICls.prototype.loadApp = function():Void {
-                                                        var self:Dynamic = untyped __this__;
-                                                        if (self.appRequested != null) {
-                                                            self.isLoading = true;
-                                                            var appUrl:String = self.sFilePath + self.appRequested;
-                                                            var subUldr:flash.net.URLLoader = new flash.net.URLLoader();
-                                                            subUldr.dataFormat = flash.net.URLLoaderDataFormat.BINARY;
-                                                            self.ldr = new flash.display.Loader();
-                                                            self.ldr.contentLoaderInfo.addEventListener(flash.events.Event.COMPLETE, self.completeHandler);
-                                                            self.ldr.contentLoaderInfo.addEventListener(flash.events.ProgressEvent.PROGRESS, self.progressHandler);
-                                                            self.ldr.contentLoaderInfo.addEventListener(flash.events.IOErrorEvent.IO_ERROR, self.ioErrorHandler);
-
-                                                            try {
-                                                                if (curDom.hasDefinition("mcLoader")) {
-                                                                    var mcLdrCls:Dynamic = curDom.getDefinition("mcLoader");
-                                                                    self.loaderMC = self.addChild(Type.createInstance(mcLdrCls, []));
-                                                                    self.loaderMC = self.addChildAt(self.loaderMC, self.numChildren - 1);
-                                                                    self.loaderMC.x = self.mcWindowBG.width / 2 - self.loaderMC.width / 2 + self.mcWindowBG.x;
-                                                                    self.loaderMC.y = self.mcWindowBG.height / 2 - self.loaderMC.height / 2 + self.mcWindowBG.y;
-                                                                    self.loaderMC.visible = true;
-                                                                }
-                                                            } catch (_:Dynamic) {}
-
-                                                            subUldr.addEventListener(flash.events.Event.COMPLETE, function(subEv:Dynamic):Void {
-                                                                try {
-                                                                    var subBytes:flash.utils.ByteArray = cast subUldr.data;
-                                                                    var subCtx:flash.system.LoaderContext = new flash.system.LoaderContext(false, curDom);
-                                                                    Reflect.setField(subCtx, "allowCodeImport", true);
-                                                                    self.ldr.loadBytes(subBytes, subCtx);
-                                                                } catch (eSub:Dynamic) {
-                                                                    trace("[Mod] Error loadBytes in mapUI.loadApp: " + eSub);
-                                                                }
-                                                            });
-                                                            subUldr.addEventListener(flash.events.IOErrorEvent.IO_ERROR, function(eSubIo:Dynamic):Void {
-                                                                self.ioErrorHandler(eSubIo);
-                                                            });
-                                                            subUldr.load(new flash.net.URLRequest(appUrl));
-                                                        } else {
-                                                            self.isLoading = false;
-                                                        }
-                                                    };
-                                                }
-                                            }
-                                        } catch (eMapUI:Dynamic) {
-                                            trace("[Mod] Error patching mapUI: " + eMapUI);
-                                        }
-                                    });
-
-                                    ldr.loadBytes(bytes, ctx);
-                                    if (popup.mcMap != null) {
-                                        popup.mcMap.addChild(ldr);
-                                    }
-                                } catch (eBytes:Dynamic) {
-                                    trace("[Mod] Error loading Map-UI bytes: " + eBytes);
-                                }
-                            });
-                            uldr.addEventListener(flash.events.IOErrorEvent.IO_ERROR, function(eIo:Dynamic):Void {
-                                trace("[Mod] IOError loading Map-UI: " + eIo);
-                            });
-                            uldr.load(new flash.net.URLRequest(reqUrl));
-                            return ldr;
-                        } catch (err:Dynamic) {
-                            trace("[Mod] Error in patched loadMap: " + err);
-                            return null;
-                        }
-                    };
-                }
+                popup.loadMap = function(param1:String):Dynamic {
+                    openPatchedMap();
+                    return null;
+                };
 
                 if (popup.loadNews != null && popup.__mod_patched_news != true) {
                     popup.__mod_patched_news = true;
@@ -699,20 +621,107 @@ class Api {
         #end
     }
 
+    private static var _mapBytesCache:Map<String, flash.utils.ByteArray> = new Map();
+
+    /**
+     * Loads Map sub-apps (mapIcons_r14.swf, kingdoms, aqwMapBitmap_Low_r5.swf)
+     * using URLLoader + loadBytes with ApplicationDomain.currentDomain and allowCodeImport=true.
+     */
+    public static function loadMapSubApp(ldr:flash.display.Loader, url:String):Void {
+        #if flash
+        if (ldr == null || url == null || url == "") return;
+
+        var fullUrl = url;
+        if (fullUrl.indexOf("://") < 0) {
+            var base = (game != null && game.serverFilePath != null && Std.string(game.serverFilePath) != "") 
+                ? Std.string(game.serverFilePath) 
+                : "https://game.aq.com/game/gamefiles/";
+            fullUrl = base + "news/" + fullUrl;
+        }
+
+        // Fast path: load from memory cache
+        if (_mapBytesCache.exists(fullUrl)) {
+            try {
+                var cachedBytes = _mapBytesCache.get(fullUrl);
+                var ctx = new flash.system.LoaderContext(false, flash.system.ApplicationDomain.currentDomain);
+                Reflect.setField(ctx, "allowCodeImport", true);
+                ldr.loadBytes(cachedBytes, ctx);
+                return;
+            } catch (e:Dynamic) {
+                trace("[Mod] loadMapSubApp cached loadBytes error: " + e);
+            }
+        }
+
+        var uldr:flash.net.URLLoader = new flash.net.URLLoader();
+        uldr.dataFormat = flash.net.URLLoaderDataFormat.BINARY;
+        uldr.addEventListener(flash.events.Event.COMPLETE, function(e:Dynamic):Void {
+            try {
+                var bytes:flash.utils.ByteArray = cast uldr.data;
+                _mapBytesCache.set(fullUrl, bytes);
+                var ctx = new flash.system.LoaderContext(false, flash.system.ApplicationDomain.currentDomain);
+                Reflect.setField(ctx, "allowCodeImport", true);
+                ldr.loadBytes(bytes, ctx);
+            } catch (err:Dynamic) {
+                trace("[Mod] loadMapSubApp loadBytes error: " + err);
+            }
+        });
+        uldr.addEventListener(flash.events.IOErrorEvent.IO_ERROR, function(e:flash.events.IOErrorEvent):Void {
+            try {
+                ldr.contentLoaderInfo.dispatchEvent(e);
+            } catch (_:Dynamic) {}
+        });
+        uldr.addEventListener(flash.events.SecurityErrorEvent.SECURITY_ERROR, function(e:flash.events.SecurityErrorEvent):Void {
+            try {
+                ldr.contentLoaderInfo.dispatchEvent(new flash.events.IOErrorEvent(flash.events.IOErrorEvent.IO_ERROR, false, false, Std.string(e.text)));
+            } catch (_:Dynamic) {}
+        });
+        uldr.load(new flash.net.URLRequest(fullUrl));
+        #end
+    }
+
+    /**
+     * Opens the patched World Map instantly using embedded Map-UI_r38.swf bytes.
+     */
+    public static function openPatchedMap():Void {
+        #if flash
+        var g:Dynamic = game;
+        if (g == null || g.ui == null || g.ui.mcPopup == null) return;
+        var popup:Dynamic = g.ui.mcPopup;
+        try {
+            if (popup.mcMap != null) {
+                while (popup.mcMap.numChildren > 0) {
+                    popup.mcMap.removeChildAt(0);
+                }
+            }
+            var res = haxe.Resource.getBytes("map_ui_swf");
+            if (res != null) {
+                var bytes:flash.utils.ByteArray = res.getData();
+                var curDom = flash.system.ApplicationDomain.currentDomain;
+                var ctx = new flash.system.LoaderContext(false, curDom);
+                Reflect.setField(ctx, "allowCodeImport", true);
+                var ldr:flash.display.Loader = new flash.display.Loader();
+                ldr.contentLoaderInfo.addEventListener(flash.events.Event.COMPLETE, function(_):Void {
+                    if (popup.mcMap != null) {
+                        popup.mcMap.addChild(ldr);
+                    }
+                });
+                ldr.loadBytes(bytes, ctx);
+            }
+        } catch (err:Dynamic) {
+            trace("[Mod] openPatchedMap error: " + err);
+        }
+        #end
+    }
+
     private static var _airSecTimer:flash.utils.Timer = null;
 
     public static function startAirSecurityWatcher():Void {
         patchAirSecurity();
         #if flash
         if (_airSecTimer == null) {
-            _airSecTimer = new flash.utils.Timer(800);
+            _airSecTimer = new flash.utils.Timer(1000);
             _airSecTimer.addEventListener(flash.events.TimerEvent.TIMER, function(_):Void {
                 patchAirSecurity();
-                var g:Dynamic = game;
-                if (g != null && g.ui != null && g.ui.mcPopup != null && g.ui.mcPopup.__mod_patched_map == true) {
-                    _airSecTimer.stop();
-                    _airSecTimer = null;
-                }
             });
             _airSecTimer.start();
         }
