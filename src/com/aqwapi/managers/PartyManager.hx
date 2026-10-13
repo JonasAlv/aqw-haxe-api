@@ -174,9 +174,10 @@ class PartyManager {
      */
     public function buildMemberDTO(name:String, isSelf:Bool):PartyMemberDTO {
         var dto = new PartyMemberDTO();
-        dto.username = name;
+        dto.username = (name != null) ? name : "";
         dto.isMe = isSelf;
-        dto.isLeader = (name.toLowerCase() == leaderName.toLowerCase());
+        var lead = leaderName;
+        dto.isLeader = (name != null && name != "" && lead != null && lead != "" && name.toLowerCase() == lead.toLowerCase());
 
         var w = _world();
         if (w == null) return dto;
