@@ -11,6 +11,7 @@ import com.aqwapi.Api;
 import com.aqwapi.Game;
 import com.aqwapi.utils.ApiConfig;
 import com.aqwapi.utils.ApiLogger;
+import com.aqwapi.utils.ApiTime;
 
 /**
  * Native in-engine Visual & Performance Manager (Lag Killer).
@@ -37,6 +38,15 @@ class VisualManager {
 
     // Fast FX: Strips expensive CPU blur/glow convolution filters & deduplicates overlapping spell clips
     public var optimizeSpellFX(default, set):Bool = true;
+
+    // Dedicated toggle: Strips all blur/glow filters completely for extreme minimal performance
+    public var disableSpellFilters(default, set):Bool = false;
+
+    // Multi-target filtering: show friendly AoE buffs only on self (hide duplicates on party members)
+    public var friendlySelfOnlyFX(default, set):Bool = false;
+
+    // Multi-target filtering: show hostile AoE spells only on primary target (hide duplicates on side monsters)
+    public var hostilePrimaryOnlyFX(default, set):Bool = false;
 
     // Concurrency limiter: Cap maximum active spell clips on screen (0 = Unlimited)
     public var maxConcurrentSpells(default, set):Int = 6;
@@ -79,6 +89,9 @@ class VisualManager {
         var oldDis = ApiConfig.getBool("api_disable_skill_anims", false);
         skillAnimMode = ApiConfig.getInt("api_skill_anim_mode", oldDis ? 2 : 0);
         optimizeSpellFX = ApiConfig.getBool("api_optimize_spell_fx", true);
+        disableSpellFilters = ApiConfig.getBool("api_disable_spell_filters", false);
+        friendlySelfOnlyFX = ApiConfig.getBool("api_friendly_self_only_fx", false);
+        hostilePrimaryOnlyFX = ApiConfig.getBool("api_hostile_primary_only_fx", false);
         maxConcurrentSpells = ApiConfig.getInt("api_max_concurrent_spells", 0);
 
         disableMonsterAnims = ApiConfig.getBool("api_disable_mon_anims", false);
@@ -110,7 +123,7 @@ class VisualManager {
     }
 
     public inline function isActive():Bool {
-        return lagKiller || hidePlayers || (skillAnimMode != 0) || optimizeSpellFX || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena || suppressTargetGlow || cachePlayers || cacheMonsters;
+        return lagKiller || hidePlayers || (skillAnimMode != 0) || optimizeSpellFX || disableSpellFilters || friendlySelfOnlyFX || hostilePrimaryOnlyFX || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena || suppressTargetGlow || cachePlayers || cacheMonsters;
     }
 
     public function set_suppressTargetGlow(v:Bool):Bool {
@@ -197,6 +210,28 @@ class VisualManager {
         optimizeSpellFX = v;
         ApiConfig.setBool("api_optimize_spell_fx", v);
         return optimizeSpellFX;
+    }
+
+    public function set_disableSpellFilters(v:Bool):Bool {
+        disableSpellFilters = v;
+        ApiConfig.setBool("api_disable_spell_filters", v);
+        return disableSpellFilters;
+    }
+
+    public function set_friendlySelfOnlyFX(v:Bool):Bool {
+        friendlySelfOnlyFX = v;
+        ApiConfig.setBool("api_friendly_self_only_fx", v);
+        return friendlySelfOnlyFX;
+    }
+
+    public function set_hostilePrimaryOnlyFX(v:Bool):Bool {
+        hostilePrimaryOnlyFX = v;
+        ApiConfig.setBool("api_hostile_primary_only_fx", v);
+        return hostilePrimaryOnlyFX;
+    }
+
+    public inline function needsTargetFilter():Bool {
+        return friendlySelfOnlyFX || hostilePrimaryOnlyFX;
     }
 
     public function set_maxConcurrentSpells(v:Int):Int {
@@ -463,7 +498,62 @@ class VisualManager {
 
         if (!isSpellClip(child)) return;
 
+        // Tag caster and multi-target status synchronously while castSpellFX is active
+        tagSpellCaster(child);
+
         handleSpellAdded(child);
+    }
+
+    /**
+     * Resolves and tags the current active caster and multi-target status onto the spell clip.
+     * Executes synchronously during castSpellFX while cAvt.pMC.spFX is populated.
+     */
+    private function tagSpellCaster(spell:Dynamic):Void {
+        var g:Game = (_game != null) ? _game : Api.game;
+        var world:Dynamic = (g != null) ? g.world : null;
+        if (world == null) return;
+
+        var casterAvt:Dynamic = null;
+        var isMulti:Bool = false;
+
+        // Check player avatars in room
+        if (world.avatars != null) {
+            var avList:Array<Dynamic> = cast world.avatars;
+            for (av in avList) {
+                if (av != null && av.pMC != null && av.pMC.spFX != null) {
+                    var s:Dynamic = av.pMC.spFX;
+                    if (s.strl != null && s.strl != "") {
+                        casterAvt = av;
+                        if (s.avts != null && s.avts.length > 1) {
+                            isMulti = true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Fallback: check monster avatars
+        if (casterAvt == null && world.monsters != null) {
+            var monList:Array<Dynamic> = cast world.monsters;
+            for (m in monList) {
+                if (m != null && m.pMC != null && m.pMC.spFX != null) {
+                    var s:Dynamic = m.pMC.spFX;
+                    if (s.strl != null && s.strl != "") {
+                        casterAvt = m;
+                        if (s.avts != null && s.avts.length > 1) {
+                            isMulti = true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        try {
+            Reflect.setField(spell, "_caster", casterAvt);
+            Reflect.setField(spell, "_isMulti", isMulti);
+        } catch (_:Dynamic) {}
     }
 
     public static function isSpellClip(child:Dynamic):Bool {
@@ -490,24 +580,169 @@ class VisualManager {
         return false;
     }
 
+    /**
+     * Determines whether this spell instance should be suppressed based on user toggles.
+     */
+    private function shouldSuppressTarget(spell:Dynamic):Bool {
+        var tMC:Dynamic = spell.tMC;
+        if (tMC == null) return false; // Don't suppress non-targeted / ambient effects
+
+        var g:Game = (_game != null) ? _game : Api.game;
+        var world:Dynamic = (g != null) ? g.world : null;
+        if (world == null) return false;
+        var myAv:Dynamic = world.myAvatar;
+        if (myAv == null) return false;
+
+        var isMulti:Bool = (Reflect.field(spell, "_isMulti") == true);
+
+        var isMonster:Bool = (tMC.isMonster == true) || (tMC.pAV != null && tMC.pAV.isMonster == true);
+        var isHostile:Bool = isMonster;
+        var isFriendly:Bool = !isMonster;
+
+        // In PvP maps, teammates are friendly and opponent players are hostile
+        if (world.bPvP == true && !isMonster && tMC.pAV != null && myAv.dataLeaf != null && tMC.pAV.dataLeaf != null) {
+            var myTeam = myAv.dataLeaf.pvpTeam;
+            var targetTeam = tMC.pAV.dataLeaf.pvpTeam;
+            if (myTeam != null && targetTeam != null && myTeam > -1 && targetTeam > -1) {
+                if (myTeam == targetTeam) {
+                    isFriendly = true;
+                    isHostile = false;
+                } else {
+                    isFriendly = false;
+                    isHostile = true;
+                }
+            }
+        }
+
+        // 1. Friendly AoE: Caster Only
+        // Multi-target friendly buffs play only on whoever cast them:
+        // for myself if I cast, or for themselves if someone else cast!
+        if (friendlySelfOnlyFX && isFriendly) {
+            if (isMulti) {
+                var caster:Dynamic = Reflect.field(spell, "_caster");
+                if (caster != null && caster.pMC != null) {
+                    // Only show on the caster; suppress duplicate visuals on other allies
+                    if (tMC != caster.pMC) {
+                        return true;
+                    }
+                } else {
+                    // Fallback if caster could not be resolved: show only on myself
+                    var isMe:Bool = (myAv.pMC != null && tMC == myAv.pMC) || (tMC.pAV != null && (tMC.pAV.isMyAvatar == true || tMC.pAV == myAv));
+                    if (!isMe) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // 2. Hostile AoE: Primary Target Only
+        // Multi-target hostile attack animations play only on the primary target
+        if (hostilePrimaryOnlyFX && isHostile) {
+            if (isMulti) {
+                var primMC:Dynamic = (myAv.target != null) ? myAv.target.pMC : null;
+                if (primMC != null && tMC != primMC) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function suppressSpell(spell:Dynamic):Void {
+        try {
+            spell.visible = false;
+            try { spell.removeEventListener(Event.ADDED, onSpellChildAdded); } catch (_:Dynamic) {}
+            if (Reflect.hasField(spell, "stop")) spell.stop();
+            if (Reflect.hasField(spell, "killSpell")) spell.killSpell();
+            if (spell.parent != null) spell.parent.removeChild(spell);
+        } catch (_:Dynamic) {}
+    }
+
+    public function applySpellFilters(clip:DisplayObject):Void {
+        if (clip == null) return;
+        if (disableSpellFilters) {
+            stripFilters(clip);
+        } else if (optimizeSpellFX) {
+            optimizeFilters(clip);
+        }
+    }
+
+    public static function stripFilters(clip:DisplayObject):Void {
+        if (clip == null) return;
+        try {
+            if (clip.filters != null && clip.filters.length > 0) {
+                clip.filters = [];
+            }
+        } catch (_:Dynamic) {}
+
+        if (Std.isOfType(clip, DisplayObjectContainer)) {
+            var container:DisplayObjectContainer = cast clip;
+            try {
+                var count = container.numChildren;
+                for (i in 0...count) {
+                    var child = container.getChildAt(i);
+                    if (child != null) {
+                        stripFilters(child);
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+    }
+
     private function handleSpellAdded(spell:Dynamic):Void {
         var effAnimMode = lagKiller ? 2 : skillAnimMode;
 
-        // Mode 2: Disabled -> suppress stray spells
+        // Mode 2: Disabled -> suppress all spells immediately
         if (effAnimMode == 2) {
-            try {
-                spell.visible = false;
-                if (Reflect.hasField(spell, "stop")) spell.stop();
-                if (Reflect.hasField(spell, "killSpell")) spell.killSpell();
-                if (spell.parent != null) spell.parent.removeChild(spell);
-            } catch (_:Dynamic) {}
+            suppressSpell(spell);
             return;
         }
 
-        if (!optimizeSpellFX) return;
+        if (needsTargetFilter()) {
+            if (spell.tMC != null) {
+                if (shouldSuppressTarget(spell)) {
+                    suppressSpell(spell);
+                    return;
+                }
+                applySpellFilters(cast spell);
+            } else {
+                // Target is assigned immediately after addChild in World.castSpellFX
+                // Keep hidden until target check resolves to prevent 1-frame flashes
+                spell.visible = false;
+                var checked:Bool = false;
+                var enterHandler:Dynamic = null;
+                var checkTarget = function():Void {
+                    if (checked) return;
+                    checked = true;
+                    if (enterHandler != null) {
+                        try { spell.removeEventListener(Event.ENTER_FRAME, enterHandler); } catch (_:Dynamic) {}
+                    }
+                    if (spell.parent == null) return;
+                    if (shouldSuppressTarget(spell)) {
+                        suppressSpell(spell);
+                    } else {
+                        spell.visible = true;
+                        applySpellFilters(cast spell);
+                    }
+                };
 
-        // Tune filter quality to 1x (Low) and clamp blur, preserving all original colors and glows!
-        optimizeFilters(cast spell);
+                enterHandler = function(e:Event):Void {
+                    checkTarget();
+                };
+                try {
+                    spell.addEventListener(Event.ENTER_FRAME, enterHandler, false, 0, true);
+                } catch (_:Dynamic) {}
+
+                try {
+                    untyped __global__["flash.utils.setTimeout"](checkTarget, 1);
+                } catch (_:Dynamic) {
+                    ApiTime.delay(1, checkTarget);
+                }
+            }
+        } else {
+            applySpellFilters(cast spell);
+        }
 
         // Catch any sub-children added on later timeline keyframes
         try {
@@ -516,10 +751,9 @@ class VisualManager {
     }
 
     private function onSpellChildAdded(e:Event):Void {
-        if (!optimizeSpellFX) return;
         var sub:Dynamic = e.target;
-        if (sub != null && sub != e.currentTarget) {
-            optimizeFilters(cast sub);
+        if (sub != null && sub != e.currentTarget && Std.isOfType(sub, DisplayObject)) {
+            applySpellFilters(cast sub);
         }
     }
 

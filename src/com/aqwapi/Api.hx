@@ -95,6 +95,30 @@ class Api {
     public static function set_optimizeSpellFX_prop(v:Bool):Void { if (visual != null) visual.optimizeSpellFX = v; }
     public static function set_optimizeSpellFX(v:Bool):Bool { if (visual != null) visual.optimizeSpellFX = v; return v; }
 
+    public static var disableSpellFilters(get, set):Bool;
+    @:getter(disableSpellFilters)
+    public static function get_disableSpellFilters_prop():Bool { return visual != null ? visual.disableSpellFilters : false; }
+    public static function get_disableSpellFilters():Bool { return visual != null ? visual.disableSpellFilters : false; }
+    @:setter(disableSpellFilters)
+    public static function set_disableSpellFilters_prop(v:Bool):Void { if (visual != null) visual.disableSpellFilters = v; }
+    public static function set_disableSpellFilters(v:Bool):Bool { if (visual != null) visual.disableSpellFilters = v; return v; }
+
+    public static var friendlySelfOnlyFX(get, set):Bool;
+    @:getter(friendlySelfOnlyFX)
+    public static function get_friendlySelfOnlyFX_prop():Bool { return visual != null ? visual.friendlySelfOnlyFX : false; }
+    public static function get_friendlySelfOnlyFX():Bool { return visual != null ? visual.friendlySelfOnlyFX : false; }
+    @:setter(friendlySelfOnlyFX)
+    public static function set_friendlySelfOnlyFX_prop(v:Bool):Void { if (visual != null) visual.friendlySelfOnlyFX = v; }
+    public static function set_friendlySelfOnlyFX(v:Bool):Bool { if (visual != null) visual.friendlySelfOnlyFX = v; return v; }
+
+    public static var hostilePrimaryOnlyFX(get, set):Bool;
+    @:getter(hostilePrimaryOnlyFX)
+    public static function get_hostilePrimaryOnlyFX_prop():Bool { return visual != null ? visual.hostilePrimaryOnlyFX : false; }
+    public static function get_hostilePrimaryOnlyFX():Bool { return visual != null ? visual.hostilePrimaryOnlyFX : false; }
+    @:setter(hostilePrimaryOnlyFX)
+    public static function set_hostilePrimaryOnlyFX_prop(v:Bool):Void { if (visual != null) visual.hostilePrimaryOnlyFX = v; }
+    public static function set_hostilePrimaryOnlyFX(v:Bool):Bool { if (visual != null) visual.hostilePrimaryOnlyFX = v; return v; }
+
     public static var maxConcurrentSpells(get, set):Int;
     @:getter(maxConcurrentSpells)
     public static function get_maxConcurrentSpells_prop():Int { return visual != null ? visual.maxConcurrentSpells : 6; }

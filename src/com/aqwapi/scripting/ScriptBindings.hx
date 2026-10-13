@@ -1243,6 +1243,27 @@ class ScriptBindings {
             }
             return Api.visual.optimizeSpellFX;
         });
+        bind("disableSpellFilters", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.disableSpellFilters = (enabled == true);
+            }
+            return Api.visual.disableSpellFilters;
+        });
+        bind("friendlySelfOnlyFX", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.friendlySelfOnlyFX = (enabled == true);
+            }
+            return Api.visual.friendlySelfOnlyFX;
+        });
+        bind("hostilePrimaryOnlyFX", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.hostilePrimaryOnlyFX = (enabled == true);
+            }
+            return Api.visual.hostilePrimaryOnlyFX;
+        });
         bind("maxConcurrentSpells", function(?count:Dynamic):Int {
             if (Api.visual == null) return 6;
             if (count != null) {
