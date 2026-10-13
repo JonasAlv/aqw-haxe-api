@@ -58,12 +58,8 @@ class VisualManager {
     public var showNames:Bool = true;
     public var showShadows:Bool = true;
 
-    // Spell tracking & optimization state
+    // Spell tracking state
     private var _hookedChars:Dynamic = null;
-    private var _activeSpells:Array<Dynamic> = [];
-    private var _pendingSpells:Array<Dynamic> = [];
-    private var _lastSpellSpawn:Map<String, Int> = new Map<String, Int>();
-    private var _processScheduled:Bool = false;
 
     public function new(gameRef:Game) {
         _game = gameRef;
@@ -83,7 +79,7 @@ class VisualManager {
         var oldDis = ApiConfig.getBool("api_disable_skill_anims", false);
         skillAnimMode = ApiConfig.getInt("api_skill_anim_mode", oldDis ? 2 : 0);
         optimizeSpellFX = ApiConfig.getBool("api_optimize_spell_fx", true);
-        maxConcurrentSpells = ApiConfig.getInt("api_max_concurrent_spells", 6);
+        maxConcurrentSpells = ApiConfig.getInt("api_max_concurrent_spells", 0);
 
         disableMonsterAnims = ApiConfig.getBool("api_disable_mon_anims", false);
         disableWeaponAnims = ApiConfig.getBool("api_disable_wep_anims", false);
@@ -109,7 +105,6 @@ class VisualManager {
                 applyDisplayListOnly();
             }
             ensureCharsHook();
-            sweepStaleSpells();
         });
         _sweepTimer.start();
     }
@@ -427,15 +422,6 @@ class VisualManager {
             try {
                 if (world.clearSpFXQueue != null) world.clearSpFXQueue();
             } catch (_:Dynamic) {}
-            if (_hookedChars != null) {
-                var i = _activeSpells.length - 1;
-                while (i >= 0) {
-                    var s = _activeSpells[i];
-                    if (s != null) suppressSpell(s);
-                    i--;
-                }
-                _activeSpells = [];
-            }
         }
 
         // D. Clean Arena / Map Background
@@ -456,14 +442,12 @@ class VisualManager {
         if (_hookedChars != null) {
             try {
                 _hookedChars.removeEventListener(Event.ADDED, onCharAdded);
-                _hookedChars.removeEventListener(Event.REMOVED, onCharRemoved);
             } catch (_:Dynamic) {}
         }
 
         _hookedChars = chars;
         try {
             _hookedChars.addEventListener(Event.ADDED, onCharAdded, false, 0, true);
-            _hookedChars.addEventListener(Event.REMOVED, onCharRemoved, false, 0, true);
         } catch (_:Dynamic) {}
     }
 
@@ -480,13 +464,6 @@ class VisualManager {
         if (!isSpellClip(child)) return;
 
         handleSpellAdded(child);
-    }
-
-    private function onCharRemoved(e:Event):Void {
-        var child:Dynamic = e.target;
-        if (child == null) return;
-        _activeSpells.remove(child);
-        _pendingSpells.remove(child);
     }
 
     public static function isSpellClip(child:Dynamic):Bool {
@@ -516,139 +493,78 @@ class VisualManager {
     private function handleSpellAdded(spell:Dynamic):Void {
         var effAnimMode = lagKiller ? 2 : skillAnimMode;
 
+        // Mode 2: Disabled -> suppress stray spells
         if (effAnimMode == 2) {
-            suppressSpell(spell);
+            try {
+                spell.visible = false;
+                if (Reflect.hasField(spell, "stop")) spell.stop();
+                if (Reflect.hasField(spell, "killSpell")) spell.killSpell();
+                if (spell.parent != null) spell.parent.removeChild(spell);
+            } catch (_:Dynamic) {}
             return;
         }
 
         if (!optimizeSpellFX) return;
 
-        // 1. Immediately wipe expensive CPU Gaussian blur and glow convolution filters
-        stripFilters(cast spell);
+        // Tune filter quality to 1x (Low) and clamp blur, preserving all original colors and glows!
+        optimizeFilters(cast spell);
 
-        // 2. Hook sub-children dynamically created on future timeline frames
+        // Catch any sub-children added on later timeline keyframes
         try {
             spell.addEventListener(Event.ADDED, onSpellChildAdded, false, 0, true);
         } catch (_:Dynamic) {}
-
-        // 3. Queue for deduplication and concurrency control on next tick
-        _pendingSpells.push(spell);
-        schedulePendingProcess();
     }
 
     private function onSpellChildAdded(e:Event):Void {
         if (!optimizeSpellFX) return;
         var sub:Dynamic = e.target;
         if (sub != null && sub != e.currentTarget) {
-            stripFilters(cast sub);
+            optimizeFilters(cast sub);
         }
     }
 
-    private function schedulePendingProcess():Void {
-        if (_processScheduled) return;
-        _processScheduled = true;
-        try {
-            untyped __global__["flash.utils.setTimeout"](processPendingSpells, 1);
-        } catch (_:Dynamic) {
-            processPendingSpells();
-        }
-    }
-
-    private function processPendingSpells():Void {
-        _processScheduled = false;
-        if (_pendingSpells.length == 0) return;
-
-        var queue = _pendingSpells.copy();
-        _pendingSpells = [];
-
-        var now:Int = untyped __global__["flash.utils.getTimer"]();
-
-        for (spell in queue) {
-            if (spell == null) continue;
-            try {
-                if (spell.parent != _hookedChars) continue;
-            } catch (_:Dynamic) {
-                continue;
-            }
-
-            // Deduplication key
-            var spellName:String = "";
-            try {
-                if (spell.strl != null && spell.strl != "") {
-                    spellName = spell.strl;
-                } else {
-                    spellName = untyped __global__["flash.utils.getQualifiedClassName"](spell);
-                }
-            } catch (_:Dynamic) {}
-
-            var targetKey:String = "";
-            try {
-                if (spell.tMC != null) {
-                    var tMC:Dynamic = spell.tMC;
-                    if (tMC.pAV != null && tMC.pAV.objData != null && tMC.pAV.objData.ID != null) {
-                        targetKey = "id_" + Std.string(tMC.pAV.objData.ID);
-                    } else if (tMC.pAV != null && tMC.pAV.strUsername != null) {
-                        targetKey = "user_" + Std.string(tMC.pAV.strUsername);
-                    } else {
-                        targetKey = "pos_" + Math.round(tMC.x / 40) + "_" + Math.round(tMC.y / 40);
-                    }
-                } else {
-                    targetKey = "pos_" + Math.round(spell.x / 40) + "_" + Math.round(spell.y / 40);
-                }
-            } catch (_:Dynamic) {}
-
-            var dedupKey = spellName + "@" + targetKey;
-            var lastSpawn = _lastSpellSpawn.get(dedupKey);
-            if (lastSpawn != null && (now - lastSpawn) < 280) {
-                // Suppress duplicate overlapping spell on same target within 280ms
-                suppressSpell(spell);
-                continue;
-            }
-
-            _lastSpellSpawn.set(dedupKey, now);
-
-            // Concurrency limiter
-            if (maxConcurrentSpells > 0) {
-                var i = _activeSpells.length - 1;
-                while (i >= 0) {
-                    var active = _activeSpells[i];
-                    if (active == null || active.parent != _hookedChars) {
-                        _activeSpells.splice(i, 1);
-                    }
-                    i--;
-                }
-
-                while (_activeSpells.length >= maxConcurrentSpells && _activeSpells.length > 0) {
-                    var oldest = _activeSpells.shift();
-                    if (oldest != null) suppressSpell(oldest);
-                }
-            }
-
-            _activeSpells.push(spell);
-        }
-    }
-
-    public static function suppressSpell(spell:Dynamic):Void {
-        if (spell == null) return;
-        try {
-            spell.visible = false;
-        } catch (_:Dynamic) {}
-        try {
-            if (Reflect.hasField(spell, "stop")) spell.stop();
-        } catch (_:Dynamic) {}
-        try {
-            if (Reflect.hasField(spell, "killSpell")) spell.killSpell();
-        } catch (_:Dynamic) {}
-        try {
-            if (spell.parent != null) spell.parent.removeChild(spell);
-        } catch (_:Dynamic) {}
-    }
-
-    public static function stripFilters(clip:DisplayObject):Void {
+    /**
+     * Recursively optimizes spell filters to 1x pass (BitmapFilterQuality.LOW)
+     * and clamps large blur radii while preserving colors, alphas, tints, and glows.
+     */
+    public static function optimizeFilters(clip:DisplayObject):Void {
         if (clip == null) return;
         try {
-            if (clip.filters != null && clip.filters.length > 0) {
-                clip.filters = [];
+            var filters:Array<Dynamic> = clip.filters;
+            if (filters != null && filters.length > 0) {
+                var changed:Bool = false;
+                for (i in 0...filters.length) {
+                    var f:Dynamic = filters[i];
+                    if (f == null) continue;
+
+                    // Lower filter quality to 1x (BitmapFilterQuality.LOW)
+                    if (Reflect.hasField(f, "quality")) {
+                        var q:Int = Reflect.field(f, "quality");
+                        if (q > 1) {
+                            Reflect.setField(f, "quality", 1);
+                            changed = true;
+                        }
+                    }
+
+                    // Clamp blur radius to prevent expensive 16px+ convolution kernels
+                    if (Reflect.hasField(f, "blurX")) {
+                        var bx:Float = Reflect.field(f, "blurX");
+                        if (bx > 6.0) {
+                            Reflect.setField(f, "blurX", 6.0);
+                            changed = true;
+                        }
+                    }
+                    if (Reflect.hasField(f, "blurY")) {
+                        var by:Float = Reflect.field(f, "blurY");
+                        if (by > 6.0) {
+                            Reflect.setField(f, "blurY", 6.0);
+                            changed = true;
+                        }
+                    }
+                }
+                if (changed) {
+                    clip.filters = cast filters;
+                }
             }
         } catch (_:Dynamic) {}
 
@@ -659,34 +575,10 @@ class VisualManager {
                 for (i in 0...count) {
                     var child = container.getChildAt(i);
                     if (child != null) {
-                        stripFilters(child);
+                        optimizeFilters(child);
                     }
                 }
             } catch (_:Dynamic) {}
-        }
-    }
-
-    private function sweepStaleSpells():Void {
-        var now:Int = untyped __global__["flash.utils.getTimer"]();
-
-        var toRemove:Array<String> = [];
-        for (k in _lastSpellSpawn.keys()) {
-            var t = _lastSpellSpawn.get(k);
-            if (t == null || (now - t) > 1500) {
-                toRemove.push(k);
-            }
-        }
-        for (k in toRemove) {
-            _lastSpellSpawn.remove(k);
-        }
-
-        var i = _activeSpells.length - 1;
-        while (i >= 0) {
-            var s = _activeSpells[i];
-            if (s == null || s.parent != _hookedChars) {
-                _activeSpells.splice(i, 1);
-            }
-            i--;
         }
     }
 
@@ -698,12 +590,8 @@ class VisualManager {
         if (_hookedChars != null) {
             try {
                 _hookedChars.removeEventListener(Event.ADDED, onCharAdded);
-                _hookedChars.removeEventListener(Event.REMOVED, onCharRemoved);
             } catch (_:Dynamic) {}
             _hookedChars = null;
         }
-        _activeSpells = [];
-        _pendingSpells = [];
-        _lastSpellSpawn = new Map<String, Int>();
     }
 }
