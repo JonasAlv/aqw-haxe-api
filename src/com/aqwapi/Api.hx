@@ -94,6 +94,14 @@ class Api {
     public static function set_cleanArena_prop(v:Bool):Void { if (visual != null) visual.cleanArena = v; }
     public static function set_cleanArena(v:Bool):Bool { if (visual != null) visual.cleanArena = v; return v; }
 
+    public static var suppressTargetGlow(get, set):Bool;
+    @:getter(suppressTargetGlow)
+    public static function get_suppressTargetGlow_prop():Bool { return visual != null ? visual.suppressTargetGlow : false; }
+    public static function get_suppressTargetGlow():Bool { return visual != null ? visual.suppressTargetGlow : false; }
+    @:setter(suppressTargetGlow)
+    public static function set_suppressTargetGlow_prop(v:Bool):Void { if (visual != null) visual.suppressTargetGlow = v; }
+    public static function set_suppressTargetGlow(v:Bool):Bool { if (visual != null) visual.suppressTargetGlow = v; return v; }
+
     public static inline function toggleLagKiller():Bool {
         if (visual != null) {
             visual.lagKiller = !visual.lagKiller;

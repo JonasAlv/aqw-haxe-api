@@ -1,6 +1,7 @@
 package com.aqwapi.managers;
 
 import flash.events.TimerEvent;
+import flash.geom.ColorTransform;
 import flash.utils.Timer;
 import com.aqwapi.Api;
 import com.aqwapi.Game;
@@ -30,6 +31,9 @@ class VisualManager {
     public var hideMonsters(default, set):Bool = false;
     public var cleanArena(default, set):Bool = false;
 
+    // Target glow suppression (disables native avtMCT/avtPCT color wash when units are targeted)
+    public var suppressTargetGlow(default, set):Bool = true;
+
     // Display options when players are hidden
     public var showNames:Bool = true;
     public var showShadows:Bool = true;
@@ -54,6 +58,7 @@ class VisualManager {
         disableGround = ApiConfig.getBool("api_disable_ground", false);
         hideMonsters = ApiConfig.getBool("api_hide_monsters", false);
         cleanArena = ApiConfig.getBool("api_clean_arena", false);
+        suppressTargetGlow = ApiConfig.getBool("api_suppress_target_glow", ApiConfig.getBool("api_frame_nameplates_enabled", true));
         showNames = ApiConfig.getBool("api_visual_show_names", true);
         showShadows = ApiConfig.getBool("api_visual_show_shadows", true);
     }
@@ -74,7 +79,58 @@ class VisualManager {
     }
 
     public inline function isActive():Bool {
-        return lagKiller || hidePlayers || disableSkillAnims || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena;
+        return lagKiller || hidePlayers || disableSkillAnims || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena || suppressTargetGlow;
+    }
+
+    public function set_suppressTargetGlow(v:Bool):Bool {
+        suppressTargetGlow = v;
+        ApiConfig.setBool("api_suppress_target_glow", v);
+        applyTargetGlow();
+        return suppressTargetGlow;
+    }
+
+    /**
+     * Suppresses or restores native AQW target color wash.
+     * When enabled, zeroes out world.avtMCT and world.avtPCT so targeting units
+     * no longer washes them out with bright additive colors.
+     */
+    public function applyTargetGlow():Void {
+        var g:Game = (_game != null) ? _game : Api.game;
+        if (g == null || g.world == null) return;
+        var world:Dynamic = g.world;
+
+        try {
+            if (suppressTargetGlow) {
+                world.avtMCT = new ColorTransform(0, 0, 0, 0, 0, 0, 0, 0);
+                world.avtPCT = new ColorTransform(0, 0, 0, 0, 0, 0, 0, 0);
+                if (world.myAvatar != null && world.myAvatar.target != null && world.myAvatar.target.pMC != null) {
+                    var pMC:Dynamic = world.myAvatar.target.pMC;
+                    if (pMC.totalTransform != null) {
+                        pMC.totalTransform.redOffset = 0;
+                        pMC.totalTransform.greenOffset = 0;
+                        pMC.totalTransform.blueOffset = 0;
+                    }
+                    if (pMC.clampedTransform != null) {
+                        pMC.clampedTransform.redOffset = 0;
+                        pMC.clampedTransform.greenOffset = 0;
+                        pMC.clampedTransform.blueOffset = 0;
+                    }
+                    if (pMC.transform != null) {
+                        pMC.transform.colorTransform = new ColorTransform();
+                    }
+                }
+            } else {
+                world.avtMCT = new ColorTransform(0, 0, 0, 0, 30, 0, 0, 0);
+                world.avtPCT = new ColorTransform(0, 0, 0, 0, 40, 40, 70, 0);
+                if (world.myAvatar != null && world.myAvatar.target != null && world.myAvatar.target.pMC != null) {
+                    var tgt:Dynamic = world.myAvatar.target;
+                    var ct:Dynamic = (tgt.isMonster == true) ? world.avtMCT : world.avtPCT;
+                    if (tgt.pMC.modulateColor != null) {
+                        tgt.pMC.modulateColor(ct, "+");
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
     }
 
     public function set_lagKiller(v:Bool):Bool {
@@ -169,7 +225,10 @@ class VisualManager {
             }
         } catch (_:Dynamic) {}
 
-        // 2. Update live display list
+        // 2. Suppress or restore native target color wash
+        applyTargetGlow();
+
+        // 3. Update live display list
         applyDisplayListOnly();
     }
 
@@ -180,6 +239,15 @@ class VisualManager {
         var g:Game = (_game != null) ? _game : Api.game;
         if (g == null || g.world == null) return;
         var world:Dynamic = g.world;
+
+        // Target Glow Check (re-apply if World reinitialized on room/map change)
+        if (suppressTargetGlow) {
+            try {
+                if (world.avtMCT != null && (world.avtMCT.redOffset != 0 || world.avtPCT.blueOffset != 0)) {
+                    applyTargetGlow();
+                }
+            } catch (_:Dynamic) {}
+        }
 
         var effHidePlayers = lagKiller || hidePlayers;
         var effDisSkills = lagKiller || disableSkillAnims;
