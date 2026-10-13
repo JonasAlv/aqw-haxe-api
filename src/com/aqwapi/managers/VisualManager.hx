@@ -557,11 +557,25 @@ class VisualManager {
                     if (pMC.mcChar.weaponFistOff != null) pMC.mcChar.weaponFistOff.visible = false;
                     if (pMC.mcChar.shield != null) pMC.mcChar.shield.visible = false;
                 } else {
-                    if (pMC.mcChar.weapon != null) pMC.mcChar.weapon.visible = true;
-                    if (pMC.mcChar.weaponOff != null) pMC.mcChar.weaponOff.visible = true;
-                    if (pMC.mcChar.weaponFist != null) pMC.mcChar.weaponFist.visible = true;
-                    if (pMC.mcChar.weaponFistOff != null) pMC.mcChar.weaponFistOff.visible = true;
-                    if (pMC.mcChar.shield != null) pMC.mcChar.shield.visible = true;
+                    // Shield is an unused placeholder in mcChar FLA that renders a gray circle - keep it hidden!
+                    if (pMC.mcChar.shield != null) pMC.mcChar.shield.visible = false;
+
+                    var isDual:Bool = false;
+                    var isGauntlet:Bool = false;
+                    try {
+                        if (av != null && Reflect.hasField(av, "getItemByEquipSlot")) {
+                            var wItem:Dynamic = av.getItemByEquipSlot("Weapon");
+                            if (wItem != null) {
+                                if (wItem.sType == "Dagger") isDual = true;
+                                if (wItem.sType == "Gauntlet") isGauntlet = true;
+                            }
+                        }
+                    } catch (_:Dynamic) {}
+
+                    if (pMC.mcChar.weapon != null) pMC.mcChar.weapon.visible = !isGauntlet;
+                    if (pMC.mcChar.weaponOff != null) pMC.mcChar.weaponOff.visible = isDual;
+                    if (pMC.mcChar.weaponFist != null) pMC.mcChar.weaponFist.visible = isGauntlet;
+                    if (pMC.mcChar.weaponFistOff != null) pMC.mcChar.weaponFistOff.visible = isGauntlet;
                 }
 
                 // 4. Show Class Outfit Only (strips cosmetic costume transmog)
