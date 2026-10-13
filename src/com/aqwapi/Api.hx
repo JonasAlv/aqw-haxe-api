@@ -446,7 +446,7 @@ class Api {
             com.aqwapi.utils.ApiStorage.setAccount(curUser);
         }
 
-        patchAirSecurity();
+        startAirSecurityWatcher();
     }
 
     /**
@@ -526,7 +526,7 @@ class Api {
                 } catch (_:Dynamic) {}
             }
 
-            // 3. Hook mcPopup.loadMap and mcPopup.loadNews to force AirLoader with allowCodeImport
+            // 3. Hook mcPopup.loadMap and mcPopup.loadNews to force loadBytes with ApplicationDomain.currentDomain
             var g:Dynamic = game;
             if (g != null && g.ui != null && g.ui.mcPopup != null) {
                 var popup:Dynamic = g.ui.mcPopup;
@@ -539,20 +539,86 @@ class Api {
                                     popup.mcMap.removeChildAt(0);
                                 }
                             }
-                            var ldr:Dynamic = (airLoaderCls != null) ? Type.createInstance(airLoaderCls, []) : Type.createInstance(flash.display.Loader, []);
-                            var ctx:Dynamic = Type.createInstance(flash.system.LoaderContext, [false, targetDom]);
-                            Reflect.setField(ctx, "allowCodeImport", true);
-                            if (airLoaderCls != null && untyped airLoaderCls.trusted != null) {
-                                untyped airLoaderCls.trusted[targetDom] = true;
-                                if (gameDom != null) untyped airLoaderCls.trusted[gameDom] = true;
-                                if (appDom != null) untyped airLoaderCls.trusted[appDom] = true;
-                            }
-                            var reqUrl:String = ((g.serverFilePath != null) ? Std.string(g.serverFilePath) : "") + param1;
-                            var req:Dynamic = Type.createInstance(flash.net.URLRequest, [reqUrl]);
-                            ldr.load(req, ctx);
-                            if (popup.mcMap != null) {
-                                popup.mcMap.addChild(ldr);
-                            }
+                            var baseFilePath:String = (g.serverFilePath != null && Std.string(g.serverFilePath) != "") ? Std.string(g.serverFilePath) : "https://game.aq.com/game/gamefiles/";
+                            var reqUrl:String = baseFilePath + param1;
+
+                            var uldr:flash.net.URLLoader = new flash.net.URLLoader();
+                            uldr.dataFormat = flash.net.URLLoaderDataFormat.BINARY;
+                            var ldr:flash.display.Loader = new flash.display.Loader();
+
+                            uldr.addEventListener(flash.events.Event.COMPLETE, function(ev:Dynamic):Void {
+                                try {
+                                    var bytes:flash.utils.ByteArray = cast uldr.data;
+                                    var curDom = flash.system.ApplicationDomain.currentDomain;
+                                    var ctx:flash.system.LoaderContext = new flash.system.LoaderContext(false, curDom);
+                                    Reflect.setField(ctx, "allowCodeImport", true);
+
+                                    ldr.contentLoaderInfo.addEventListener(flash.events.Event.COMPLETE, function(cEv:Dynamic):Void {
+                                        try {
+                                            if (curDom.hasDefinition("mapUI")) {
+                                                var mapUICls:Dynamic = curDom.getDefinition("mapUI");
+                                                if (mapUICls != null && mapUICls.prototype != null && mapUICls.prototype.__mod_patched_loadapp != true) {
+                                                    mapUICls.prototype.__mod_patched_loadapp = true;
+                                                    mapUICls.prototype.loadApp = function():Void {
+                                                        var self:Dynamic = untyped __this__;
+                                                        if (self.appRequested != null) {
+                                                            self.isLoading = true;
+                                                            var appUrl:String = self.sFilePath + self.appRequested;
+                                                            var subUldr:flash.net.URLLoader = new flash.net.URLLoader();
+                                                            subUldr.dataFormat = flash.net.URLLoaderDataFormat.BINARY;
+                                                            self.ldr = new flash.display.Loader();
+                                                            self.ldr.contentLoaderInfo.addEventListener(flash.events.Event.COMPLETE, self.completeHandler);
+                                                            self.ldr.contentLoaderInfo.addEventListener(flash.events.ProgressEvent.PROGRESS, self.progressHandler);
+                                                            self.ldr.contentLoaderInfo.addEventListener(flash.events.IOErrorEvent.IO_ERROR, self.ioErrorHandler);
+
+                                                            try {
+                                                                if (curDom.hasDefinition("mcLoader")) {
+                                                                    var mcLdrCls:Dynamic = curDom.getDefinition("mcLoader");
+                                                                    self.loaderMC = self.addChild(Type.createInstance(mcLdrCls, []));
+                                                                    self.loaderMC = self.addChildAt(self.loaderMC, self.numChildren - 1);
+                                                                    self.loaderMC.x = self.mcWindowBG.width / 2 - self.loaderMC.width / 2 + self.mcWindowBG.x;
+                                                                    self.loaderMC.y = self.mcWindowBG.height / 2 - self.loaderMC.height / 2 + self.mcWindowBG.y;
+                                                                    self.loaderMC.visible = true;
+                                                                }
+                                                            } catch (_:Dynamic) {}
+
+                                                            subUldr.addEventListener(flash.events.Event.COMPLETE, function(subEv:Dynamic):Void {
+                                                                try {
+                                                                    var subBytes:flash.utils.ByteArray = cast subUldr.data;
+                                                                    var subCtx:flash.system.LoaderContext = new flash.system.LoaderContext(false, curDom);
+                                                                    Reflect.setField(subCtx, "allowCodeImport", true);
+                                                                    self.ldr.loadBytes(subBytes, subCtx);
+                                                                } catch (eSub:Dynamic) {
+                                                                    trace("[Mod] Error loadBytes in mapUI.loadApp: " + eSub);
+                                                                }
+                                                            });
+                                                            subUldr.addEventListener(flash.events.IOErrorEvent.IO_ERROR, function(eSubIo:Dynamic):Void {
+                                                                self.ioErrorHandler(eSubIo);
+                                                            });
+                                                            subUldr.load(new flash.net.URLRequest(appUrl));
+                                                        } else {
+                                                            self.isLoading = false;
+                                                        }
+                                                    };
+                                                }
+                                            }
+                                        } catch (eMapUI:Dynamic) {
+                                            trace("[Mod] Error patching mapUI: " + eMapUI);
+                                        }
+                                    });
+
+                                    ldr.loadBytes(bytes, ctx);
+                                    if (popup.mcMap != null) {
+                                        popup.mcMap.addChild(ldr);
+                                    }
+                                } catch (eBytes:Dynamic) {
+                                    trace("[Mod] Error loading Map-UI bytes: " + eBytes);
+                                }
+                            });
+                            uldr.addEventListener(flash.events.IOErrorEvent.IO_ERROR, function(eIo:Dynamic):Void {
+                                trace("[Mod] IOError loading Map-UI: " + eIo);
+                            });
+                            uldr.load(new flash.net.URLRequest(reqUrl));
                             return ldr;
                         } catch (err:Dynamic) {
                             trace("[Mod] Error in patched loadMap: " + err);
@@ -570,20 +636,31 @@ class Api {
                                     popup.mcNews.removeChildAt(0);
                                 }
                             }
-                            var ldr:Dynamic = (airLoaderCls != null) ? Type.createInstance(airLoaderCls, []) : Type.createInstance(flash.display.Loader, []);
-                            var ctx:Dynamic = Type.createInstance(flash.system.LoaderContext, [false, targetDom]);
-                            Reflect.setField(ctx, "allowCodeImport", true);
-                            if (airLoaderCls != null && untyped airLoaderCls.trusted != null) {
-                                untyped airLoaderCls.trusted[targetDom] = true;
-                                if (gameDom != null) untyped airLoaderCls.trusted[gameDom] = true;
-                                if (appDom != null) untyped airLoaderCls.trusted[appDom] = true;
-                            }
-                            var reqUrl:String = ((g.serverFilePath != null) ? Std.string(g.serverFilePath) : "") + param1;
-                            var req:Dynamic = Type.createInstance(flash.net.URLRequest, [reqUrl]);
-                            ldr.load(req, ctx);
-                            if (popup.mcNews != null) {
-                                popup.mcNews.addChild(ldr);
-                            }
+                            var baseFilePath:String = (g.serverFilePath != null && Std.string(g.serverFilePath) != "") ? Std.string(g.serverFilePath) : "https://game.aq.com/game/gamefiles/";
+                            var reqUrl:String = baseFilePath + param1;
+
+                            var uldr:flash.net.URLLoader = new flash.net.URLLoader();
+                            uldr.dataFormat = flash.net.URLLoaderDataFormat.BINARY;
+                            var ldr:flash.display.Loader = new flash.display.Loader();
+
+                            uldr.addEventListener(flash.events.Event.COMPLETE, function(ev:Dynamic):Void {
+                                try {
+                                    var bytes:flash.utils.ByteArray = cast uldr.data;
+                                    var curDom = flash.system.ApplicationDomain.currentDomain;
+                                    var ctx:flash.system.LoaderContext = new flash.system.LoaderContext(false, curDom);
+                                    Reflect.setField(ctx, "allowCodeImport", true);
+                                    ldr.loadBytes(bytes, ctx);
+                                    if (popup.mcNews != null) {
+                                        popup.mcNews.addChild(ldr);
+                                    }
+                                } catch (eBytes:Dynamic) {
+                                    trace("[Mod] Error loading News bytes: " + eBytes);
+                                }
+                            });
+                            uldr.addEventListener(flash.events.IOErrorEvent.IO_ERROR, function(eIo:Dynamic):Void {
+                                trace("[Mod] IOError loading News: " + eIo);
+                            });
+                            uldr.load(new flash.net.URLRequest(reqUrl));
                             return ldr;
                         } catch (err:Dynamic) {
                             trace("[Mod] Error in patched loadNews: " + err);
@@ -593,7 +670,7 @@ class Api {
                 }
             }
 
-            // 4. Suppress unhandled Error #2070 at stage uncaughtErrorEvents level
+            // 4. Suppress unhandled Error #2070 and #2193 at stage uncaughtErrorEvents level
             try {
                 var stg:Dynamic = flash.Lib.current.stage;
                 if (stg != null && stg.loaderInfo != null && Reflect.hasField(stg.loaderInfo, "uncaughtErrorEvents")) {
@@ -604,8 +681,8 @@ class Api {
                             try {
                                 if (evt != null && evt.error != null) {
                                     var errStr:String = Std.string(evt.error);
-                                    if (errStr.indexOf("2070") >= 0 || errStr.indexOf("SecurityError") >= 0) {
-                                        trace("[Mod] Suppressed SecurityError #2070: " + errStr);
+                                    if (errStr.indexOf("2070") >= 0 || errStr.indexOf("2193") >= 0 || errStr.indexOf("SecurityError") >= 0) {
+                                        trace("[Mod] Suppressed SecurityError: " + errStr);
                                         if (Reflect.isFunction(evt.preventDefault)) {
                                             evt.preventDefault();
                                         }
@@ -618,6 +695,26 @@ class Api {
             } catch (_:Dynamic) {}
         } catch (e:Dynamic) {
             trace("[Mod] Error in patchAirSecurity: " + e);
+        }
+        #end
+    }
+
+    private static var _airSecTimer:flash.utils.Timer = null;
+
+    public static function startAirSecurityWatcher():Void {
+        patchAirSecurity();
+        #if flash
+        if (_airSecTimer == null) {
+            _airSecTimer = new flash.utils.Timer(800);
+            _airSecTimer.addEventListener(flash.events.TimerEvent.TIMER, function(_):Void {
+                patchAirSecurity();
+                var g:Dynamic = game;
+                if (g != null && g.ui != null && g.ui.mcPopup != null && g.ui.mcPopup.__mod_patched_map == true) {
+                    _airSecTimer.stop();
+                    _airSecTimer = null;
+                }
+            });
+            _airSecTimer.start();
         }
         #end
     }

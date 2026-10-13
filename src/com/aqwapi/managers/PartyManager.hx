@@ -169,8 +169,10 @@ class PartyManager {
         return false;
     }
 
+    private static var _statCache:Map<String, Dynamic> = new Map();
+
     /**
-     * Builds a PartyMemberDTO from game structures (uoTree, Avatar, dataLeaf).
+     * Builds a PartyMemberDTO from game structures (uoTree, Avatar, dataLeaf, native frame, cache).
      */
     public function buildMemberDTO(name:String, isSelf:Bool):PartyMemberDTO {
         var dto = new PartyMemberDTO();
@@ -200,33 +202,82 @@ class PartyManager {
             return dto;
         }
 
-        // Other party member
+        var lower = (name != null) ? name.toLowerCase() : "";
+
+        // 1. Search uoTree (Dictionary) with multiple keys & method fallbacks
         var uoLeaf:Dynamic = null;
         try {
             if (w.uoTree != null) {
-                uoLeaf = untyped w.uoTree[name.toLowerCase()];
+                uoLeaf = untyped w.uoTree[lower];
+                if (uoLeaf == null) uoLeaf = untyped w.uoTree[name];
+            }
+            if (uoLeaf == null && Reflect.isFunction(w.uoTreeLeaf)) {
+                uoLeaf = w.uoTreeLeaf(lower);
+                if (uoLeaf == null) uoLeaf = w.uoTreeLeaf(name);
             }
         } catch (_:Dynamic) {}
 
+        // 2. Search w.avatars (Array/Vector of Avatar in current room)
         var av:Dynamic = null;
         try {
             if (Reflect.isFunction(w.getAvatarByUserName)) {
-                av = w.getAvatarByUserName(name.toLowerCase());
+                av = w.getAvatarByUserName(lower);
+                if (av == null) av = w.getAvatarByUserName(name);
+            }
+            if (av == null && w.avatars != null) {
+                var avList:Array<Dynamic> = cast w.avatars;
+                for (a in avList) {
+                    if (a != null && a.pnm != null && Std.string(a.pnm).toLowerCase() == lower) {
+                        av = a;
+                        break;
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        // 3. Fallback: inspect native mcPartyFrame if present
+        var nativeHp:Int = -1;
+        var nativeMp:Int = -1;
+        try {
+            var g = _g();
+            if (g != null && g.ui != null && g.ui.mcPartyFrame != null) {
+                var pFrame:Dynamic = g.ui.mcPartyFrame;
+                for (idx in 0...pFrame.numChildren) {
+                    var child:Dynamic = pFrame.getChildAt(idx);
+                    if (child != null && child.strName != null && child.strName.text != null) {
+                        if (Std.string(child.strName.text).toLowerCase() == lower) {
+                            if (child.HP != null && child.HP.visible && child.HP.strIntHP != null) {
+                                var parsedHp = Std.parseInt(child.HP.strIntHP.text);
+                                if (parsedHp != null) nativeHp = parsedHp;
+                            }
+                            if (child.MP != null && child.MP.visible && child.MP.strIntMP != null) {
+                                var parsedMp = Std.parseInt(child.MP.strIntMP.text);
+                                if (parsedMp != null) nativeMp = parsedMp;
+                            }
+                            break;
+                        }
+                    }
+                }
             }
         } catch (_:Dynamic) {}
 
         dto.avatar = av;
-        dto.raw = (uoLeaf != null) ? uoLeaf : av;
+        dto.raw = (uoLeaf != null) ? uoLeaf : (av != null ? (av.dataLeaf != null ? av.dataLeaf : av.objData) : null);
 
-        // Check range / cell
+        // In range if entity is found in room avatars, uoTree, or native party frame
+        var inRange = (av != null || uoLeaf != null || nativeHp >= 0);
+        dto.inRange = inRange;
+
+        // Check cell status
         var inSameCell:Bool = false;
         if (av != null && av.pMC != null && av.dataLeaf != null && w.myAvatar != null && w.myAvatar.dataLeaf != null) {
             inSameCell = (av.dataLeaf.strFrame == w.myAvatar.dataLeaf.strFrame);
+        } else if (av != null) {
+            inSameCell = true;
         }
         dto.inCell = inSameCell;
-        dto.inRange = (uoLeaf != null);
 
-        // Stats priority: avatar dataLeaf if in cell, otherwise uoLeaf from uoTree
+        // Populate stats (priority: avatar dataLeaf -> uoLeaf -> objData)
         if (av != null && av.dataLeaf != null) {
             var leaf:Dynamic = av.dataLeaf;
             dto.hp = leaf.intHP != null ? Std.int(leaf.intHP) : 0;
@@ -244,6 +295,42 @@ class PartyManager {
             dto.level = uoLeaf.intLevel != null ? Std.int(uoLeaf.intLevel) : 1;
             dto.className = uoLeaf.strClassName != null ? Std.string(uoLeaf.strClassName) : "";
             dto.shield = uoLeaf.intSG != null ? Std.int(uoLeaf.intSG) : 0;
+        } else if (av != null && av.objData != null) {
+            var obj:Dynamic = av.objData;
+            dto.hp = obj.intHP != null ? Std.int(obj.intHP) : 0;
+            dto.maxHp = obj.intHPMax != null ? Std.int(obj.intHPMax) : 100;
+            dto.mp = obj.intMP != null ? Std.int(obj.intMP) : 0;
+            dto.maxMp = obj.intMPMax != null ? Std.int(obj.intMPMax) : 100;
+            dto.level = obj.intLevel != null ? Std.int(obj.intLevel) : 1;
+            dto.className = obj.strClassName != null ? Std.string(obj.strClassName) : "";
+            dto.shield = 0;
+        }
+
+        if (nativeHp >= 0 && dto.hp == 0) {
+            dto.hp = nativeHp;
+        }
+        if (nativeMp >= 0 && dto.mp == 0) {
+            dto.mp = nativeMp;
+        }
+
+        // Cache known stats so out-of-room members retain last known values
+        if (dto.maxHp > 0 && inRange) {
+            _statCache.set(lower, {
+                hp: dto.hp,
+                maxHp: dto.maxHp,
+                mp: dto.mp,
+                maxMp: dto.maxMp,
+                level: dto.level,
+                className: dto.className
+            });
+        } else if (!inRange && _statCache.exists(lower)) {
+            var cached = _statCache.get(lower);
+            dto.hp = cached.hp;
+            dto.maxHp = cached.maxHp;
+            dto.mp = cached.mp;
+            dto.maxMp = cached.maxMp;
+            dto.level = cached.level;
+            dto.className = cached.className;
         }
 
         return dto;
