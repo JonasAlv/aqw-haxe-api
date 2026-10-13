@@ -209,24 +209,28 @@ class VisualManager {
     public function set_optimizeSpellFX(v:Bool):Bool {
         optimizeSpellFX = v;
         ApiConfig.setBool("api_optimize_spell_fx", v);
+        ensureCharsHook();
         return optimizeSpellFX;
     }
 
     public function set_disableSpellFilters(v:Bool):Bool {
         disableSpellFilters = v;
         ApiConfig.setBool("api_disable_spell_filters", v);
+        ensureCharsHook();
         return disableSpellFilters;
     }
 
     public function set_friendlySelfOnlyFX(v:Bool):Bool {
         friendlySelfOnlyFX = v;
         ApiConfig.setBool("api_friendly_self_only_fx", v);
+        ensureCharsHook();
         return friendlySelfOnlyFX;
     }
 
     public function set_hostilePrimaryOnlyFX(v:Bool):Bool {
         hostilePrimaryOnlyFX = v;
         ApiConfig.setBool("api_hostile_primary_only_fx", v);
+        ensureCharsHook();
         return hostilePrimaryOnlyFX;
     }
 
@@ -468,17 +472,18 @@ class VisualManager {
         if (g == null || g.world == null || g.world.CHARS == null) return;
         var chars:Dynamic = g.world.CHARS;
 
-        if (chars == _hookedChars) return;
-
-        if (_hookedChars != null) {
-            try {
-                _hookedChars.removeEventListener(Event.ADDED, onCharAdded);
-            } catch (_:Dynamic) {}
+        if (chars != _hookedChars) {
+            if (_hookedChars != null) {
+                try {
+                    _hookedChars.removeEventListener(Event.ADDED, onCharAdded);
+                    _hookedChars.removeEventListener(Event.ENTER_FRAME, onPendingEnterFrame);
+                } catch (_:Dynamic) {}
+            }
+            _hookedChars = chars;
         }
 
-        _hookedChars = chars;
         try {
-            _hookedChars.addEventListener(Event.ADDED, onCharAdded, false, 0, true);
+            _hookedChars.addEventListener(Event.ADDED, onCharAdded, false, 0, false);
         } catch (_:Dynamic) {}
     }
 
@@ -493,11 +498,6 @@ class VisualManager {
         }
 
         if (!isSpellClip(child)) return;
-
-        // Tag caster and multi-target status synchronously while castSpellFX is active
-        try {
-            tagSpellCaster(child);
-        } catch (_:Dynamic) {}
 
         handleSpellAdded(child);
     }
@@ -562,60 +562,6 @@ class VisualManager {
         return list;
     }
 
-    /**
-     * Resolves and tags the current active caster and multi-target status onto the spell clip.
-     * Executes synchronously during castSpellFX while cAvt.pMC.spFX is populated.
-     */
-    private function tagSpellCaster(spell:Dynamic):Void {
-        var g:Game = (_game != null) ? _game : Api.game;
-        var world:Dynamic = (g != null) ? g.world : null;
-        if (world == null) return;
-
-        var casterAvt:Dynamic = null;
-        var isMulti:Bool = false;
-
-        // Check player avatars in room
-        try {
-            var avList:Array<Dynamic> = getAllAvatars(world);
-            for (av in avList) {
-                if (av != null && av.pMC != null && av.pMC.spFX != null) {
-                    var s:Dynamic = av.pMC.spFX;
-                    if (s.strl != null && s.strl != "") {
-                        casterAvt = av;
-                        if (s.avts != null && s.avts.length > 1) {
-                            isMulti = true;
-                        }
-                        break;
-                    }
-                }
-            }
-        } catch (_:Dynamic) {}
-
-        // Fallback: check monster avatars
-        if (casterAvt == null) {
-            try {
-                var monList:Array<Dynamic> = getAllMonsters(world);
-                for (m in monList) {
-                    if (m != null && m.pMC != null && m.pMC.spFX != null) {
-                        var s:Dynamic = m.pMC.spFX;
-                        if (s.strl != null && s.strl != "") {
-                            casterAvt = m;
-                            if (s.avts != null && s.avts.length > 1) {
-                                isMulti = true;
-                            }
-                            break;
-                        }
-                    }
-                }
-            } catch (_:Dynamic) {}
-        }
-
-        try {
-            Reflect.setField(spell, "_caster", casterAvt);
-            Reflect.setField(spell, "_isMulti", isMulti);
-        } catch (_:Dynamic) {}
-    }
-
     public static function isSpellClip(child:Dynamic):Bool {
         if (child == null) return false;
         try {
@@ -623,123 +569,256 @@ class VisualManager {
             if (Reflect.hasField(child, "mcChar") || Reflect.hasField(child, "pAV") || Reflect.hasField(child, "pname")) {
                 return false;
             }
-            if (Reflect.field(child, "isHouseItem") == true) return false;
+            if (child.hasOwnProperty("isMonster") && child.isMonster == true) return false;
+            if (child.hasOwnProperty("isPet") && child.isPet == true) return false;
+            if (child.hasOwnProperty("isProp") && child.isProp == true) return false;
+            if (child.hasOwnProperty("isHouseItem") && child.isHouseItem == true) return false;
 
-            // Spell indicators
-            if (Reflect.hasField(child, "fxDeadline")) return true;
-            if (Reflect.field(child, "isSpell") == true) return true;
-            if (Reflect.field(child, "strl") != null) return true;
+            var name:String = child.name;
+            if (name != null) {
+                if (name.indexOf("pet_") == 0) return false;
+                if (name.indexOf("shadow") != -1) return false;
+                if (name.indexOf("pad") != -1) return false;
+            }
 
             var qName:String = untyped __global__["flash.utils.getQualifiedClassName"](child);
             if (qName != null) {
-                if (qName.indexOf("sp_") == 0 || qName.indexOf("sp") == 0 || qName.indexOf("lit1") == 0 || qName.indexOf("Spell") != -1) {
-                    return true;
-                }
+                if (qName == "AvatarMC" || qName == "MonsterMC" || qName == "PetMC") return false;
+            }
+            return true;
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    public static function isMonsterTarget(tMC:Dynamic):Bool {
+        if (tMC == null) return false;
+        try {
+            if (tMC.hasOwnProperty("isMonster") && tMC.isMonster == true) return true;
+            if (tMC.pAV != null) {
+                if (tMC.pAV.hasOwnProperty("npcType") && tMC.pAV.npcType == "monster") return true;
+                if (tMC.pAV.hasOwnProperty("isMonster") && tMC.pAV.isMonster == true) return true;
             }
         } catch (_:Dynamic) {}
         return false;
     }
 
-    /**
-     * Determines whether this spell instance should be suppressed based on user toggles.
-     */
-    private function shouldSuppressTarget(spell:Dynamic):Bool {
-        var tMC:Dynamic = spell.tMC;
-        if (tMC == null) return false; // Don't suppress non-targeted / ambient effects
+    private var _pendingSpells:Array<Dynamic> = [];
+    private var _processPendingScheduled:Bool = false;
+
+    private function scheduleProcessPending():Void {
+        if (_hookedChars != null) {
+            try {
+                _hookedChars.addEventListener(Event.ENTER_FRAME, onPendingEnterFrame, false, 0, false);
+            } catch (_:Dynamic) {}
+        }
+        if (_processPendingScheduled) return;
+        _processPendingScheduled = true;
+        try {
+            untyped __global__["flash.utils.setTimeout"](processPendingSpells, 1);
+        } catch (_:Dynamic) {
+            ApiTime.delay(1, processPendingSpells);
+        }
+    }
+
+    private function onPendingEnterFrame(e:Event):Void {
+        if (_hookedChars != null) {
+            try {
+                _hookedChars.removeEventListener(Event.ENTER_FRAME, onPendingEnterFrame);
+            } catch (_:Dynamic) {}
+        }
+        if (_pendingSpells.length > 0) {
+            processPendingSpells();
+        }
+    }
+
+    private function processPendingSpells():Void {
+        _processPendingScheduled = false;
+        if (_pendingSpells.length == 0) return;
+
+        var spells = _pendingSpells;
+        _pendingSpells = [];
 
         var g:Game = (_game != null) ? _game : Api.game;
         var world:Dynamic = (g != null) ? g.world : null;
-        if (world == null) return false;
-        var myAv:Dynamic = world.myAvatar;
-        if (myAv == null) return false;
-
-        var isMulti:Bool = false;
-        try {
-            isMulti = (Reflect.field(spell, "_isMulti") == true);
-        } catch (_:Dynamic) {}
-
-        // Safely determine if target is a monster (hostile) or player (friendly)
-        // using hasOwnProperty to prevent ReferenceError #1069 on sealed AvatarMC
-        var isMonster:Bool = false;
-        try {
-            if (tMC.hasOwnProperty("isMonster") && tMC.isMonster == true) {
-                isMonster = true;
-            }
-        } catch (_:Dynamic) {}
-
-        if (!isMonster && tMC.pAV != null) {
-            try {
-                if (tMC.pAV.hasOwnProperty("npcType") && tMC.pAV.npcType == "monster") {
-                    isMonster = true;
+        if (world == null || world.myAvatar == null) {
+            for (s in spells) {
+                if (s.parent != null) {
+                    s.visible = true;
+                    applySpellFilters(cast s);
                 }
-            } catch (_:Dynamic) {}
+            }
+            return;
         }
 
-        var isHostile:Bool = isMonster;
-        var isFriendly:Bool = !isMonster;
+        var myAv:Dynamic = world.myAvatar;
+        var myTargetMC:Dynamic = (myAv.target != null) ? myAv.target.pMC : null;
 
-        // In PvP maps, teammates are friendly and opponent players are hostile
-        if (world.bPvP == true && !isMonster) {
-            try {
-                if (tMC.pAV != null && myAv.dataLeaf != null && tMC.pAV.dataLeaf != null) {
-                    var myTeam = myAv.dataLeaf.pvpTeam;
-                    var targetTeam = tMC.pAV.dataLeaf.pvpTeam;
-                    if (myTeam != null && targetTeam != null && myTeam > -1 && targetTeam > -1) {
-                        if (myTeam == targetTeam) {
-                            isFriendly = true;
-                            isHostile = false;
-                        } else {
-                            isFriendly = false;
-                            isHostile = true;
+        // Group pending spells by spell identifier (strl or class name)
+        var groups:Map<String, Array<Dynamic>> = new Map();
+        for (s in spells) {
+            if (s == null || s.parent == null) continue;
+            var key:String = (s.strl != null && s.strl != "") ? Std.string(s.strl) : untyped __global__["flash.utils.getQualifiedClassName"](s);
+            if (key == null || key == "") key = "unknown";
+            if (!groups.exists(key)) {
+                groups.set(key, []);
+            }
+            groups.get(key).push(s);
+        }
+
+        for (key in groups.keys()) {
+            var group:Array<Dynamic> = groups.get(key);
+            if (group == null || group.length == 0) continue;
+
+            // Determine if the group targets monsters (hostile) or players (friendly)
+            var hasMonster:Bool = false;
+            for (s in group) {
+                if (isMonsterTarget(s.tMC)) {
+                    hasMonster = true;
+                    break;
+                }
+            }
+
+            var isHostile:Bool = hasMonster;
+            var isFriendly:Bool = !hasMonster;
+
+            // In PvP maps, teammates are friendly and opponent players are hostile
+            if (world.bPvP == true && !hasMonster) {
+                try {
+                    for (s in group) {
+                        if (s.tMC != null && s.tMC.pAV != null && myAv.dataLeaf != null && s.tMC.pAV.dataLeaf != null) {
+                            var myTeam = myAv.dataLeaf.pvpTeam;
+                            var targetTeam = s.tMC.pAV.dataLeaf.pvpTeam;
+                            if (myTeam != null && targetTeam != null && myTeam > -1 && targetTeam > -1) {
+                                if (myTeam != targetTeam) {
+                                    isHostile = true;
+                                    isFriendly = false;
+                                    break;
+                                }
+                            }
                         }
                     }
-                }
-            } catch (_:Dynamic) {}
-        }
+                } catch (_:Dynamic) {}
+            }
 
-        // 1. Friendly AoE: Caster Only
-        // Multi-target friendly buffs play only on whoever cast them:
-        // for myself if I cast, or for themselves if someone else cast!
-        if (friendlySelfOnlyFX && isFriendly) {
-            if (isMulti) {
-                var caster:Dynamic = null;
-                try { caster = Reflect.field(spell, "_caster"); } catch (_:Dynamic) {}
+            // 1. Hostile spells handling
+            if (isHostile) {
+                if (hostilePrimaryOnlyFX && group.length > 1) {
+                    // Multi-target hostile attack -> show ONLY on primary target!
+                    var primarySpell:Dynamic = null;
+                    if (myTargetMC != null) {
+                        for (s in group) {
+                            if (s.tMC == myTargetMC) {
+                                primarySpell = s;
+                                break;
+                            }
+                        }
+                    }
+                    if (primarySpell == null) {
+                        primarySpell = group[0];
+                    }
 
-                if (caster != null && caster.pMC != null) {
-                    // Only show on the caster; suppress duplicate visuals on other allies
-                    if (tMC != caster.pMC) {
-                        return true;
+                    for (s in group) {
+                        if (s == primarySpell) {
+                            s.visible = true;
+                            applySpellFilters(cast s);
+                        } else {
+                            suppressSpell(s);
+                        }
                     }
                 } else {
-                    // Fallback if caster could not be resolved: show only on myself
-                    var isMe:Bool = false;
+                    for (s in group) {
+                        s.visible = true;
+                        applySpellFilters(cast s);
+                    }
+                }
+            }
+            // 2. Friendly spells handling
+            else {
+                if (friendlySelfOnlyFX && group.length > 1) {
+                    // Multi-target friendly buff -> show ONLY on the caster!
+                    var casterSpell:Dynamic = null;
+
+                    // Did I cast this?
+                    var iAmCasting:Bool = false;
                     try {
-                        if (myAv.pMC != null && tMC == myAv.pMC) isMe = true;
-                        if (!isMe && tMC.pAV != null && (tMC.pAV.isMyAvatar == true || tMC.pAV == myAv)) isMe = true;
+                        if (myAv.pMC != null) {
+                            if (myAv.pMC.spFX != null && myAv.pMC.spFX.strl == key) {
+                                iAmCasting = true;
+                            } else {
+                                var char = myAv.pMC.mcChar;
+                                if (char != null) {
+                                    var lbl:String = char.currentLabel;
+                                    if (lbl == "Cast" || lbl == "Spell" || lbl == "Attack1" || lbl == "Attack2" || lbl == "Thrash") {
+                                        iAmCasting = true;
+                                    }
+                                }
+                                if (myAv.pMC.spellDur > 0) iAmCasting = true;
+                            }
+                        }
                     } catch (_:Dynamic) {}
-                    if (!isMe) {
-                        return true;
+
+                    if (iAmCasting) {
+                        // I cast it -> keep ONLY myself!
+                        for (s in group) {
+                            if (s.tMC == myAv.pMC || (s.tMC != null && s.tMC.pAV == myAv)) {
+                                casterSpell = s;
+                                break;
+                            }
+                        }
+                    } else {
+                        // Someone else cast it -> find which player in group is casting
+                        for (s in group) {
+                            if (s.tMC != null && s.tMC != myAv.pMC) {
+                                try {
+                                    if (s.tMC.spFX != null && s.tMC.spFX.strl == key) {
+                                        casterSpell = s;
+                                        break;
+                                    }
+                                    var char = s.tMC.mcChar;
+                                    if (char != null) {
+                                        var lbl:String = char.currentLabel;
+                                        if (lbl == "Cast" || lbl == "Spell" || lbl == "Attack1" || lbl == "Attack2" || lbl == "Thrash") {
+                                            casterSpell = s;
+                                            break;
+                                        }
+                                    }
+                                    if (s.tMC.spellDur > 0) {
+                                        casterSpell = s;
+                                        break;
+                                    }
+                                } catch (_:Dynamic) {}
+                            }
+                        }
+                    }
+
+                    if (casterSpell == null) {
+                        for (s in group) {
+                            if (s.tMC != myAv.pMC) {
+                                casterSpell = s;
+                                break;
+                            }
+                        }
+                        if (casterSpell == null) {
+                            casterSpell = group[0];
+                        }
+                    }
+
+                    for (s in group) {
+                        if (s == casterSpell) {
+                            s.visible = true;
+                            applySpellFilters(cast s);
+                        } else {
+                            suppressSpell(s);
+                        }
+                    }
+                } else {
+                    for (s in group) {
+                        s.visible = true;
+                        applySpellFilters(cast s);
                     }
                 }
             }
         }
-
-        // 2. Hostile AoE: Primary Target Only
-        // Multi-target hostile attack animations play only on the primary target
-        if (hostilePrimaryOnlyFX && isHostile) {
-            if (isMulti) {
-                var primMC:Dynamic = null;
-                try {
-                    primMC = (myAv.target != null) ? myAv.target.pMC : null;
-                } catch (_:Dynamic) {}
-
-                if (primMC != null && tMC != primMC) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     private function suppressSpell(spell:Dynamic):Void {
@@ -793,56 +872,9 @@ class VisualManager {
         }
 
         if (needsTargetFilter()) {
-            if (spell.tMC != null) {
-                var suppress:Bool = false;
-                try {
-                    suppress = shouldSuppressTarget(spell);
-                } catch (_:Dynamic) {}
-
-                if (suppress) {
-                    suppressSpell(spell);
-                    return;
-                }
-                applySpellFilters(cast spell);
-            } else {
-                // Target is assigned immediately after addChild in World.castSpellFX
-                // Keep hidden until target check resolves to prevent 1-frame flashes
-                spell.visible = false;
-                var checked:Bool = false;
-                var enterHandler:Dynamic = null;
-                var checkTarget = function():Void {
-                    if (checked) return;
-                    checked = true;
-                    if (enterHandler != null) {
-                        try { spell.removeEventListener(Event.ENTER_FRAME, enterHandler); } catch (_:Dynamic) {}
-                    }
-                    if (spell.parent == null) return;
-                    var suppress:Bool = false;
-                    try {
-                        suppress = shouldSuppressTarget(spell);
-                    } catch (_:Dynamic) {}
-
-                    if (suppress) {
-                        suppressSpell(spell);
-                    } else {
-                        spell.visible = true;
-                        applySpellFilters(cast spell);
-                    }
-                };
-
-                enterHandler = function(e:Event):Void {
-                    checkTarget();
-                };
-                try {
-                    spell.addEventListener(Event.ENTER_FRAME, enterHandler, false, 0, true);
-                } catch (_:Dynamic) {}
-
-                try {
-                    untyped __global__["flash.utils.setTimeout"](checkTarget, 1);
-                } catch (_:Dynamic) {
-                    ApiTime.delay(1, checkTarget);
-                }
-            }
+            spell.visible = false;
+            _pendingSpells.push(spell);
+            scheduleProcessPending();
         } else {
             applySpellFilters(cast spell);
         }
@@ -927,6 +959,7 @@ class VisualManager {
         if (_hookedChars != null) {
             try {
                 _hookedChars.removeEventListener(Event.ADDED, onCharAdded);
+                _hookedChars.removeEventListener(Event.ENTER_FRAME, onPendingEnterFrame);
             } catch (_:Dynamic) {}
             _hookedChars = null;
         }
