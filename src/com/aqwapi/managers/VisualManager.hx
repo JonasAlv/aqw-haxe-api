@@ -653,25 +653,48 @@ class VisualManager {
         var myAv:Dynamic = world.myAvatar;
         if (myAv == null) return false;
 
-        var isMulti:Bool = (Reflect.field(spell, "_isMulti") == true);
+        var isMulti:Bool = false;
+        try {
+            isMulti = (Reflect.field(spell, "_isMulti") == true);
+        } catch (_:Dynamic) {}
 
-        var isMonster:Bool = (tMC.isMonster == true) || (tMC.pAV != null && tMC.pAV.isMonster == true);
+        // Safely determine if target is a monster (hostile) or player (friendly)
+        // using hasOwnProperty to prevent ReferenceError #1069 on sealed AvatarMC
+        var isMonster:Bool = false;
+        try {
+            if (tMC.hasOwnProperty("isMonster") && tMC.isMonster == true) {
+                isMonster = true;
+            }
+        } catch (_:Dynamic) {}
+
+        if (!isMonster && tMC.pAV != null) {
+            try {
+                if (tMC.pAV.hasOwnProperty("npcType") && tMC.pAV.npcType == "monster") {
+                    isMonster = true;
+                }
+            } catch (_:Dynamic) {}
+        }
+
         var isHostile:Bool = isMonster;
         var isFriendly:Bool = !isMonster;
 
         // In PvP maps, teammates are friendly and opponent players are hostile
-        if (world.bPvP == true && !isMonster && tMC.pAV != null && myAv.dataLeaf != null && tMC.pAV.dataLeaf != null) {
-            var myTeam = myAv.dataLeaf.pvpTeam;
-            var targetTeam = tMC.pAV.dataLeaf.pvpTeam;
-            if (myTeam != null && targetTeam != null && myTeam > -1 && targetTeam > -1) {
-                if (myTeam == targetTeam) {
-                    isFriendly = true;
-                    isHostile = false;
-                } else {
-                    isFriendly = false;
-                    isHostile = true;
+        if (world.bPvP == true && !isMonster) {
+            try {
+                if (tMC.pAV != null && myAv.dataLeaf != null && tMC.pAV.dataLeaf != null) {
+                    var myTeam = myAv.dataLeaf.pvpTeam;
+                    var targetTeam = tMC.pAV.dataLeaf.pvpTeam;
+                    if (myTeam != null && targetTeam != null && myTeam > -1 && targetTeam > -1) {
+                        if (myTeam == targetTeam) {
+                            isFriendly = true;
+                            isHostile = false;
+                        } else {
+                            isFriendly = false;
+                            isHostile = true;
+                        }
+                    }
                 }
-            }
+            } catch (_:Dynamic) {}
         }
 
         // 1. Friendly AoE: Caster Only
@@ -679,7 +702,9 @@ class VisualManager {
         // for myself if I cast, or for themselves if someone else cast!
         if (friendlySelfOnlyFX && isFriendly) {
             if (isMulti) {
-                var caster:Dynamic = Reflect.field(spell, "_caster");
+                var caster:Dynamic = null;
+                try { caster = Reflect.field(spell, "_caster"); } catch (_:Dynamic) {}
+
                 if (caster != null && caster.pMC != null) {
                     // Only show on the caster; suppress duplicate visuals on other allies
                     if (tMC != caster.pMC) {
@@ -687,7 +712,11 @@ class VisualManager {
                     }
                 } else {
                     // Fallback if caster could not be resolved: show only on myself
-                    var isMe:Bool = (myAv.pMC != null && tMC == myAv.pMC) || (tMC.pAV != null && (tMC.pAV.isMyAvatar == true || tMC.pAV == myAv));
+                    var isMe:Bool = false;
+                    try {
+                        if (myAv.pMC != null && tMC == myAv.pMC) isMe = true;
+                        if (!isMe && tMC.pAV != null && (tMC.pAV.isMyAvatar == true || tMC.pAV == myAv)) isMe = true;
+                    } catch (_:Dynamic) {}
                     if (!isMe) {
                         return true;
                     }
@@ -699,7 +728,11 @@ class VisualManager {
         // Multi-target hostile attack animations play only on the primary target
         if (hostilePrimaryOnlyFX && isHostile) {
             if (isMulti) {
-                var primMC:Dynamic = (myAv.target != null) ? myAv.target.pMC : null;
+                var primMC:Dynamic = null;
+                try {
+                    primMC = (myAv.target != null) ? myAv.target.pMC : null;
+                } catch (_:Dynamic) {}
+
                 if (primMC != null && tMC != primMC) {
                     return true;
                 }
@@ -761,7 +794,12 @@ class VisualManager {
 
         if (needsTargetFilter()) {
             if (spell.tMC != null) {
-                if (shouldSuppressTarget(spell)) {
+                var suppress:Bool = false;
+                try {
+                    suppress = shouldSuppressTarget(spell);
+                } catch (_:Dynamic) {}
+
+                if (suppress) {
                     suppressSpell(spell);
                     return;
                 }
@@ -779,7 +817,12 @@ class VisualManager {
                         try { spell.removeEventListener(Event.ENTER_FRAME, enterHandler); } catch (_:Dynamic) {}
                     }
                     if (spell.parent == null) return;
-                    if (shouldSuppressTarget(spell)) {
+                    var suppress:Bool = false;
+                    try {
+                        suppress = shouldSuppressTarget(spell);
+                    } catch (_:Dynamic) {}
+
+                    if (suppress) {
                         suppressSpell(spell);
                     } else {
                         spell.visible = true;
