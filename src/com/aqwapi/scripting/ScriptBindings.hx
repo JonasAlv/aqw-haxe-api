@@ -75,6 +75,7 @@ class ScriptBindings {
         registerPlayerStatusShortcuts();
         registerLoggingAndSystem();
         registerVisualShortcuts();
+        registerPartyShortcuts();
     }
 
     public static function registerAll(interp:ScriptInterp):Void {
@@ -1262,6 +1263,33 @@ class ScriptBindings {
                 Api.visual.cleanArena = (enabled == true);
             }
             return Api.visual.cleanArena;
+        });
+    }
+
+    private static function registerPartyShortcuts():Void {
+        bind("inParty", function():Bool {
+            return (Api.party != null) ? Api.party.inParty : false;
+        });
+        bind("isPartyLeader", function():Bool {
+            return (Api.party != null) ? Api.party.isLeader : false;
+        });
+        bind("partyLeader", function():String {
+            return (Api.party != null) ? Api.party.leaderName : "";
+        });
+        bind("partyMembers", function():Array<String> {
+            return (Api.party != null) ? Api.party.memberNames : [];
+        });
+        bind("partyInvite", function(username:String):Void {
+            if (Api.party != null) Api.party.invite(username);
+        });
+        bind("partyKick", function(username:String):Void {
+            if (Api.party != null) Api.party.kick(username);
+        });
+        bind("partyLeave", function():Void {
+            if (Api.party != null) Api.party.leave();
+        });
+        bind("partyTarget", function(username:String):Bool {
+            return (Api.party != null) ? Api.party.targetMember(username) : false;
         });
     }
 

@@ -91,6 +91,8 @@ class TransportAdapter {
                     Api.inventory.onBankLoaded();
                 }
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.INVENTORY_CHANGED, dataObj));
+            case "gp", "uotls":
+                Api.dispatcher.dispatchEvent(new com.aqwapi.events.ApiEvent(com.aqwapi.events.ApiEvent.PARTY_UPDATED, cmd, dataObj));
             default:
         }
 

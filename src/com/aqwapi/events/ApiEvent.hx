@@ -10,6 +10,7 @@ class ApiEvent extends Event {
     public static inline var SCRIPT_STOPPED:String = "apiScriptStopped";
     public static inline var COMBAT_TOGGLED:String = "apiCombatToggled";
     public static inline var ACCOUNT_CHANGED:String = "apiAccountChanged";
+    public static inline var PARTY_UPDATED:String = "apiPartyUpdated";
 
     public var message:String;
     public var data:Dynamic;

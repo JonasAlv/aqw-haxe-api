@@ -24,6 +24,7 @@ class ScriptInterp extends Interp {
             case "skills": return Api.skills;
             case "aura", "auras": return Api.aura;
             case "visual": return Api.visual;
+            case "party": return Api.party;
             case "blacklist": return Api.blacklist;
             case "script": return Api.script;
             case "events": return Api.dispatcher;

@@ -27,6 +27,7 @@ class Api {
     public static var blacklist(default, null):BlacklistManager = BlacklistManager.instance;
     public static var script(default, null):com.aqwapi.modules.ScriptManager = com.aqwapi.modules.ScriptManager.SINGLETON;
     public static var visual(default, null):VisualManager = new VisualManager(null);
+    public static var party(default, null):PartyManager = new PartyManager(null);
 
     // Plural aliases
     public static var quests(get, never):QuestManager;
@@ -399,6 +400,7 @@ class Api {
         shop = new ShopManager(game);
         monster = new MonsterManager(game);
         enhancement = new EnhancementManager(game);
+        party = new PartyManager(game);
         hscript = HScriptEngine.SINGLETON;
 
         if (visual != null) {
