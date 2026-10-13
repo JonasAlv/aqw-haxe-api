@@ -1229,6 +1229,27 @@ class ScriptBindings {
             }
             return Api.visual.disableSkillAnims;
         });
+        bind("skillAnimMode", function(?mode:Dynamic):Int {
+            if (Api.visual == null) return 0;
+            if (mode != null) {
+                Api.visual.skillAnimMode = Std.int(mode);
+            }
+            return Api.visual.skillAnimMode;
+        });
+        bind("optimizeSpellFX", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return true;
+            if (enabled != null) {
+                Api.visual.optimizeSpellFX = (enabled == true);
+            }
+            return Api.visual.optimizeSpellFX;
+        });
+        bind("maxConcurrentSpells", function(?count:Dynamic):Int {
+            if (Api.visual == null) return 6;
+            if (count != null) {
+                Api.visual.maxConcurrentSpells = Std.int(count);
+            }
+            return Api.visual.maxConcurrentSpells;
+        });
         bind("disableMonsterAnims", function(?enabled:Dynamic):Bool {
             if (Api.visual == null) return false;
             if (enabled != null) {

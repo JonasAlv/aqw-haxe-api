@@ -1,5 +1,8 @@
 package com.aqwapi.managers;
 
+import flash.display.DisplayObject;
+import flash.display.DisplayObjectContainer;
+import flash.events.Event;
 import flash.events.TimerEvent;
 import flash.geom.ColorTransform;
 import flash.geom.Matrix;
@@ -25,7 +28,19 @@ class VisualManager {
 
     // Granular toggles
     public var hidePlayers(default, set):Bool = false;
-    public var disableSkillAnims(default, set):Bool = false;
+
+    // Spell animations mode: 0 = All Spells (Optimized), 1 = Self Only, 2 = Disabled
+    public var skillAnimMode(default, set):Int = 0;
+
+    // Backwards-compatible getter/setter for disableSkillAnims
+    public var disableSkillAnims(get, set):Bool;
+
+    // Fast FX: Strips expensive CPU blur/glow convolution filters & deduplicates overlapping spell clips
+    public var optimizeSpellFX(default, set):Bool = true;
+
+    // Concurrency limiter: Cap maximum active spell clips on screen (0 = Unlimited)
+    public var maxConcurrentSpells(default, set):Int = 6;
+
     public var disableMonsterAnims(default, set):Bool = false;
     public var disableWeaponAnims(default, set):Bool = false;
     public var disableGround(default, set):Bool = false;
@@ -43,6 +58,13 @@ class VisualManager {
     public var showNames:Bool = true;
     public var showShadows:Bool = true;
 
+    // Spell tracking & optimization state
+    private var _hookedChars:Dynamic = null;
+    private var _activeSpells:Array<Dynamic> = [];
+    private var _pendingSpells:Array<Dynamic> = [];
+    private var _lastSpellSpawn:Map<String, Int> = new Map<String, Int>();
+    private var _processScheduled:Bool = false;
+
     public function new(gameRef:Game) {
         _game = gameRef;
         loadConfig();
@@ -57,7 +79,12 @@ class VisualManager {
     private function loadConfig():Void {
         lagKiller = ApiConfig.getBool("api_lag_killer", false);
         hidePlayers = ApiConfig.getBool("api_hide_players", false);
-        disableSkillAnims = ApiConfig.getBool("api_disable_skill_anims", false);
+
+        var oldDis = ApiConfig.getBool("api_disable_skill_anims", false);
+        skillAnimMode = ApiConfig.getInt("api_skill_anim_mode", oldDis ? 2 : 0);
+        optimizeSpellFX = ApiConfig.getBool("api_optimize_spell_fx", true);
+        maxConcurrentSpells = ApiConfig.getInt("api_max_concurrent_spells", 6);
+
         disableMonsterAnims = ApiConfig.getBool("api_disable_mon_anims", false);
         disableWeaponAnims = ApiConfig.getBool("api_disable_wep_anims", false);
         disableGround = ApiConfig.getBool("api_disable_ground", false);
@@ -81,12 +108,14 @@ class VisualManager {
             if (isActive()) {
                 applyDisplayListOnly();
             }
+            ensureCharsHook();
+            sweepStaleSpells();
         });
         _sweepTimer.start();
     }
 
     public inline function isActive():Bool {
-        return lagKiller || hidePlayers || disableSkillAnims || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena || suppressTargetGlow || cachePlayers || cacheMonsters;
+        return lagKiller || hidePlayers || (skillAnimMode != 0) || optimizeSpellFX || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena || suppressTargetGlow || cachePlayers || cacheMonsters;
     }
 
     public function set_suppressTargetGlow(v:Bool):Bool {
@@ -155,11 +184,60 @@ class VisualManager {
         return hidePlayers;
     }
 
-    public function set_disableSkillAnims(v:Bool):Bool {
-        disableSkillAnims = v;
-        ApiConfig.setBool("api_disable_skill_anims", v);
+    private inline function get_disableSkillAnims():Bool return (skillAnimMode == 2);
+    private function set_disableSkillAnims(v:Bool):Bool {
+        skillAnimMode = v ? 2 : 0;
+        return v;
+    }
+
+    public function set_skillAnimMode(v:Int):Int {
+        skillAnimMode = v;
+        ApiConfig.setInt("api_skill_anim_mode", v);
+        ApiConfig.setBool("api_disable_skill_anims", v == 2);
         apply();
-        return disableSkillAnims;
+        return skillAnimMode;
+    }
+
+    public function set_optimizeSpellFX(v:Bool):Bool {
+        optimizeSpellFX = v;
+        ApiConfig.setBool("api_optimize_spell_fx", v);
+        return optimizeSpellFX;
+    }
+
+    public function set_maxConcurrentSpells(v:Int):Int {
+        maxConcurrentSpells = v;
+        ApiConfig.setInt("api_max_concurrent_spells", v);
+        return maxConcurrentSpells;
+    }
+
+    public function cycleSkillAnimMode():Int {
+        skillAnimMode = (skillAnimMode + 1) % 3;
+        return skillAnimMode;
+    }
+
+    public function cycleMaxConcurrentSpells():Int {
+        var presets = [4, 6, 8, 12, 0];
+        var idx = presets.indexOf(maxConcurrentSpells);
+        if (idx == -1) idx = 1; // default 6
+        var nextIdx = (idx + 1) % presets.length;
+        maxConcurrentSpells = presets[nextIdx];
+        return maxConcurrentSpells;
+    }
+
+    public function getSkillAnimModeLabel():String {
+        return switch (skillAnimMode) {
+            case 0: "All Spells";
+            case 1: "Self Only";
+            case 2: "Disabled";
+            default: "All Spells";
+        };
+    }
+
+    public function getMaxConcurrentSpellsLabel():String {
+        return switch (maxConcurrentSpells) {
+            case 0: "Unlimited";
+            default: maxConcurrentSpells + " Spells";
+        };
     }
 
     public function set_disableMonsterAnims(v:Bool):Bool {
@@ -219,7 +297,8 @@ class VisualManager {
         if (g == null) return;
 
         var effHidePlayers = lagKiller || hidePlayers;
-        var effDisSkills = lagKiller || disableSkillAnims;
+        var effDisSkills = lagKiller || (skillAnimMode == 2);
+        var effAnimSelf = (skillAnimMode == 1);
         var effDisMonAnims = lagKiller || disableMonsterAnims;
         var effDisWepAnims = lagKiller || disableWeaponAnims;
         var effDisGround = lagKiller || disableGround;
@@ -229,17 +308,19 @@ class VisualManager {
             if (g.litePreference != null && g.litePreference.data != null) {
                 var d = g.litePreference.data;
                 d.bHidePlayers = effHidePlayers;
-                d.bDisSkillAnim = effDisSkills;
+                d.bDisSkillAnim = effDisSkills || effAnimSelf;
                 d.bDisMonAnim = effDisMonAnims;
                 d.bDisWepAnim = effDisWepAnims;
                 d.bDisGround = effDisGround;
                 d.bHideMons = hideMonsters;
                 d.bCachePlayers = cachePlayers;
 
-                if (d.dOptions != null) {
-                    Reflect.setField(d.dOptions, "showNames", showNames);
-                    Reflect.setField(d.dOptions, "showShadows", showShadows);
+                if (d.dOptions == null) {
+                    d.dOptions = {};
                 }
+                Reflect.setField(d.dOptions, "showNames", showNames);
+                Reflect.setField(d.dOptions, "showShadows", showShadows);
+                Reflect.setField(d.dOptions, "animSelf", effAnimSelf);
 
                 if (g.litePreference.flush != null) {
                     g.litePreference.flush();
@@ -252,6 +333,9 @@ class VisualManager {
 
         // 3. Update live display list
         applyDisplayListOnly();
+
+        // 4. Ensure world.CHARS listener is hooked
+        ensureCharsHook();
     }
 
     /**
@@ -272,7 +356,7 @@ class VisualManager {
         }
 
         var effHidePlayers = lagKiller || hidePlayers;
-        var effDisSkills = lagKiller || disableSkillAnims;
+        var effDisSkills = lagKiller || (skillAnimMode == 2);
         var effDisMonAnims = lagKiller || disableMonsterAnims;
 
         // A. Player Avatars (self and other players)
@@ -343,6 +427,15 @@ class VisualManager {
             try {
                 if (world.clearSpFXQueue != null) world.clearSpFXQueue();
             } catch (_:Dynamic) {}
+            if (_hookedChars != null) {
+                var i = _activeSpells.length - 1;
+                while (i >= 0) {
+                    var s = _activeSpells[i];
+                    if (s != null) suppressSpell(s);
+                    i--;
+                }
+                _activeSpells = [];
+            }
         }
 
         // D. Clean Arena / Map Background
@@ -353,10 +446,264 @@ class VisualManager {
         } catch (_:Dynamic) {}
     }
 
+    private function ensureCharsHook():Void {
+        var g:Game = (_game != null) ? _game : Api.game;
+        if (g == null || g.world == null || g.world.CHARS == null) return;
+        var chars:Dynamic = g.world.CHARS;
+
+        if (chars == _hookedChars) return;
+
+        if (_hookedChars != null) {
+            try {
+                _hookedChars.removeEventListener(Event.ADDED, onCharAdded);
+                _hookedChars.removeEventListener(Event.REMOVED, onCharRemoved);
+            } catch (_:Dynamic) {}
+        }
+
+        _hookedChars = chars;
+        try {
+            _hookedChars.addEventListener(Event.ADDED, onCharAdded, false, 0, true);
+            _hookedChars.addEventListener(Event.REMOVED, onCharRemoved, false, 0, true);
+        } catch (_:Dynamic) {}
+    }
+
+    private function onCharAdded(e:Event):Void {
+        var child:Dynamic = e.target;
+        if (child == null || child == _hookedChars) return;
+
+        try {
+            if (child.parent != _hookedChars) return;
+        } catch (_:Dynamic) {
+            return;
+        }
+
+        if (!isSpellClip(child)) return;
+
+        handleSpellAdded(child);
+    }
+
+    private function onCharRemoved(e:Event):Void {
+        var child:Dynamic = e.target;
+        if (child == null) return;
+        _activeSpells.remove(child);
+        _pendingSpells.remove(child);
+    }
+
+    public static function isSpellClip(child:Dynamic):Bool {
+        if (child == null) return false;
+        try {
+            // Avatars and monsters have mcChar / pAV / pname
+            if (Reflect.hasField(child, "mcChar") || Reflect.hasField(child, "pAV") || Reflect.hasField(child, "pname")) {
+                return false;
+            }
+            if (Reflect.field(child, "isHouseItem") == true) return false;
+
+            // Spell indicators
+            if (Reflect.hasField(child, "fxDeadline")) return true;
+            if (Reflect.field(child, "isSpell") == true) return true;
+            if (Reflect.field(child, "strl") != null) return true;
+
+            var qName:String = untyped __global__["flash.utils.getQualifiedClassName"](child);
+            if (qName != null) {
+                if (qName.indexOf("sp_") == 0 || qName.indexOf("sp") == 0 || qName.indexOf("lit1") == 0 || qName.indexOf("Spell") != -1) {
+                    return true;
+                }
+            }
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    private function handleSpellAdded(spell:Dynamic):Void {
+        var effAnimMode = lagKiller ? 2 : skillAnimMode;
+
+        if (effAnimMode == 2) {
+            suppressSpell(spell);
+            return;
+        }
+
+        if (!optimizeSpellFX) return;
+
+        // 1. Immediately wipe expensive CPU Gaussian blur and glow convolution filters
+        stripFilters(cast spell);
+
+        // 2. Hook sub-children dynamically created on future timeline frames
+        try {
+            spell.addEventListener(Event.ADDED, onSpellChildAdded, false, 0, true);
+        } catch (_:Dynamic) {}
+
+        // 3. Queue for deduplication and concurrency control on next tick
+        _pendingSpells.push(spell);
+        schedulePendingProcess();
+    }
+
+    private function onSpellChildAdded(e:Event):Void {
+        if (!optimizeSpellFX) return;
+        var sub:Dynamic = e.target;
+        if (sub != null && sub != e.currentTarget) {
+            stripFilters(cast sub);
+        }
+    }
+
+    private function schedulePendingProcess():Void {
+        if (_processScheduled) return;
+        _processScheduled = true;
+        try {
+            untyped __global__["flash.utils.setTimeout"](processPendingSpells, 1);
+        } catch (_:Dynamic) {
+            processPendingSpells();
+        }
+    }
+
+    private function processPendingSpells():Void {
+        _processScheduled = false;
+        if (_pendingSpells.length == 0) return;
+
+        var queue = _pendingSpells.copy();
+        _pendingSpells = [];
+
+        var now:Int = untyped __global__["flash.utils.getTimer"]();
+
+        for (spell in queue) {
+            if (spell == null) continue;
+            try {
+                if (spell.parent != _hookedChars) continue;
+            } catch (_:Dynamic) {
+                continue;
+            }
+
+            // Deduplication key
+            var spellName:String = "";
+            try {
+                if (spell.strl != null && spell.strl != "") {
+                    spellName = spell.strl;
+                } else {
+                    spellName = untyped __global__["flash.utils.getQualifiedClassName"](spell);
+                }
+            } catch (_:Dynamic) {}
+
+            var targetKey:String = "";
+            try {
+                if (spell.tMC != null) {
+                    var tMC:Dynamic = spell.tMC;
+                    if (tMC.pAV != null && tMC.pAV.objData != null && tMC.pAV.objData.ID != null) {
+                        targetKey = "id_" + Std.string(tMC.pAV.objData.ID);
+                    } else if (tMC.pAV != null && tMC.pAV.strUsername != null) {
+                        targetKey = "user_" + Std.string(tMC.pAV.strUsername);
+                    } else {
+                        targetKey = "pos_" + Math.round(tMC.x / 40) + "_" + Math.round(tMC.y / 40);
+                    }
+                } else {
+                    targetKey = "pos_" + Math.round(spell.x / 40) + "_" + Math.round(spell.y / 40);
+                }
+            } catch (_:Dynamic) {}
+
+            var dedupKey = spellName + "@" + targetKey;
+            var lastSpawn = _lastSpellSpawn.get(dedupKey);
+            if (lastSpawn != null && (now - lastSpawn) < 280) {
+                // Suppress duplicate overlapping spell on same target within 280ms
+                suppressSpell(spell);
+                continue;
+            }
+
+            _lastSpellSpawn.set(dedupKey, now);
+
+            // Concurrency limiter
+            if (maxConcurrentSpells > 0) {
+                var i = _activeSpells.length - 1;
+                while (i >= 0) {
+                    var active = _activeSpells[i];
+                    if (active == null || active.parent != _hookedChars) {
+                        _activeSpells.splice(i, 1);
+                    }
+                    i--;
+                }
+
+                while (_activeSpells.length >= maxConcurrentSpells && _activeSpells.length > 0) {
+                    var oldest = _activeSpells.shift();
+                    if (oldest != null) suppressSpell(oldest);
+                }
+            }
+
+            _activeSpells.push(spell);
+        }
+    }
+
+    public static function suppressSpell(spell:Dynamic):Void {
+        if (spell == null) return;
+        try {
+            spell.visible = false;
+        } catch (_:Dynamic) {}
+        try {
+            if (Reflect.hasField(spell, "stop")) spell.stop();
+        } catch (_:Dynamic) {}
+        try {
+            if (Reflect.hasField(spell, "killSpell")) spell.killSpell();
+        } catch (_:Dynamic) {}
+        try {
+            if (spell.parent != null) spell.parent.removeChild(spell);
+        } catch (_:Dynamic) {}
+    }
+
+    public static function stripFilters(clip:DisplayObject):Void {
+        if (clip == null) return;
+        try {
+            if (clip.filters != null && clip.filters.length > 0) {
+                clip.filters = [];
+            }
+        } catch (_:Dynamic) {}
+
+        if (Std.isOfType(clip, DisplayObjectContainer)) {
+            var container:DisplayObjectContainer = cast clip;
+            try {
+                var count = container.numChildren;
+                for (i in 0...count) {
+                    var child = container.getChildAt(i);
+                    if (child != null) {
+                        stripFilters(child);
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+    }
+
+    private function sweepStaleSpells():Void {
+        var now:Int = untyped __global__["flash.utils.getTimer"]();
+
+        var toRemove:Array<String> = [];
+        for (k in _lastSpellSpawn.keys()) {
+            var t = _lastSpellSpawn.get(k);
+            if (t == null || (now - t) > 1500) {
+                toRemove.push(k);
+            }
+        }
+        for (k in toRemove) {
+            _lastSpellSpawn.remove(k);
+        }
+
+        var i = _activeSpells.length - 1;
+        while (i >= 0) {
+            var s = _activeSpells[i];
+            if (s == null || s.parent != _hookedChars) {
+                _activeSpells.splice(i, 1);
+            }
+            i--;
+        }
+    }
+
     public function destroy():Void {
         if (_sweepTimer != null) {
             _sweepTimer.stop();
             _sweepTimer = null;
         }
+        if (_hookedChars != null) {
+            try {
+                _hookedChars.removeEventListener(Event.ADDED, onCharAdded);
+                _hookedChars.removeEventListener(Event.REMOVED, onCharRemoved);
+            } catch (_:Dynamic) {}
+            _hookedChars = null;
+        }
+        _activeSpells = [];
+        _pendingSpells = [];
+        _lastSpellSpawn = new Map<String, Int>();
     }
 }

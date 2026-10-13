@@ -79,6 +79,30 @@ class Api {
     public static function set_disableSkillAnims_prop(v:Bool):Void { if (visual != null) visual.disableSkillAnims = v; }
     public static function set_disableSkillAnims(v:Bool):Bool { if (visual != null) visual.disableSkillAnims = v; return v; }
 
+    public static var skillAnimMode(get, set):Int;
+    @:getter(skillAnimMode)
+    public static function get_skillAnimMode_prop():Int { return visual != null ? visual.skillAnimMode : 0; }
+    public static function get_skillAnimMode():Int { return visual != null ? visual.skillAnimMode : 0; }
+    @:setter(skillAnimMode)
+    public static function set_skillAnimMode_prop(v:Int):Void { if (visual != null) visual.skillAnimMode = v; }
+    public static function set_skillAnimMode(v:Int):Int { if (visual != null) visual.skillAnimMode = v; return v; }
+
+    public static var optimizeSpellFX(get, set):Bool;
+    @:getter(optimizeSpellFX)
+    public static function get_optimizeSpellFX_prop():Bool { return visual != null ? visual.optimizeSpellFX : true; }
+    public static function get_optimizeSpellFX():Bool { return visual != null ? visual.optimizeSpellFX : true; }
+    @:setter(optimizeSpellFX)
+    public static function set_optimizeSpellFX_prop(v:Bool):Void { if (visual != null) visual.optimizeSpellFX = v; }
+    public static function set_optimizeSpellFX(v:Bool):Bool { if (visual != null) visual.optimizeSpellFX = v; return v; }
+
+    public static var maxConcurrentSpells(get, set):Int;
+    @:getter(maxConcurrentSpells)
+    public static function get_maxConcurrentSpells_prop():Int { return visual != null ? visual.maxConcurrentSpells : 6; }
+    public static function get_maxConcurrentSpells():Int { return visual != null ? visual.maxConcurrentSpells : 6; }
+    @:setter(maxConcurrentSpells)
+    public static function set_maxConcurrentSpells_prop(v:Int):Void { if (visual != null) visual.maxConcurrentSpells = v; }
+    public static function set_maxConcurrentSpells(v:Int):Int { if (visual != null) visual.maxConcurrentSpells = v; return v; }
+
     public static var disableMonsterAnims(get, set):Bool;
     @:getter(disableMonsterAnims)
     public static function get_disableMonsterAnims_prop():Bool { return visual != null ? visual.disableMonsterAnims : false; }
