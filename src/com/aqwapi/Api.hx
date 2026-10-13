@@ -175,6 +175,46 @@ class Api {
     public static function set_suppressTargetGlow_prop(v:Bool):Void { if (visual != null) visual.suppressTargetGlow = v; }
     public static function set_suppressTargetGlow(v:Bool):Bool { if (visual != null) visual.suppressTargetGlow = v; return v; }
 
+    public static var hidePlayerCapes(get, set):Bool;
+    @:getter(hidePlayerCapes)
+    public static function get_hidePlayerCapes_prop():Bool { return visual != null ? visual.hidePlayerCapes : false; }
+    public static function get_hidePlayerCapes():Bool { return visual != null ? visual.hidePlayerCapes : false; }
+    @:setter(hidePlayerCapes)
+    public static function set_hidePlayerCapes_prop(v:Bool):Void { if (visual != null) visual.hidePlayerCapes = v; }
+    public static function set_hidePlayerCapes(v:Bool):Bool { if (visual != null) visual.hidePlayerCapes = v; return v; }
+
+    public static var hidePlayerHelms(get, set):Bool;
+    @:getter(hidePlayerHelms)
+    public static function get_hidePlayerHelms_prop():Bool { return visual != null ? visual.hidePlayerHelms : false; }
+    public static function get_hidePlayerHelms():Bool { return visual != null ? visual.hidePlayerHelms : false; }
+    @:setter(hidePlayerHelms)
+    public static function set_hidePlayerHelms_prop(v:Bool):Void { if (visual != null) visual.hidePlayerHelms = v; }
+    public static function set_hidePlayerHelms(v:Bool):Bool { if (visual != null) visual.hidePlayerHelms = v; return v; }
+
+    public static var hidePlayerWeapons(get, set):Bool;
+    @:getter(hidePlayerWeapons)
+    public static function get_hidePlayerWeapons_prop():Bool { return visual != null ? visual.hidePlayerWeapons : false; }
+    public static function get_hidePlayerWeapons():Bool { return visual != null ? visual.hidePlayerWeapons : false; }
+    @:setter(hidePlayerWeapons)
+    public static function set_hidePlayerWeapons_prop(v:Bool):Void { if (visual != null) visual.hidePlayerWeapons = v; }
+    public static function set_hidePlayerWeapons(v:Bool):Bool { if (visual != null) visual.hidePlayerWeapons = v; return v; }
+
+    public static var showClassOutfitOnly(get, set):Bool;
+    @:getter(showClassOutfitOnly)
+    public static function get_showClassOutfitOnly_prop():Bool { return visual != null ? visual.showClassOutfitOnly : false; }
+    public static function get_showClassOutfitOnly():Bool { return visual != null ? visual.showClassOutfitOnly : false; }
+    @:setter(showClassOutfitOnly)
+    public static function set_showClassOutfitOnly_prop(v:Bool):Void { if (visual != null) visual.showClassOutfitOnly = v; }
+    public static function set_showClassOutfitOnly(v:Bool):Bool { if (visual != null) visual.showClassOutfitOnly = v; return v; }
+
+    public static var freezeAllAnimations(get, set):Bool;
+    @:getter(freezeAllAnimations)
+    public static function get_freezeAllAnimations_prop():Bool { return visual != null ? visual.freezeAllAnimations : false; }
+    public static function get_freezeAllAnimations():Bool { return visual != null ? visual.freezeAllAnimations : false; }
+    @:setter(freezeAllAnimations)
+    public static function set_freezeAllAnimations_prop(v:Bool):Void { if (visual != null) visual.freezeAllAnimations = v; }
+    public static function set_freezeAllAnimations(v:Bool):Bool { if (visual != null) visual.freezeAllAnimations = v; return v; }
+
     public static inline function toggleLagKiller():Bool {
         if (visual != null) {
             visual.lagKiller = !visual.lagKiller;

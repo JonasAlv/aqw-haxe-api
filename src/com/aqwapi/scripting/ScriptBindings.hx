@@ -1320,6 +1320,41 @@ class ScriptBindings {
             }
             return Api.visual.cacheMonsters;
         });
+        bind("hidePlayerCapes", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.hidePlayerCapes = (enabled == true);
+            }
+            return Api.visual.hidePlayerCapes;
+        });
+        bind("hidePlayerHelms", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.hidePlayerHelms = (enabled == true);
+            }
+            return Api.visual.hidePlayerHelms;
+        });
+        bind("hidePlayerWeapons", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.hidePlayerWeapons = (enabled == true);
+            }
+            return Api.visual.hidePlayerWeapons;
+        });
+        bind("showClassOutfitOnly", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.showClassOutfitOnly = (enabled == true);
+            }
+            return Api.visual.showClassOutfitOnly;
+        });
+        bind("freezeAllAnimations", function(?enabled:Dynamic):Bool {
+            if (Api.visual == null) return false;
+            if (enabled != null) {
+                Api.visual.freezeAllAnimations = (enabled == true);
+            }
+            return Api.visual.freezeAllAnimations;
+        });
     }
 
     private static function registerPartyShortcuts():Void {

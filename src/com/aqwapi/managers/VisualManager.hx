@@ -9,6 +9,7 @@ import flash.geom.Matrix;
 import flash.utils.Timer;
 import com.aqwapi.Api;
 import com.aqwapi.Game;
+import com.aqwapi.events.GameEvent;
 import com.aqwapi.utils.ApiConfig;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiTime;
@@ -29,6 +30,17 @@ class VisualManager {
 
     // Granular toggles
     public var hidePlayers(default, set):Bool = false;
+
+    // Hide Player Accessories & Equipment
+    public var hidePlayerCapes(default, set):Bool = false;
+    public var hidePlayerHelms(default, set):Bool = false;
+    public var hidePlayerWeapons(default, set):Bool = false;
+
+    // Show Equipped Class Outfit Only (strip costume / cosmetic overrides)
+    public var showClassOutfitOnly(default, set):Bool = false;
+
+    // Zero-Delay Instant Animation Freezing
+    public var freezeAllAnimations(default, set):Bool = false;
 
     // Spell animations mode: 0 = All Spells (Optimized), 1 = Self Only, 2 = Disabled
     public var skillAnimMode(default, set):Int = 0;
@@ -85,6 +97,11 @@ class VisualManager {
     private function loadConfig():Void {
         lagKiller = ApiConfig.getBool("api_lag_killer", false);
         hidePlayers = ApiConfig.getBool("api_hide_players", false);
+        hidePlayerCapes = ApiConfig.getBool("api_hide_player_capes", false);
+        hidePlayerHelms = ApiConfig.getBool("api_hide_player_helms", false);
+        hidePlayerWeapons = ApiConfig.getBool("api_hide_player_weapons", false);
+        showClassOutfitOnly = ApiConfig.getBool("api_show_class_outfit_only", false);
+        freezeAllAnimations = ApiConfig.getBool("api_freeze_all_animations", false);
 
         var oldDis = ApiConfig.getBool("api_disable_skill_anims", false);
         skillAnimMode = ApiConfig.getInt("api_skill_anim_mode", oldDis ? 2 : 0);
@@ -120,10 +137,55 @@ class VisualManager {
             ensureCharsHook();
         });
         _sweepTimer.start();
+
+        try {
+            Api.dispatcher.addEventListener(GameEvent.ZONE_ENTERED, onZoneEntered);
+        } catch (_:Dynamic) {}
+    }
+
+    private function onZoneEntered(e:Event):Void {
+        if (isActive()) {
+            apply();
+        }
     }
 
     public inline function isActive():Bool {
-        return lagKiller || hidePlayers || (skillAnimMode != 0) || optimizeSpellFX || disableSpellFilters || friendlySelfOnlyFX || hostilePrimaryOnlyFX || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena || suppressTargetGlow || cachePlayers || cacheMonsters;
+        return lagKiller || hidePlayers || (skillAnimMode != 0) || optimizeSpellFX || disableSpellFilters || friendlySelfOnlyFX || hostilePrimaryOnlyFX || disableMonsterAnims || disableWeaponAnims || disableGround || hideMonsters || cleanArena || suppressTargetGlow || cachePlayers || cacheMonsters || hidePlayerCapes || hidePlayerHelms || hidePlayerWeapons || showClassOutfitOnly || freezeAllAnimations;
+    }
+
+    public function set_hidePlayerCapes(v:Bool):Bool {
+        hidePlayerCapes = v;
+        ApiConfig.setBool("api_hide_player_capes", v);
+        apply();
+        return hidePlayerCapes;
+    }
+
+    public function set_hidePlayerHelms(v:Bool):Bool {
+        hidePlayerHelms = v;
+        ApiConfig.setBool("api_hide_player_helms", v);
+        apply();
+        return hidePlayerHelms;
+    }
+
+    public function set_hidePlayerWeapons(v:Bool):Bool {
+        hidePlayerWeapons = v;
+        ApiConfig.setBool("api_hide_player_weapons", v);
+        apply();
+        return hidePlayerWeapons;
+    }
+
+    public function set_showClassOutfitOnly(v:Bool):Bool {
+        showClassOutfitOnly = v;
+        ApiConfig.setBool("api_show_class_outfit_only", v);
+        apply();
+        return showClassOutfitOnly;
+    }
+
+    public function set_freezeAllAnimations(v:Bool):Bool {
+        freezeAllAnimations = v;
+        ApiConfig.setBool("api_freeze_all_animations", v);
+        apply();
+        return freezeAllAnimations;
     }
 
     public function set_suppressTargetGlow(v:Bool):Bool {
@@ -362,6 +424,13 @@ class VisualManager {
             }
         } catch (_:Dynamic) {}
 
+        // Native hideAllCapes setting in World
+        try {
+            if (g.world != null) {
+                g.world.hideAllCapes = (hidePlayerCapes || lagKiller);
+            }
+        } catch (_:Dynamic) {}
+
         // 2. Suppress or restore native target color wash
         applyTargetGlow();
 
@@ -389,40 +458,13 @@ class VisualManager {
             } catch (_:Dynamic) {}
         }
 
-        var effHidePlayers = lagKiller || hidePlayers;
         var effDisSkills = lagKiller || (skillAnimMode == 2);
-        var effDisMonAnims = lagKiller || disableMonsterAnims;
 
         // A. Player Avatars (self and other players)
         try {
             var avList:Array<Dynamic> = getAllAvatars(world);
-            var myAv = world.myAvatar;
             for (av in avList) {
-                if (av == null || av.pMC == null) continue;
-                var pMC:Dynamic = av.pMC;
-                var isMe:Bool = (av == myAv);
-
-                if (pMC.mcChar != null) {
-                    if (!isMe) {
-                        pMC.mcChar.visible = !effHidePlayers;
-                    }
-                    // Bitmap Caching on avatar vector graphics
-                    if (pMC.mcChar.cacheAsBitmap != cachePlayers) {
-                        pMC.mcChar.cacheAsBitmap = cachePlayers;
-                        try {
-                            pMC.mcChar.cacheAsBitmapMatrix = cachePlayers ? new Matrix() : null;
-                        } catch (_:Dynamic) {}
-                    }
-                }
-
-                if (!isMe) {
-                    if (pMC.shadow != null) {
-                        pMC.shadow.visible = (!effHidePlayers) || showShadows;
-                    }
-                    if (pMC.pname != null) {
-                        pMC.pname.visible = (!effHidePlayers) || showNames;
-                    }
-                }
+                applyAvatarVisual(av);
             }
         } catch (_:Dynamic) {}
 
@@ -430,25 +472,7 @@ class VisualManager {
         try {
             var monList:Array<Dynamic> = getAllMonsters(world);
             for (m in monList) {
-                if (m == null || m.pMC == null) continue;
-                var pMC:Dynamic = m.pMC;
-                if (effDisMonAnims && g.movieClipStopAll != null && pMC.mcChar != null) {
-                    try { g.movieClipStopAll(pMC.mcChar); } catch (_:Dynamic) {}
-                }
-                if (pMC.mcChar != null) {
-                    if (hideMonsters) {
-                        pMC.mcChar.visible = false;
-                    } else if (!hideMonsters && !pMC.mcChar.visible) {
-                        pMC.mcChar.visible = true;
-                    }
-                    // Bitmap Caching on monster vector graphics
-                    if (pMC.mcChar.cacheAsBitmap != cacheMonsters) {
-                        pMC.mcChar.cacheAsBitmap = cacheMonsters;
-                        try {
-                            pMC.mcChar.cacheAsBitmapMatrix = cacheMonsters ? new Matrix() : null;
-                        } catch (_:Dynamic) {}
-                    }
-                }
+                applyMonsterVisual(m);
             }
         } catch (_:Dynamic) {}
 
@@ -463,6 +487,246 @@ class VisualManager {
         try {
             if (world.map != null) {
                 world.map.visible = !cleanArena;
+            }
+        } catch (_:Dynamic) {}
+    }
+
+    /**
+     * Instantly configures an avatar's visual appearance (capes, helmets, weapons, class transmog, caching, freezing).
+     * Intercepts avatars with zero delay on entry or equipment attachment.
+     */
+    public function applyAvatarVisual(avOrChild:Dynamic):Void {
+        var g:Game = (_game != null) ? _game : Api.game;
+        if (g == null || g.world == null || avOrChild == null) return;
+        var world:Dynamic = g.world;
+        var myAv:Dynamic = world.myAvatar;
+
+        var av:Dynamic = null;
+        var pMC:Dynamic = null;
+
+        if (Reflect.hasField(avOrChild, "pMC")) {
+            av = avOrChild;
+            pMC = av.pMC;
+        } else if (Reflect.hasField(avOrChild, "pAV")) {
+            pMC = avOrChild;
+            av = pMC.pAV;
+        } else if (Reflect.hasField(avOrChild, "mcChar")) {
+            pMC = avOrChild;
+            av = (pMC.pAV != null) ? pMC.pAV : null;
+        }
+
+        if (pMC == null) return;
+        var isMe:Bool = (av != null && myAv != null && av == myAv) || (myAv != null && pMC == myAv.pMC);
+        var effHidePlayers = lagKiller || hidePlayers;
+
+        if (pMC.mcChar != null) {
+            if (!isMe) {
+                pMC.mcChar.visible = !effHidePlayers;
+
+                // 1. Hide Player Capes
+                if (hidePlayerCapes || lagKiller) {
+                    if (pMC.mcChar.cape != null) pMC.mcChar.cape.visible = false;
+                } else if (pMC.mcChar.cape != null) {
+                    var showC:Bool = (av != null && av.dataLeaf != null && Reflect.hasField(av.dataLeaf, "showCloak")) ? (av.dataLeaf.showCloak == true) : true;
+                    pMC.mcChar.cape.visible = showC;
+                }
+
+                // 2. Hide Player Helmets & restore default hairstyle
+                if (hidePlayerHelms || lagKiller) {
+                    if (pMC.mcChar.head != null && pMC.mcChar.head.helm != null) {
+                        pMC.mcChar.head.helm.visible = false;
+                    }
+                    if (pMC.mcChar.head != null && pMC.mcChar.head.hair != null) {
+                        pMC.mcChar.head.hair.visible = true;
+                    }
+                    if (pMC.mcChar.backhair != null) {
+                        pMC.mcChar.backhair.visible = (pMC.bBackHair == true);
+                    }
+                } else if (pMC.mcChar.head != null) {
+                    var showH:Bool = (av != null && av.dataLeaf != null && Reflect.hasField(av.dataLeaf, "showHelm")) ? (av.dataLeaf.showHelm == true) : true;
+                    if (pMC.mcChar.head.helm != null) pMC.mcChar.head.helm.visible = showH;
+                    if (pMC.mcChar.head.hair != null) pMC.mcChar.head.hair.visible = !showH;
+                    if (pMC.mcChar.backhair != null) pMC.mcChar.backhair.visible = (!showH && pMC.bBackHair == true);
+                }
+
+                // 3. Hide Player Weapons
+                if (hidePlayerWeapons || lagKiller) {
+                    if (pMC.mcChar.weapon != null) pMC.mcChar.weapon.visible = false;
+                    if (pMC.mcChar.weaponOff != null) pMC.mcChar.weaponOff.visible = false;
+                    if (pMC.mcChar.weaponFist != null) pMC.mcChar.weaponFist.visible = false;
+                    if (pMC.mcChar.weaponFistOff != null) pMC.mcChar.weaponFistOff.visible = false;
+                    if (pMC.mcChar.shield != null) pMC.mcChar.shield.visible = false;
+                } else {
+                    if (pMC.mcChar.weapon != null) pMC.mcChar.weapon.visible = true;
+                    if (pMC.mcChar.weaponOff != null) pMC.mcChar.weaponOff.visible = true;
+                    if (pMC.mcChar.weaponFist != null) pMC.mcChar.weaponFist.visible = true;
+                    if (pMC.mcChar.weaponFistOff != null) pMC.mcChar.weaponFistOff.visible = true;
+                    if (pMC.mcChar.shield != null) pMC.mcChar.shield.visible = true;
+                }
+
+                // 4. Show Class Outfit Only (strips cosmetic costume transmog)
+                if (showClassOutfitOnly) {
+                    if (av != null && av.objData != null && av.objData.eqp != null) {
+                        var eqp:Dynamic = av.objData.eqp;
+                        if (eqp.co != null) {
+                            eqp._savedCo = eqp.co;
+                            eqp.co = null;
+                            if (eqp.ar != null && pMC.loadArmorPieces != null) {
+                                try {
+                                    if (pMC.loadClass != null) pMC.loadClass(eqp.ar.sFile, eqp.ar.sLink);
+                                    pMC.loadArmorPieces(eqp.ar.sLink);
+                                } catch (_:Dynamic) {}
+                            }
+                        }
+                    }
+                } else {
+                    if (av != null && av.objData != null && av.objData.eqp != null) {
+                        var eqp:Dynamic = av.objData.eqp;
+                        if (eqp._savedCo != null) {
+                            eqp.co = eqp._savedCo;
+                            eqp._savedCo = null;
+                            if (pMC.loadArmorPieces != null) {
+                                try {
+                                    if (pMC.loadArmor != null) pMC.loadArmor(eqp.co.sFile, eqp.co.sLink);
+                                    pMC.loadArmorPieces(eqp.co.sLink);
+                                } catch (_:Dynamic) {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. Bitmap Caching (both self and other players)
+            if (pMC.mcChar.cacheAsBitmap != cachePlayers) {
+                pMC.mcChar.cacheAsBitmap = cachePlayers;
+                try {
+                    pMC.mcChar.cacheAsBitmapMatrix = cachePlayers ? new Matrix() : null;
+                } catch (_:Dynamic) {}
+            }
+
+            // 6. Freeze Animations (Zero Delay)
+            if (freezeAllAnimations || lagKiller) {
+                if (g.movieClipStopAll != null) {
+                    try { g.movieClipStopAll(pMC.mcChar); } catch (_:Dynamic) {}
+                } else if (pMC.mcChar.stop != null) {
+                    try { pMC.mcChar.stop(); } catch (_:Dynamic) {}
+                }
+                if (pMC.mcChar.weapon != null) {
+                    if (g.movieClipStopAll != null) try { g.movieClipStopAll(pMC.mcChar.weapon); } catch (_:Dynamic) {}
+                    stripFilters(pMC.mcChar.weapon);
+                }
+                if (pMC.mcChar.weaponOff != null) {
+                    if (g.movieClipStopAll != null) try { g.movieClipStopAll(pMC.mcChar.weaponOff); } catch (_:Dynamic) {}
+                    stripFilters(pMC.mcChar.weaponOff);
+                }
+                hookFreezeTimeline(pMC);
+            } else {
+                unhookFreezeTimeline(pMC);
+            }
+        }
+
+        if (!isMe) {
+            if (pMC.shadow != null) {
+                pMC.shadow.visible = (!effHidePlayers) || showShadows;
+            }
+            if (pMC.pname != null) {
+                pMC.pname.visible = (!effHidePlayers) || showNames;
+            }
+        }
+
+        hookEquipmentAdded(pMC);
+    }
+
+    /**
+     * Instantly configures a monster's visual appearance (caching, freezing, visibility) with zero delay.
+     */
+    public function applyMonsterVisual(mOrChild:Dynamic):Void {
+        var g:Game = (_game != null) ? _game : Api.game;
+        if (g == null || g.world == null || mOrChild == null) return;
+        var pMC:Dynamic = (Reflect.hasField(mOrChild, "pMC")) ? mOrChild.pMC : mOrChild;
+        if (pMC == null || pMC.mcChar == null) return;
+
+        var effDisMonAnims = lagKiller || disableMonsterAnims || freezeAllAnimations;
+
+        if (effDisMonAnims) {
+            if (g.movieClipStopAll != null) {
+                try { g.movieClipStopAll(pMC.mcChar); } catch (_:Dynamic) {}
+            } else if (pMC.mcChar.stop != null) {
+                try { pMC.mcChar.stop(); } catch (_:Dynamic) {}
+            }
+            hookFreezeTimeline(pMC);
+        } else {
+            unhookFreezeTimeline(pMC);
+        }
+
+        if (hideMonsters) {
+            pMC.mcChar.visible = false;
+        } else if (!hideMonsters && !pMC.mcChar.visible) {
+            pMC.mcChar.visible = true;
+        }
+
+        if (pMC.mcChar.cacheAsBitmap != cacheMonsters) {
+            pMC.mcChar.cacheAsBitmap = cacheMonsters;
+            try {
+                pMC.mcChar.cacheAsBitmapMatrix = cacheMonsters ? new Matrix() : null;
+            } catch (_:Dynamic) {}
+        }
+
+        hookEquipmentAdded(pMC);
+    }
+
+    private function hookFreezeTimeline(pMC:Dynamic):Void {
+        if (pMC == null || pMC.mcChar == null) return;
+        var mc:Dynamic = pMC.mcChar;
+        try {
+            if (Reflect.field(mc, "_freezeHooked") == true) return;
+            Reflect.setField(mc, "_freezeHooked", true);
+            mc.addEventListener(Event.ENTER_FRAME, onCharFreezeFrame, false, 0, true);
+        } catch (_:Dynamic) {}
+    }
+
+    private function unhookFreezeTimeline(pMC:Dynamic):Void {
+        if (pMC == null || pMC.mcChar == null) return;
+        var mc:Dynamic = pMC.mcChar;
+        try {
+            if (Reflect.field(mc, "_freezeHooked") != true) return;
+            Reflect.setField(mc, "_freezeHooked", false);
+            mc.removeEventListener(Event.ENTER_FRAME, onCharFreezeFrame);
+        } catch (_:Dynamic) {}
+    }
+
+    private function onCharFreezeFrame(e:Event):Void {
+        if (!(freezeAllAnimations || lagKiller || disableMonsterAnims)) return;
+        var mc:Dynamic = e.currentTarget;
+        if (mc == null) return;
+        try {
+            if (mc.currentFrame != 1) {
+                mc.gotoAndStop(1);
+            } else {
+                mc.stop();
+            }
+        } catch (_:Dynamic) {}
+    }
+
+    private function hookEquipmentAdded(pMC:Dynamic):Void {
+        if (pMC == null) return;
+        try {
+            if (Reflect.field(pMC, "_equipHooked") == true) return;
+            Reflect.setField(pMC, "_equipHooked", true);
+            pMC.addEventListener(Event.ADDED, onEquipmentAdded, false, 0, true);
+        } catch (_:Dynamic) {}
+    }
+
+    private function onEquipmentAdded(e:Event):Void {
+        var target:Dynamic = e.target;
+        var current:Dynamic = e.currentTarget;
+        if (target == null || current == null || target == current) return;
+
+        try {
+            if (Reflect.hasField(current, "mcChar") || Reflect.hasField(current, "pAV")) {
+                applyAvatarVisual(current);
+            } else if (isMonsterTarget(current) || (current.hasOwnProperty("isMonster") && current.isMonster == true)) {
+                applyMonsterVisual(current);
             }
         } catch (_:Dynamic) {}
     }
@@ -497,9 +761,23 @@ class VisualManager {
             return;
         }
 
-        if (!isSpellClip(child)) return;
+        // 1. Monster check
+        if (isMonsterTarget(child) || (child.hasOwnProperty("isMonster") && child.isMonster == true)) {
+            applyMonsterVisual(child);
+            return;
+        }
 
-        handleSpellAdded(child);
+        // 2. Avatar check
+        if (Reflect.hasField(child, "mcChar") || Reflect.hasField(child, "pAV") || Reflect.hasField(child, "pname")) {
+            applyAvatarVisual(child);
+            return;
+        }
+
+        // 3. Spell Clip check
+        if (isSpellClip(child)) {
+            handleSpellAdded(child);
+            return;
+        }
     }
 
     /**
@@ -756,91 +1034,118 @@ class VisualManager {
                     }
                 }
             }
-            // 2. Friendly spells handling
+            // 2. Targets are players (!hasMonster): Could be a player buff OR a Monster Attack / Ultra Boss Mechanic!
             else {
-                if (friendlySelfOnlyFX && group.length > 1) {
-                    // Multi-target friendly buff -> show ONLY on the caster!
-                    var casterSpell:Dynamic = null;
+                // Check if ANY player in the room is casting this spell
+                var playerCaster:Dynamic = null;
+                var iAmCasting:Bool = false;
 
-                    // Did I cast this?
-                    var iAmCasting:Bool = false;
-                    try {
-                        if (myAv.pMC != null) {
-                            if (myAv.pMC.spFX != null && myAv.pMC.spFX.strl == key) {
-                                iAmCasting = true;
-                            } else {
-                                var char = myAv.pMC.mcChar;
+                try {
+                    if (myAv.pMC != null) {
+                        if (myAv.pMC.spFX != null && myAv.pMC.spFX.strl == key) {
+                            iAmCasting = true;
+                            playerCaster = myAv;
+                        } else if (myAv.pMC.nextSpFX != null && myAv.pMC.nextSpFX.strl == key) {
+                            iAmCasting = true;
+                            playerCaster = myAv;
+                        } else if (myAv.pMC.spellDur > 0) {
+                            var char = myAv.pMC.mcChar;
+                            if (char != null) {
+                                var lbl:String = char.currentLabel;
+                                if (lbl == "Cast" || lbl == "Spell" || lbl == "Attack1" || lbl == "Attack2" || lbl == "Thrash") {
+                                    iAmCasting = true;
+                                    playerCaster = myAv;
+                                }
+                            }
+                        }
+                    }
+                } catch (_:Dynamic) {}
+
+                if (!iAmCasting) {
+                    var avList = getAllAvatars(world);
+                    for (av in avList) {
+                        if (av == null || av == myAv || av.pMC == null) continue;
+                        try {
+                            var pMC = av.pMC;
+                            if (pMC.spFX != null && pMC.spFX.strl == key) {
+                                playerCaster = av;
+                                break;
+                            } else if (pMC.nextSpFX != null && pMC.nextSpFX.strl == key) {
+                                playerCaster = av;
+                                break;
+                            } else if (pMC.spellDur > 0) {
+                                var char = pMC.mcChar;
                                 if (char != null) {
                                     var lbl:String = char.currentLabel;
                                     if (lbl == "Cast" || lbl == "Spell" || lbl == "Attack1" || lbl == "Attack2" || lbl == "Thrash") {
-                                        iAmCasting = true;
+                                        playerCaster = av;
+                                        break;
                                     }
                                 }
-                                if (myAv.pMC.spellDur > 0) iAmCasting = true;
                             }
-                        }
-                    } catch (_:Dynamic) {}
-
-                    if (iAmCasting) {
-                        // I cast it -> keep ONLY myself!
-                        for (s in group) {
-                            if (s.tMC == myAv.pMC || (s.tMC != null && s.tMC.pAV == myAv)) {
-                                casterSpell = s;
-                                break;
-                            }
-                        }
-                    } else {
-                        // Someone else cast it -> find which player in group is casting
-                        for (s in group) {
-                            if (s.tMC != null && s.tMC != myAv.pMC) {
-                                try {
-                                    if (s.tMC.spFX != null && s.tMC.spFX.strl == key) {
-                                        casterSpell = s;
-                                        break;
-                                    }
-                                    var char = s.tMC.mcChar;
-                                    if (char != null) {
-                                        var lbl:String = char.currentLabel;
-                                        if (lbl == "Cast" || lbl == "Spell" || lbl == "Attack1" || lbl == "Attack2" || lbl == "Thrash") {
-                                            casterSpell = s;
-                                            break;
-                                        }
-                                    }
-                                    if (s.tMC.spellDur > 0) {
-                                        casterSpell = s;
-                                        break;
-                                    }
-                                } catch (_:Dynamic) {}
-                            }
-                        }
+                        } catch (_:Dynamic) {}
                     }
+                }
 
-                    if (casterSpell == null) {
-                        for (s in group) {
-                            if (s.tMC != myAv.pMC) {
-                                casterSpell = s;
-                                break;
-                            }
-                        }
-                        if (casterSpell == null) {
-                            casterSpell = group[0];
-                        }
-                    }
+                var isMonsterSpell:Bool = (playerCaster == null);
 
-                    for (s in group) {
-                        if (s == casterSpell) {
-                            s.visible = true;
-                            s.alpha = 1.0;
-                            applySpellFilters(cast s);
-                        } else {
-                            suppressSpell(s);
-                        }
-                    }
-                } else {
+                // If it is a MONSTER SPELL / ULTRA BOSS MECHANIC:
+                // NEVER suppress it! All targeted players must see the mechanic clearly!
+                // But STILL apply 1x quality and filter stripping to eliminate Ultra lag!
+                if (isMonsterSpell) {
                     for (s in group) {
                         s.visible = true;
                         s.alpha = 1.0;
                         applySpellFilters(cast s);
+                    }
+                }
+                // If it is a friendly player party buff:
+                else {
+                    if (friendlySelfOnlyFX && group.length > 1) {
+                        var casterSpell:Dynamic = null;
+                        if (iAmCasting) {
+                            for (s in group) {
+                                if (s.tMC == myAv.pMC || (s.tMC != null && s.tMC.pAV == myAv)) {
+                                    casterSpell = s;
+                                    break;
+                                }
+                            }
+                        } else {
+                            for (s in group) {
+                                if (s.tMC != null && s.tMC.pAV == playerCaster) {
+                                    casterSpell = s;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (casterSpell == null) {
+                            for (s in group) {
+                                if (s.tMC != myAv.pMC) {
+                                    casterSpell = s;
+                                    break;
+                                }
+                            }
+                            if (casterSpell == null) {
+                                casterSpell = group[0];
+                            }
+                        }
+
+                        for (s in group) {
+                            if (s == casterSpell) {
+                                s.visible = true;
+                                s.alpha = 1.0;
+                                applySpellFilters(cast s);
+                            } else {
+                                suppressSpell(s);
+                            }
+                        }
+                    } else {
+                        for (s in group) {
+                            s.visible = true;
+                            s.alpha = 1.0;
+                            applySpellFilters(cast s);
+                        }
                     }
                 }
             }
@@ -984,6 +1289,9 @@ class VisualManager {
             _sweepTimer.stop();
             _sweepTimer = null;
         }
+        try {
+            Api.dispatcher.removeEventListener(GameEvent.ZONE_ENTERED, onZoneEntered);
+        } catch (_:Dynamic) {}
         var g:Game = (_game != null) ? _game : Api.game;
         var world:Dynamic = (g != null) ? g.world : null;
         if (world != null && world.stage != null) {
