@@ -606,6 +606,14 @@ class VisualManager {
     private var _processPendingScheduled:Bool = false;
 
     private function scheduleProcessPending():Void {
+        var g:Game = (_game != null) ? _game : Api.game;
+        var world:Dynamic = (g != null) ? g.world : null;
+        if (world != null && world.stage != null) {
+            try {
+                world.stage.addEventListener(Event.RENDER, onStageRender, false, 0, false);
+                world.stage.invalidate();
+            } catch (_:Dynamic) {}
+        }
         if (_hookedChars != null) {
             try {
                 _hookedChars.addEventListener(Event.ENTER_FRAME, onPendingEnterFrame, false, 0, false);
@@ -617,6 +625,19 @@ class VisualManager {
             untyped __global__["flash.utils.setTimeout"](processPendingSpells, 1);
         } catch (_:Dynamic) {
             ApiTime.delay(1, processPendingSpells);
+        }
+    }
+
+    private function onStageRender(e:Event):Void {
+        var g:Game = (_game != null) ? _game : Api.game;
+        var world:Dynamic = (g != null) ? g.world : null;
+        if (world != null && world.stage != null) {
+            try {
+                world.stage.removeEventListener(Event.RENDER, onStageRender);
+            } catch (_:Dynamic) {}
+        }
+        if (_pendingSpells.length > 0) {
+            processPendingSpells();
         }
     }
 
@@ -644,6 +665,7 @@ class VisualManager {
             for (s in spells) {
                 if (s.parent != null) {
                     s.visible = true;
+                    s.alpha = 1.0;
                     applySpellFilters(cast s);
                 }
             }
@@ -720,6 +742,7 @@ class VisualManager {
                     for (s in group) {
                         if (s == primarySpell) {
                             s.visible = true;
+                            s.alpha = 1.0;
                             applySpellFilters(cast s);
                         } else {
                             suppressSpell(s);
@@ -728,6 +751,7 @@ class VisualManager {
                 } else {
                     for (s in group) {
                         s.visible = true;
+                        s.alpha = 1.0;
                         applySpellFilters(cast s);
                     }
                 }
@@ -806,6 +830,7 @@ class VisualManager {
                     for (s in group) {
                         if (s == casterSpell) {
                             s.visible = true;
+                            s.alpha = 1.0;
                             applySpellFilters(cast s);
                         } else {
                             suppressSpell(s);
@@ -814,6 +839,7 @@ class VisualManager {
                 } else {
                     for (s in group) {
                         s.visible = true;
+                        s.alpha = 1.0;
                         applySpellFilters(cast s);
                     }
                 }
@@ -824,6 +850,7 @@ class VisualManager {
     private function suppressSpell(spell:Dynamic):Void {
         try {
             spell.visible = false;
+            spell.alpha = 0.0;
             try { spell.removeEventListener(Event.ADDED, onSpellChildAdded); } catch (_:Dynamic) {}
             if (Reflect.hasField(spell, "stop")) spell.stop();
             if (Reflect.hasField(spell, "killSpell")) spell.killSpell();
@@ -873,6 +900,7 @@ class VisualManager {
 
         if (needsTargetFilter()) {
             spell.visible = false;
+            spell.alpha = 0.0;
             _pendingSpells.push(spell);
             scheduleProcessPending();
         } else {
@@ -955,6 +983,13 @@ class VisualManager {
         if (_sweepTimer != null) {
             _sweepTimer.stop();
             _sweepTimer = null;
+        }
+        var g:Game = (_game != null) ? _game : Api.game;
+        var world:Dynamic = (g != null) ? g.world : null;
+        if (world != null && world.stage != null) {
+            try {
+                world.stage.removeEventListener(Event.RENDER, onStageRender);
+            } catch (_:Dynamic) {}
         }
         if (_hookedChars != null) {
             try {
