@@ -391,34 +391,32 @@ class VisualManager {
 
         // A. Player Avatars (self and other players)
         try {
-            if (world.avatars != null) {
-                var avList:Array<Dynamic> = cast world.avatars;
-                var myAv = world.myAvatar;
-                for (av in avList) {
-                    if (av == null || av.pMC == null) continue;
-                    var pMC:Dynamic = av.pMC;
-                    var isMe:Bool = (av == myAv);
+            var avList:Array<Dynamic> = getAllAvatars(world);
+            var myAv = world.myAvatar;
+            for (av in avList) {
+                if (av == null || av.pMC == null) continue;
+                var pMC:Dynamic = av.pMC;
+                var isMe:Bool = (av == myAv);
 
-                    if (pMC.mcChar != null) {
-                        if (!isMe) {
-                            pMC.mcChar.visible = !effHidePlayers;
-                        }
-                        // Bitmap Caching on avatar vector graphics
-                        if (pMC.mcChar.cacheAsBitmap != cachePlayers) {
-                            pMC.mcChar.cacheAsBitmap = cachePlayers;
-                            try {
-                                pMC.mcChar.cacheAsBitmapMatrix = cachePlayers ? new Matrix() : null;
-                            } catch (_:Dynamic) {}
-                        }
-                    }
-
+                if (pMC.mcChar != null) {
                     if (!isMe) {
-                        if (pMC.shadow != null) {
-                            pMC.shadow.visible = (!effHidePlayers) || showShadows;
-                        }
-                        if (pMC.pname != null) {
-                            pMC.pname.visible = (!effHidePlayers) || showNames;
-                        }
+                        pMC.mcChar.visible = !effHidePlayers;
+                    }
+                    // Bitmap Caching on avatar vector graphics
+                    if (pMC.mcChar.cacheAsBitmap != cachePlayers) {
+                        pMC.mcChar.cacheAsBitmap = cachePlayers;
+                        try {
+                            pMC.mcChar.cacheAsBitmapMatrix = cachePlayers ? new Matrix() : null;
+                        } catch (_:Dynamic) {}
+                    }
+                }
+
+                if (!isMe) {
+                    if (pMC.shadow != null) {
+                        pMC.shadow.visible = (!effHidePlayers) || showShadows;
+                    }
+                    if (pMC.pname != null) {
+                        pMC.pname.visible = (!effHidePlayers) || showNames;
                     }
                 }
             }
@@ -426,27 +424,25 @@ class VisualManager {
 
         // B. Monsters
         try {
-            if (world.monsters != null) {
-                var monList:Array<Dynamic> = cast world.monsters;
-                for (m in monList) {
-                    if (m == null || m.pMC == null) continue;
-                    var pMC:Dynamic = m.pMC;
-                    if (effDisMonAnims && g.movieClipStopAll != null && pMC.mcChar != null) {
-                        try { g.movieClipStopAll(pMC.mcChar); } catch (_:Dynamic) {}
+            var monList:Array<Dynamic> = getAllMonsters(world);
+            for (m in monList) {
+                if (m == null || m.pMC == null) continue;
+                var pMC:Dynamic = m.pMC;
+                if (effDisMonAnims && g.movieClipStopAll != null && pMC.mcChar != null) {
+                    try { g.movieClipStopAll(pMC.mcChar); } catch (_:Dynamic) {}
+                }
+                if (pMC.mcChar != null) {
+                    if (hideMonsters) {
+                        pMC.mcChar.visible = false;
+                    } else if (!hideMonsters && !pMC.mcChar.visible) {
+                        pMC.mcChar.visible = true;
                     }
-                    if (pMC.mcChar != null) {
-                        if (hideMonsters) {
-                            pMC.mcChar.visible = false;
-                        } else if (!hideMonsters && !pMC.mcChar.visible) {
-                            pMC.mcChar.visible = true;
-                        }
-                        // Bitmap Caching on monster vector graphics
-                        if (pMC.mcChar.cacheAsBitmap != cacheMonsters) {
-                            pMC.mcChar.cacheAsBitmap = cacheMonsters;
-                            try {
-                                pMC.mcChar.cacheAsBitmapMatrix = cacheMonsters ? new Matrix() : null;
-                            } catch (_:Dynamic) {}
-                        }
+                    // Bitmap Caching on monster vector graphics
+                    if (pMC.mcChar.cacheAsBitmap != cacheMonsters) {
+                        pMC.mcChar.cacheAsBitmap = cacheMonsters;
+                        try {
+                            pMC.mcChar.cacheAsBitmapMatrix = cacheMonsters ? new Matrix() : null;
+                        } catch (_:Dynamic) {}
                     }
                 }
             }
@@ -499,9 +495,71 @@ class VisualManager {
         if (!isSpellClip(child)) return;
 
         // Tag caster and multi-target status synchronously while castSpellFX is active
-        tagSpellCaster(child);
+        try {
+            tagSpellCaster(child);
+        } catch (_:Dynamic) {}
 
         handleSpellAdded(child);
+    }
+
+    /**
+     * Safely retrieves all player avatars from world without throwing Dictionary coercion errors.
+     */
+    public static function getAllAvatars(world:Dynamic):Array<Dynamic> {
+        var list:Array<Dynamic> = [];
+        if (world == null) return list;
+
+        if (world.avatars != null) {
+            var raw:Dynamic = world.avatars;
+            try {
+                for (k in Reflect.fields(raw)) {
+                    var av:Dynamic = Reflect.field(raw, k);
+                    if (av != null && list.indexOf(av) == -1) {
+                        list.push(av);
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        if (world.myAvatar != null && list.indexOf(world.myAvatar) == -1) {
+            list.push(world.myAvatar);
+        }
+
+        return list;
+    }
+
+    /**
+     * Safely retrieves all monsters from world without throwing Vector coercion errors.
+     */
+    public static function getAllMonsters(world:Dynamic):Array<Dynamic> {
+        var list:Array<Dynamic> = [];
+        if (world == null || world.monsters == null) return list;
+        var raw:Dynamic = world.monsters;
+
+        try {
+            var len:Int = Reflect.hasField(raw, "length") ? Reflect.field(raw, "length") : 0;
+            if (len > 0) {
+                for (i in 0...len) {
+                    var m:Dynamic = raw[i];
+                    if (m != null && list.indexOf(m) == -1) {
+                        list.push(m);
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+
+        if (list.length == 0) {
+            try {
+                for (k in Reflect.fields(raw)) {
+                    var m:Dynamic = Reflect.field(raw, k);
+                    if (m != null && list.indexOf(m) == -1) {
+                        list.push(m);
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        return list;
     }
 
     /**
@@ -517,8 +575,8 @@ class VisualManager {
         var isMulti:Bool = false;
 
         // Check player avatars in room
-        if (world.avatars != null) {
-            var avList:Array<Dynamic> = cast world.avatars;
+        try {
+            var avList:Array<Dynamic> = getAllAvatars(world);
             for (av in avList) {
                 if (av != null && av.pMC != null && av.pMC.spFX != null) {
                     var s:Dynamic = av.pMC.spFX;
@@ -531,23 +589,25 @@ class VisualManager {
                     }
                 }
             }
-        }
+        } catch (_:Dynamic) {}
 
         // Fallback: check monster avatars
-        if (casterAvt == null && world.monsters != null) {
-            var monList:Array<Dynamic> = cast world.monsters;
-            for (m in monList) {
-                if (m != null && m.pMC != null && m.pMC.spFX != null) {
-                    var s:Dynamic = m.pMC.spFX;
-                    if (s.strl != null && s.strl != "") {
-                        casterAvt = m;
-                        if (s.avts != null && s.avts.length > 1) {
-                            isMulti = true;
+        if (casterAvt == null) {
+            try {
+                var monList:Array<Dynamic> = getAllMonsters(world);
+                for (m in monList) {
+                    if (m != null && m.pMC != null && m.pMC.spFX != null) {
+                        var s:Dynamic = m.pMC.spFX;
+                        if (s.strl != null && s.strl != "") {
+                            casterAvt = m;
+                            if (s.avts != null && s.avts.length > 1) {
+                                isMulti = true;
+                            }
+                            break;
                         }
-                        break;
                     }
                 }
-            }
+            } catch (_:Dynamic) {}
         }
 
         try {
