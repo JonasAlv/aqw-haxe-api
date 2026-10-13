@@ -83,6 +83,7 @@ class TransportAdapter {
                 if (Api.map != null) {
                     Api.map.recordJoinTime();
                 }
+                Api.patchAirSecurity();
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.ZONE_ENTERED, dataObj));
             case "getQuests", "getQuests2", "getQuest", "acceptQuest", "cc":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));

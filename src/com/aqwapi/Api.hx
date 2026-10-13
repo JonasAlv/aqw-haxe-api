@@ -421,6 +421,181 @@ class Api {
         if (curUser != "") {
             com.aqwapi.utils.ApiStorage.setAccount(curUser);
         }
+
+        patchAirSecurity();
+    }
+
+    /**
+     * Patches AIR Security Sandbox violations (Error #2070).
+     *
+     * In Adobe AIR, remote SWFs like Map-UI_r38.swf and aqwMapBitmap_Low_r5.swf
+     * throw SecurityError #2070 when touching Stage because AE forgot to trust
+     * ApplicationDomain.currentDomain in types.AirLoader before loading the map,
+     * causing SwfLoaderPatch to skip patching and leading to untrusted Remote sandbox loading.
+     *
+     * This patch:
+     * 1. Registers ApplicationDomain.currentDomain in AirLoader.trusted
+     * 2. Hooks AirLoader.prototype.load to automatically trust every loaded domain
+     * 3. Hooks mcPopup.loadMap and mcPopup.loadNews to use AirLoader with code import
+     * 4. Installs an UncaughtErrorEvent listener to prevent any residual Error #2070 crashes
+     */
+    public static function patchAirSecurity():Void {
+        #if flash
+        try {
+            var appDom:Dynamic = flash.system.ApplicationDomain.currentDomain;
+            var gameDom:Dynamic = (game != null && game.loaderInfo != null) ? game.loaderInfo.applicationDomain : null;
+            if (appDom == null && gameDom == null) return;
+
+            var airLoaderCls:Dynamic = null;
+            if (gameDom != null) {
+                try {
+                    if (gameDom.hasDefinition("types.AirLoader")) {
+                        airLoaderCls = gameDom.getDefinition("types.AirLoader");
+                    }
+                } catch (_:Dynamic) {}
+            }
+            if (airLoaderCls == null && appDom != null) {
+                try {
+                    if (appDom.hasDefinition("types.AirLoader")) {
+                        airLoaderCls = appDom.getDefinition("types.AirLoader");
+                    }
+                } catch (_:Dynamic) {}
+            }
+
+            var targetDom:Dynamic = (gameDom != null) ? gameDom : appDom;
+
+            if (airLoaderCls != null) {
+                // 1. Trust both ApplicationDomains in AirLoader
+                try {
+                    if (Reflect.isFunction(airLoaderCls.trust)) {
+                        if (gameDom != null) airLoaderCls.trust(gameDom);
+                        if (appDom != null) airLoaderCls.trust(appDom);
+                    }
+                    var trustedDict:Dynamic = untyped airLoaderCls.trusted;
+                    if (trustedDict != null) {
+                        if (gameDom != null) untyped trustedDict[gameDom] = true;
+                        if (appDom != null) untyped trustedDict[appDom] = true;
+                    }
+                } catch (_:Dynamic) {}
+
+                // 2. Hook AirLoader.prototype.load so all nested SWF loads register their domains
+                try {
+                    var proto:Dynamic = untyped airLoaderCls.prototype;
+                    if (proto != null && proto.load != null && proto.__mod_patched_load != true) {
+                        var origLoad:Dynamic = proto.load;
+                        proto.__mod_patched_load = true;
+                        proto.load = function(req:Dynamic, ctx:Dynamic = null):Void {
+                            try {
+                                if (ctx != null && ctx.applicationDomain != null) {
+                                    if (untyped airLoaderCls.trusted != null) {
+                                        untyped airLoaderCls.trusted[ctx.applicationDomain] = true;
+                                    }
+                                }
+                                if (untyped airLoaderCls.trusted != null) {
+                                    if (gameDom != null) untyped airLoaderCls.trusted[gameDom] = true;
+                                    if (appDom != null) untyped airLoaderCls.trusted[appDom] = true;
+                                }
+                            } catch (_:Dynamic) {}
+                            origLoad.apply(untyped __this__, [req, ctx]);
+                        };
+                    }
+                } catch (_:Dynamic) {}
+            }
+
+            // 3. Hook mcPopup.loadMap and mcPopup.loadNews to force AirLoader with allowCodeImport
+            var g:Dynamic = game;
+            if (g != null && g.ui != null && g.ui.mcPopup != null) {
+                var popup:Dynamic = g.ui.mcPopup;
+                if (popup.loadMap != null && popup.__mod_patched_map != true) {
+                    popup.__mod_patched_map = true;
+                    popup.loadMap = function(param1:String):Dynamic {
+                        try {
+                            if (popup.mcMap != null) {
+                                while (popup.mcMap.numChildren > 0) {
+                                    popup.mcMap.removeChildAt(0);
+                                }
+                            }
+                            var ldr:Dynamic = (airLoaderCls != null) ? Type.createInstance(airLoaderCls, []) : Type.createInstance(flash.display.Loader, []);
+                            var ctx:Dynamic = Type.createInstance(flash.system.LoaderContext, [false, targetDom]);
+                            Reflect.setField(ctx, "allowCodeImport", true);
+                            if (airLoaderCls != null && untyped airLoaderCls.trusted != null) {
+                                untyped airLoaderCls.trusted[targetDom] = true;
+                                if (gameDom != null) untyped airLoaderCls.trusted[gameDom] = true;
+                                if (appDom != null) untyped airLoaderCls.trusted[appDom] = true;
+                            }
+                            var reqUrl:String = ((g.serverFilePath != null) ? Std.string(g.serverFilePath) : "") + param1;
+                            var req:Dynamic = Type.createInstance(flash.net.URLRequest, [reqUrl]);
+                            ldr.load(req, ctx);
+                            if (popup.mcMap != null) {
+                                popup.mcMap.addChild(ldr);
+                            }
+                            return ldr;
+                        } catch (err:Dynamic) {
+                            trace("[Mod] Error in patched loadMap: " + err);
+                            return null;
+                        }
+                    };
+                }
+
+                if (popup.loadNews != null && popup.__mod_patched_news != true) {
+                    popup.__mod_patched_news = true;
+                    popup.loadNews = function(param1:String):Dynamic {
+                        try {
+                            if (popup.mcNews != null) {
+                                while (popup.mcNews.numChildren > 0) {
+                                    popup.mcNews.removeChildAt(0);
+                                }
+                            }
+                            var ldr:Dynamic = (airLoaderCls != null) ? Type.createInstance(airLoaderCls, []) : Type.createInstance(flash.display.Loader, []);
+                            var ctx:Dynamic = Type.createInstance(flash.system.LoaderContext, [false, targetDom]);
+                            Reflect.setField(ctx, "allowCodeImport", true);
+                            if (airLoaderCls != null && untyped airLoaderCls.trusted != null) {
+                                untyped airLoaderCls.trusted[targetDom] = true;
+                                if (gameDom != null) untyped airLoaderCls.trusted[gameDom] = true;
+                                if (appDom != null) untyped airLoaderCls.trusted[appDom] = true;
+                            }
+                            var reqUrl:String = ((g.serverFilePath != null) ? Std.string(g.serverFilePath) : "") + param1;
+                            var req:Dynamic = Type.createInstance(flash.net.URLRequest, [reqUrl]);
+                            ldr.load(req, ctx);
+                            if (popup.mcNews != null) {
+                                popup.mcNews.addChild(ldr);
+                            }
+                            return ldr;
+                        } catch (err:Dynamic) {
+                            trace("[Mod] Error in patched loadNews: " + err);
+                            return null;
+                        }
+                    };
+                }
+            }
+
+            // 4. Suppress unhandled Error #2070 at stage uncaughtErrorEvents level
+            try {
+                var stg:Dynamic = flash.Lib.current.stage;
+                if (stg != null && stg.loaderInfo != null && Reflect.hasField(stg.loaderInfo, "uncaughtErrorEvents")) {
+                    var uee:Dynamic = Reflect.field(stg.loaderInfo, "uncaughtErrorEvents");
+                    if (uee != null && Reflect.field(uee, "__mod_listener_installed") != true) {
+                        Reflect.setField(uee, "__mod_listener_installed", true);
+                        uee.addEventListener("uncaughtError", function(evt:Dynamic):Void {
+                            try {
+                                if (evt != null && evt.error != null) {
+                                    var errStr:String = Std.string(evt.error);
+                                    if (errStr.indexOf("2070") >= 0 || errStr.indexOf("SecurityError") >= 0) {
+                                        trace("[Mod] Suppressed SecurityError #2070: " + errStr);
+                                        if (Reflect.isFunction(evt.preventDefault)) {
+                                            evt.preventDefault();
+                                        }
+                                    }
+                                }
+                            } catch (_:Dynamic) {}
+                        });
+                    }
+                }
+            } catch (_:Dynamic) {}
+        } catch (e:Dynamic) {
+            trace("[Mod] Error in patchAirSecurity: " + e);
+        }
+        #end
     }
 
     public static inline function setAccount(username:String):Void {
