@@ -64,14 +64,14 @@ class VisualManager {
 
     // Bitmap Caching (rasterizes vector models into GPU/blit bitmaps)
     public var cachePlayers(default, set):Bool = false;
-    public var cacheMonsters(default, set):Bool = true;
+    public var cacheMonsters(default, set):Bool = false;
 
     // Target glow suppression (disables native avtMCT/avtPCT color wash when units are targeted)
-    public var suppressTargetGlow(default, set):Bool = true;
+    public var suppressTargetGlow(default, set):Bool = false;
 
     // Display options when players are hidden
-    public var showNames:Bool = true;
-    public var showShadows:Bool = true;
+    public var showNames:Bool = false;
+    public var showShadows:Bool = false;
 
     // Spell tracking state
     private var _hookedChars:Dynamic = null;
@@ -106,10 +106,10 @@ class VisualManager {
         hideMonsters = ApiConfig.getBool("api_hide_monsters", false);
         cleanArena = ApiConfig.getBool("api_clean_arena", false);
         cachePlayers = ApiConfig.getBool("api_cache_players", false);
-        cacheMonsters = ApiConfig.getBool("api_cache_monsters", true);
-        suppressTargetGlow = ApiConfig.getBool("api_suppress_target_glow", ApiConfig.getBool("api_frame_nameplates_enabled", true));
-        showNames = ApiConfig.getBool("api_visual_show_names", true);
-        showShadows = ApiConfig.getBool("api_visual_show_shadows", true);
+        cacheMonsters = ApiConfig.getBool("api_cache_monsters", false);
+        suppressTargetGlow = ApiConfig.getBool("api_suppress_target_glow", ApiConfig.getBool("api_frame_nameplates_enabled", false));
+        showNames = ApiConfig.getBool("api_visual_show_names", false);
+        showShadows = ApiConfig.getBool("api_visual_show_shadows", false);
     }
 
     private function initTimer():Void {

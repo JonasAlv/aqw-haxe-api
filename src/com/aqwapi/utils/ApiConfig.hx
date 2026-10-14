@@ -128,7 +128,7 @@ class ApiConfig {
         CombatEngine.counterHandler = getBool("api_counter_handler", false);
         if (Api.map != null) {
             Api.map.autoDeathSpawn = getBool("api_death_spawn", false);
-            Api.map.usePrivateRoom = getBool("api_private_rooms", true);
+            Api.map.usePrivateRoom = getBool("api_private_rooms", false);
             Api.map.skipCutscenes  = getBool("api_skip_cutscenes", false);
         }
     }

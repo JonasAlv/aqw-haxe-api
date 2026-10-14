@@ -30,7 +30,7 @@ class MapManager {
         return (_game != null) ? _game : Api.game;
     }
 
-    private var _usePrivateRoom:Bool = true;
+    private var _usePrivateRoom:Bool = false;
     private var _privateRoomNumber:Int = 100000;
 
     private function _pauseScriptIfRunning(ms:Float):Void {
