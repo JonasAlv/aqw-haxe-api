@@ -45,6 +45,42 @@ class ApiUtils {
         var res:Float = Std.parseFloat(str);
         return (res != res) ? def : res;
     }
+
+    /**
+     * Safely retrieves a field on any dynamic or sealed AS3 object without throwing Error #1069.
+     */
+    public static function safeField(obj:Dynamic, field:String):Dynamic {
+        if (obj == null) return null;
+        try {
+            if (untyped obj.hasOwnProperty(field)) return untyped obj[field];
+        } catch (_:Dynamic) {}
+        try {
+            var val:Dynamic = Reflect.field(obj, field);
+            if (val != null) return val;
+        } catch (_:Dynamic) {}
+        try {
+            if (untyped obj.getChildByName != null) {
+                var child:Dynamic = untyped obj.getChildByName(field);
+                if (child != null) return child;
+            }
+        } catch (_:Dynamic) {}
+        return null;
+    }
+
+    /**
+     * Retrieves the visual character MovieClip from AvatarMC (mcChar) or MonsterMC (mc).
+     * Guaranteed safe on sealed AS3 classes across Flash Player, AIR, and Ruffle.
+     */
+    public static function getCharClip(pMC:Dynamic):Dynamic {
+        if (pMC == null) return null;
+        try {
+            if (untyped pMC.hasOwnProperty("mcChar")) return untyped pMC["mcChar"];
+        } catch (_:Dynamic) {}
+        try {
+            if (untyped pMC.hasOwnProperty("mc")) return untyped pMC["mc"];
+        } catch (_:Dynamic) {}
+        return null;
+    }
 }
 
 

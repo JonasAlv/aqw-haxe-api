@@ -13,6 +13,7 @@ import com.aqwapi.events.GameEvent;
 import com.aqwapi.utils.ApiConfig;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiTime;
+import com.aqwapi.utils.ApiUtils;
 
 /**
  * Native in-engine Visual & Performance Manager (Lag Killer).
@@ -62,7 +63,7 @@ class VisualManager {
     public var cleanArena(default, set):Bool = false;
 
     // Bitmap Caching (rasterizes vector models into GPU/blit bitmaps)
-    public var cachePlayers(default, set):Bool = true;
+    public var cachePlayers(default, set):Bool = false;
     public var cacheMonsters(default, set):Bool = true;
 
     // Target glow suppression (disables native avtMCT/avtPCT color wash when units are targeted)
@@ -104,7 +105,7 @@ class VisualManager {
         disableGround = ApiConfig.getBool("api_disable_ground", false);
         hideMonsters = ApiConfig.getBool("api_hide_monsters", false);
         cleanArena = ApiConfig.getBool("api_clean_arena", false);
-        cachePlayers = ApiConfig.getBool("api_cache_players", true);
+        cachePlayers = ApiConfig.getBool("api_cache_players", false);
         cacheMonsters = ApiConfig.getBool("api_cache_monsters", true);
         suppressTargetGlow = ApiConfig.getBool("api_suppress_target_glow", ApiConfig.getBool("api_frame_nameplates_enabled", true));
         showNames = ApiConfig.getBool("api_visual_show_names", true);
@@ -369,7 +370,14 @@ class VisualManager {
                 d.bDisWepAnim = effDisWepAnims;
                 d.bDisGround = effDisGround;
                 d.bHideMons = hideMonsters;
-                d.bCachePlayers = cachePlayers;
+                if (ApiConfig.has("api_cache_players")) {
+                    d.bCachePlayers = cachePlayers;
+                } else if (Reflect.hasField(d, "bCachePlayers")) {
+                    cachePlayers = (d.bCachePlayers == true);
+                } else {
+                    d.bCachePlayers = false;
+                    cachePlayers = false;
+                }
 
                 if (d.dOptions == null) {
                     d.dOptions = {};
@@ -471,16 +479,17 @@ class VisualManager {
         var isMe:Bool = (av != null && myAv != null && av == myAv) || (myAv != null && pMC == myAv.pMC);
         var effHidePlayers = lagKiller || hidePlayers;
 
-        if (pMC.mcChar != null) {
+        var charClip:Dynamic = ApiUtils.getCharClip(pMC);
+        if (charClip != null) {
             if (!isMe) {
-                pMC.mcChar.visible = !effHidePlayers;
+                charClip.visible = !effHidePlayers;
             }
 
             // Bitmap Caching (both self and other players)
-            if (pMC.mcChar.cacheAsBitmap != cachePlayers) {
-                pMC.mcChar.cacheAsBitmap = cachePlayers;
+            if (charClip.cacheAsBitmap != cachePlayers) {
+                charClip.cacheAsBitmap = cachePlayers;
                 try {
-                    pMC.mcChar.cacheAsBitmapMatrix = cachePlayers ? new Matrix() : null;
+                    charClip.cacheAsBitmapMatrix = cachePlayers ? new Matrix() : null;
                 } catch (_:Dynamic) {}
             }
 
@@ -505,7 +514,9 @@ class VisualManager {
         var g:Game = (_game != null) ? _game : Api.game;
         if (g == null || g.world == null || mOrChild == null) return;
         var pMC:Dynamic = (Reflect.hasField(mOrChild, "pMC")) ? mOrChild.pMC : mOrChild;
-        if (pMC == null || pMC.mcChar == null) return;
+        if (pMC == null) return;
+        var charClip:Dynamic = ApiUtils.getCharClip(pMC);
+        if (charClip == null) return;
 
         var effDisMonAnims = lagKiller || disableMonsterAnims || freezeAllAnimations;
 
@@ -517,15 +528,15 @@ class VisualManager {
         }
 
         if (hideMonsters) {
-            pMC.mcChar.visible = false;
-        } else if (!hideMonsters && !pMC.mcChar.visible) {
-            pMC.mcChar.visible = true;
+            charClip.visible = false;
+        } else if (!hideMonsters && !charClip.visible) {
+            charClip.visible = true;
         }
 
-        if (pMC.mcChar.cacheAsBitmap != cacheMonsters) {
-            pMC.mcChar.cacheAsBitmap = cacheMonsters;
+        if (charClip.cacheAsBitmap != cacheMonsters) {
+            charClip.cacheAsBitmap = cacheMonsters;
             try {
-                pMC.mcChar.cacheAsBitmapMatrix = cacheMonsters ? new Matrix() : null;
+                charClip.cacheAsBitmapMatrix = cacheMonsters ? new Matrix() : null;
             } catch (_:Dynamic) {}
         }
     }
@@ -534,24 +545,30 @@ class VisualManager {
      * Halts all animation timelines for characters, monsters, and weapons.
      */
     public function freezeCharacterAnimations(pMC:Dynamic):Void {
-        if (pMC == null || pMC.mcChar == null) return;
+        if (pMC == null) return;
+        var charClip:Dynamic = ApiUtils.getCharClip(pMC);
+        if (charClip == null) return;
         var g:Game = (_game != null) ? _game : Api.game;
 
         if (freezeAllAnimations || lagKiller || disableMonsterAnims) {
             if (g != null && g.movieClipStopAll != null) {
-                try { g.movieClipStopAll(pMC.mcChar); } catch (_:Dynamic) {}
-            } else if (pMC.mcChar.stop != null) {
-                try { pMC.mcChar.stop(); } catch (_:Dynamic) {}
+                try { g.movieClipStopAll(charClip); } catch (_:Dynamic) {}
+            } else if (charClip.stop != null) {
+                try { charClip.stop(); } catch (_:Dynamic) {}
             }
 
-            if (pMC.mcChar.weapon != null) {
-                if (g != null && g.movieClipStopAll != null) try { g.movieClipStopAll(pMC.mcChar.weapon); } catch (_:Dynamic) {}
-                else if (pMC.mcChar.weapon.stop != null) try { pMC.mcChar.weapon.stop(); } catch (_:Dynamic) {}
-            }
-            if (pMC.mcChar.weaponOff != null) {
-                if (g != null && g.movieClipStopAll != null) try { g.movieClipStopAll(pMC.mcChar.weaponOff); } catch (_:Dynamic) {}
-                else if (pMC.mcChar.weaponOff.stop != null) try { pMC.mcChar.weaponOff.stop(); } catch (_:Dynamic) {}
-            }
+            try {
+                if (charClip.hasOwnProperty("weapon") && charClip.weapon != null) {
+                    if (g != null && g.movieClipStopAll != null) try { g.movieClipStopAll(charClip.weapon); } catch (_:Dynamic) {}
+                    else if (charClip.weapon.stop != null) try { charClip.weapon.stop(); } catch (_:Dynamic) {}
+                }
+            } catch (_:Dynamic) {}
+            try {
+                if (charClip.hasOwnProperty("weaponOff") && charClip.weaponOff != null) {
+                    if (g != null && g.movieClipStopAll != null) try { g.movieClipStopAll(charClip.weaponOff); } catch (_:Dynamic) {}
+                    else if (charClip.weaponOff.stop != null) try { charClip.weaponOff.stop(); } catch (_:Dynamic) {}
+                }
+            } catch (_:Dynamic) {}
 
             hookFreezeTimeline(pMC);
             hookItemPreRenderFreeze(pMC);
@@ -562,8 +579,9 @@ class VisualManager {
     }
 
     private function hookFreezeTimeline(pMC:Dynamic):Void {
-        if (pMC == null || pMC.mcChar == null) return;
-        var mc:Dynamic = pMC.mcChar;
+        if (pMC == null) return;
+        var mc:Dynamic = ApiUtils.getCharClip(pMC);
+        if (mc == null) return;
         try {
             if (Reflect.field(mc, "_freezeHooked") == true) return;
             Reflect.setField(mc, "_freezeHooked", true);
@@ -572,8 +590,9 @@ class VisualManager {
     }
 
     private function unhookFreezeTimeline(pMC:Dynamic):Void {
-        if (pMC == null || pMC.mcChar == null) return;
-        var mc:Dynamic = pMC.mcChar;
+        if (pMC == null) return;
+        var mc:Dynamic = ApiUtils.getCharClip(pMC);
+        if (mc == null) return;
         try {
             if (Reflect.field(mc, "_freezeHooked") != true) return;
             Reflect.setField(mc, "_freezeHooked", false);
@@ -599,8 +618,9 @@ class VisualManager {
      * and stops their MovieClips synchronously on attachment before they are ever painted.
      */
     private function hookItemPreRenderFreeze(pMC:Dynamic):Void {
-        if (pMC == null || pMC.mcChar == null) return;
-        var mc:Dynamic = pMC.mcChar;
+        if (pMC == null) return;
+        var mc:Dynamic = ApiUtils.getCharClip(pMC);
+        if (mc == null) return;
         try {
             if (Reflect.field(mc, "_itemFreezeHooked") == true) return;
             Reflect.setField(mc, "_itemFreezeHooked", true);
@@ -609,8 +629,9 @@ class VisualManager {
     }
 
     private function unhookItemPreRenderFreeze(pMC:Dynamic):Void {
-        if (pMC == null || pMC.mcChar == null) return;
-        var mc:Dynamic = pMC.mcChar;
+        if (pMC == null) return;
+        var mc:Dynamic = ApiUtils.getCharClip(pMC);
+        if (mc == null) return;
         try {
             if (Reflect.field(mc, "_itemFreezeHooked") != true) return;
             Reflect.setField(mc, "_itemFreezeHooked", false);
@@ -950,7 +971,7 @@ class VisualManager {
                             iAmCasting = true;
                             playerCaster = myAv;
                         } else if (myAv.pMC.spellDur > 0) {
-                            var char = myAv.pMC.mcChar;
+                            var char = ApiUtils.getCharClip(myAv.pMC);
                             if (char != null) {
                                 var lbl:String = char.currentLabel;
                                 if (lbl == "Cast" || lbl == "Spell" || lbl == "Attack1" || lbl == "Attack2" || lbl == "Thrash") {
@@ -975,7 +996,7 @@ class VisualManager {
                                 playerCaster = av;
                                 break;
                             } else if (pMC.spellDur > 0) {
-                                var char = pMC.mcChar;
+                                var char = ApiUtils.getCharClip(pMC);
                                 if (char != null) {
                                     var lbl:String = char.currentLabel;
                                     if (lbl == "Cast" || lbl == "Spell" || lbl == "Attack1" || lbl == "Attack2" || lbl == "Thrash") {

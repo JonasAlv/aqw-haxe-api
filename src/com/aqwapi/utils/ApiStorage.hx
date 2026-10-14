@@ -3,6 +3,23 @@ package com.aqwapi.utils;
 class ApiStorage {
     private static var _dataDir:Dynamic = null;
     private static var _provisioned:Bool = false;
+    private static var _so:Dynamic = null;
+
+    public static function getSharedObjectStorage():Dynamic {
+        if (_so != null) return _so;
+        #if flash
+        try {
+            var soCls = flash.net.SharedObject;
+            if (soCls != null) {
+                _so = soCls.getLocal("AqwApiStorage");
+                if (_so != null && _so.data == null) {
+                    _so.data = {};
+                }
+            }
+        } catch (_:Dynamic) {}
+        #end
+        return _so;
+    }
 
     public static var currentAccount(default, null):String = null;
 
@@ -324,7 +341,25 @@ class ApiStorage {
         _provisioned = true;
 
         var dir = getDataDirectory();
-        if (dir == null) return;
+        if (dir == null) {
+            var so = getSharedObjectStorage();
+            if (so != null && so.data != null) {
+                if (!Reflect.hasField(so.data, "userSkills.json")) {
+                    try {
+                        var raw = haxe.Resource.getString("default_user_skills");
+                        if (raw != null) Reflect.setField(so.data, "userSkills.json", raw);
+                    } catch (_:Dynamic) {}
+                }
+                if (!Reflect.hasField(so.data, "userEnhancements.json")) {
+                    try {
+                        var raw = haxe.Resource.getString("default_enhancements");
+                        if (raw != null) Reflect.setField(so.data, "userEnhancements.json", raw);
+                    } catch (_:Dynamic) {}
+                }
+                try { if (so.flush != null) so.flush(); } catch (_:Dynamic) {}
+            }
+            return;
+        }
         try {
             if (!dir.exists) {
                 dir.createDirectory();
@@ -481,6 +516,23 @@ class ApiStorage {
             ApiLogger.warn("Storage", "Error reading bundled asset " + clean + ": " + e);
         }
 
+        // 4. Fallback for non-AIR (Mugetsu / Flash Player): persistent SharedObject
+        var so = getSharedObjectStorage();
+        if (so != null && so.data != null) {
+            var acc = getActiveAccount();
+            if (isAccountBoundFile(clean) && acc != null && acc != "") {
+                var key = "accounts/" + acc + "/" + clean;
+                if (Reflect.hasField(so.data, key)) {
+                    var val = Reflect.field(so.data, key);
+                    if (val != null && Std.string(val).length > 0) return Std.string(val);
+                }
+            }
+            if (Reflect.hasField(so.data, clean)) {
+                var val = Reflect.field(so.data, clean);
+                if (val != null && Std.string(val).length > 0) return Std.string(val);
+            }
+        }
+
         return null;
     }
 
@@ -511,6 +563,22 @@ class ApiStorage {
                 ApiLogger.warn("Storage", "Error writing " + clean + ": " + e);
             }
         }
+
+        // Non-AIR fallback (Mugetsu / Flash Player): persistent SharedObject
+        var so = getSharedObjectStorage();
+        if (so != null && so.data != null) {
+            var acc = getActiveAccount();
+            var key = (isAccountBoundFile(clean) && acc != null && acc != "") ? ("accounts/" + acc + "/" + clean) : clean;
+            Reflect.setField(so.data, key, content);
+            try {
+                if (so.flush != null) so.flush();
+                ApiLogger.debug("Storage", "Saved " + key + " to SharedObject");
+                return true;
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Storage", "Error flushing SharedObject: " + e);
+            }
+        }
+
         return false;
     }
 
@@ -600,6 +668,17 @@ class ApiStorage {
             ApiLogger.warn("Storage", "Error scanning user scripts: " + e);
         }
 
+        // 3. Scan scripts stored in SharedObject (Mugetsu / Flash Player)
+        var so = getSharedObjectStorage();
+        if (so != null && so.data != null) {
+            for (field in Reflect.fields(so.data)) {
+                if (StringTools.startsWith(field, "scripts/") && StringTools.endsWith(field.toLowerCase(), ".hxs")) {
+                    var sName = field.substring(8, field.length - 4);
+                    if (scripts.indexOf(sName) == -1) scripts.push(sName);
+                }
+            }
+        }
+
         // Sort scripts alphabetically
         scripts.sort(function(a:String, b:String):Int {
             var aLow = a.toLowerCase();
@@ -646,22 +725,29 @@ class ApiStorage {
     public static function isUserScript(scriptName:String):Bool {
         if (scriptName == null || scriptName == "") return false;
         if (isBundledScript(scriptName)) return false;
+        var clean = cleanFileName(scriptName);
+        if (StringTools.endsWith(clean.toLowerCase(), ".hxs")) {
+            clean = clean.substring(0, clean.length - 4);
+        }
         var dir = getDataDirectory();
-        if (dir == null) return false;
-        try {
-            var clean = cleanFileName(scriptName);
-            if (StringTools.endsWith(clean.toLowerCase(), ".hxs")) {
-                clean = clean.substring(0, clean.length - 4);
-            }
-            var f = dir.resolvePath("scripts/" + clean + ".hxs");
-            if (f != null && f.exists == true) return true;
-            if (clean.indexOf("/") == -1) {
-                var fRep = dir.resolvePath("scripts/rep/" + clean + ".hxs");
-                if (fRep != null && fRep.exists == true) return true;
-                var fSaga = dir.resolvePath("scripts/saga/LordofChaos/" + clean + ".hxs");
-                if (fSaga != null && fSaga.exists == true) return true;
-            }
-        } catch (_:Dynamic) {}
+        if (dir != null) {
+            try {
+                var f = dir.resolvePath("scripts/" + clean + ".hxs");
+                if (f != null && f.exists == true) return true;
+                if (clean.indexOf("/") == -1) {
+                    var fRep = dir.resolvePath("scripts/rep/" + clean + ".hxs");
+                    if (fRep != null && fRep.exists == true) return true;
+                    var fSaga = dir.resolvePath("scripts/saga/LordofChaos/" + clean + ".hxs");
+                    if (fSaga != null && fSaga.exists == true) return true;
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        var so = getSharedObjectStorage();
+        if (so != null && so.data != null) {
+            if (Reflect.hasField(so.data, "scripts/" + clean + ".hxs")) return true;
+        }
+
         return false;
     }
 
@@ -721,20 +807,40 @@ class ApiStorage {
             }
         } catch (_:Dynamic) {}
 
+        // 3. Fallback: Read from SharedObject (Mugetsu / Flash Player)
+        var so = getSharedObjectStorage();
+        if (so != null && so.data != null) {
+            var sKey = "scripts/" + clean + ".hxs";
+            if (Reflect.hasField(so.data, sKey)) {
+                var txt = Reflect.field(so.data, sKey);
+                if (txt != null && Std.string(txt).length > 0) return Std.string(txt);
+            }
+        }
+
         return null;
     }
 
     public static function deleteUserScript(scriptName:String):Bool {
         if (scriptName == null || scriptName == "") return false;
         var dir = getDataDirectory();
-        if (dir == null) return false;
-        try {
-            var f = dir.resolvePath("scripts/" + scriptName + ".hxs");
-            if (f != null && f.exists) {
-                f.deleteFile();
+        if (dir != null) {
+            try {
+                var f = dir.resolvePath("scripts/" + scriptName + ".hxs");
+                if (f != null && f.exists) {
+                    f.deleteFile();
+                    return true;
+                }
+            } catch (_:Dynamic) {}
+        }
+        var so = getSharedObjectStorage();
+        if (so != null && so.data != null) {
+            var sKey = "scripts/" + scriptName + ".hxs";
+            if (Reflect.hasField(so.data, sKey)) {
+                Reflect.deleteField(so.data, sKey);
+                try { if (so.flush != null) so.flush(); } catch (_:Dynamic) {}
                 return true;
             }
-        } catch (_:Dynamic) {}
+        }
         return false;
     }
 }

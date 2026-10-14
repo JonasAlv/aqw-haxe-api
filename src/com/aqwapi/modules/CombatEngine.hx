@@ -317,8 +317,10 @@ class CombatEngine {
         try {
             if (world == null || avatar == null) return false;
             var pMC:Dynamic = avatar.pMC;
-            if (pMC == null || pMC.mcChar == null) return false;
-            var label:String = Std.string(pMC.mcChar.currentLabel);
+            if (pMC == null) return false;
+            var charMC:Dynamic = ApiUtils.getCharClip(pMC);
+            if (charMC == null) return false;
+            var label:String = Std.string(charMC.currentLabel);
             if (label == null || label == "") return false;
             var anims:Array<Dynamic> = cast world.combatAnims;
             if (anims == null || anims.length == 0) return false;
@@ -497,8 +499,8 @@ class CombatEngine {
             var scale:Float = ApiUtils.parseInt(world.SCALE, 1);
             if (scale <= 0) scale = 1;
 
-            var avChar:Dynamic = (avatar.pMC != null) ? avatar.pMC.mcChar : null;
-            var tgChar:Dynamic = (target.pMC != null) ? target.pMC.mcChar : null;
+            var avChar:Dynamic = (avatar.pMC != null) ? ApiUtils.getCharClip(avatar.pMC) : null;
+            var tgChar:Dynamic = (target.pMC != null) ? ApiUtils.getCharClip(target.pMC) : null;
             if (avChar == null || tgChar == null) return false;
             var avPt:Dynamic = avChar.localToGlobal(new flash.geom.Point());
             var tgPt:Dynamic = tgChar.localToGlobal(new flash.geom.Point());
