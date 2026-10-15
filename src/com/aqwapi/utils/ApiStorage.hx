@@ -290,28 +290,6 @@ class ApiStorage {
         return null;
     }
 
-    /**
-     * Returns AIR's Documents directory when available. Access may be denied by the
-     * platform, so callers must always retain an applicationStorageDirectory fallback.
-     */
-    public static function getDocumentsDirectory():Dynamic {
-        var FileClass:Dynamic = getFileClass();
-        if (FileClass == null) return null;
-        if (isAndroid()) requestAndroidStoragePermission();
-        try {
-            #if flash
-            try {
-                var direct:Dynamic = untyped FileClass.documentsDirectory;
-                if (direct != null) return direct;
-            } catch (_:Dynamic) {}
-            #end
-            return getStaticProp(FileClass, "documentsDirectory");
-        } catch (e:Dynamic) {
-            ApiLogger.debug("Storage", "Could not resolve documentsDirectory: " + e);
-        }
-        return null;
-    }
-
     public static function getFile(fileName:String):Dynamic {
         var clean = cleanFileName(fileName);
         var dir = getDataDirectory();
@@ -357,8 +335,7 @@ class ApiStorage {
             }
         } catch (_:Dynamic) {}
 
-        // Keep enhancements in app-private storage; userSkills.json is stored in Documents
-        // when possible, preserving any existing app-private user file during migration.
+        // Seed bundled defaults into application storage only when no user file exists.
         var FileClass:Dynamic = getFileClass();
         var appDir:Dynamic = (FileClass != null) ? getStaticProp(FileClass, "applicationDirectory") : null;
         if (appDir != null) {
@@ -382,38 +359,17 @@ class ApiStorage {
             try {
                 var skillsTarget = dir.resolvePath("userSkills.json");
                 if (!skillsTarget.exists) {
-                    // One-time migration: use the old Documents file only when no canonical
-                    // application-storage file exists. Never read Documents during normal use.
-                    var docsSkills = getDocumentsDirectory();
-                    var oldDocsFile:Dynamic = (docsSkills != null) ? docsSkills.resolvePath("userSkills.json") : null;
-                    var existingContent = readFileStream(oldDocsFile);
-                    if (existingContent == null || StringTools.trim(existingContent).length == 0) {
-                        existingContent = readFileStream(appDir.resolvePath("assets/userSkills.json"));
-                    }
-                    if (existingContent != null && StringTools.trim(existingContent).length > 0) {
-                        if (writeFileStream(skillsTarget, existingContent)) {
-                            ApiLogger.info("Storage", "Migrated/seeded userSkills.json to applicationStorageDirectory");
+                    var defaultSkills = readFileStream(appDir.resolvePath("assets/userSkills.json"));
+                    if (defaultSkills != null && StringTools.trim(defaultSkills).length > 0) {
+                        if (writeFileStream(skillsTarget, defaultSkills)) {
+                            ApiLogger.info("Storage", "Seeded userSkills.json to applicationStorageDirectory");
                         } else {
                             ApiLogger.warn("Storage", "Could not initialize userSkills.json in application storage");
                         }
                     }
-                } else {
-                    // Keep a copy of a legacy Documents file if both locations already exist.
-                    var docsSkills = getDocumentsDirectory();
-                    var oldDocsFile:Dynamic = (docsSkills != null) ? docsSkills.resolvePath("userSkills.json") : null;
-                    if (oldDocsFile != null && oldDocsFile.exists) {
-                        var backup = dir.resolvePath("userSkills.documents-backup.json");
-                        if (!backup.exists) {
-                            var oldContent = readFileStream(oldDocsFile);
-                            if (oldContent != null && StringTools.trim(oldContent).length > 0) {
-                                writeFileStream(backup, oldContent);
-                                ApiLogger.warn("Storage", "Legacy Documents userSkills.json backed up to userSkills.documents-backup.json; application storage remains canonical");
-                            }
-                        }
-                    }
                 }
             } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "Failed to initialize userSkills.json in application storage: " + e);
+                ApiLogger.warn("Storage", "Failed to seed userSkills.json in application storage: " + e);
             }
 
             // Ensure scripts and assets folders exist in user storage
