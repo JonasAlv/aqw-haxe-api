@@ -261,68 +261,73 @@ class ApiStorage {
     }
 
     /**
-     * Single data directory with read & write access:
-     * - Desktop/Wine/Windows: File.applicationStorageDirectory (%APPDATA%/<appID>/Local Store/)
-     * - Android: File.documentsDirectory/AQWPocket/ (User-accessible without root) with fallback to applicationStorageDirectory
+     * App-private writable directory for normal runtime data on desktop and Android.
+     * userSkills.json is handled separately in File.documentsDirectory when available.
      */
     public static function getDataDirectory():Dynamic {
         if (_dataDir != null) return _dataDir;
         var FileClass:Dynamic = getFileClass();
         if (FileClass == null) return null;
-
-        // On Android, use user-accessible shared storage (Documents/AQWPocket) so users can manage files & scripts
-        if (isAndroid()) {
-            requestAndroidStoragePermission();
-            try {
-                var docDir:Dynamic = null;
-                #if flash
-                try { docDir = untyped FileClass.documentsDirectory; } catch (_:Dynamic) {}
-                #end
-                if (docDir == null) docDir = getStaticProp(FileClass, "documentsDirectory");
-                if (docDir == null) {
-                    #if flash
-                    try { docDir = untyped FileClass.userDirectory; } catch (_:Dynamic) {}
-                    #end
-                    if (docDir == null) docDir = getStaticProp(FileClass, "userDirectory");
-                }
-                if (docDir != null) {
-                    var sharedDir:Dynamic = docDir.resolvePath("AQWPocket");
-                    if (!sharedDir.exists) sharedDir.createDirectory();
-                    _dataDir = sharedDir;
-                    ApiLogger.debug("Storage", "Android accessible storage path: " + _dataDir.nativePath);
-                    return _dataDir;
-                }
-            } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "Could not initialize Android shared storage, falling back: " + e);
-            }
-        }
-
         try {
             #if flash
             try {
                 var direct:Dynamic = untyped FileClass.applicationStorageDirectory;
                 if (direct != null) {
+                    if (!direct.exists) direct.createDirectory();
                     _dataDir = direct;
-                    ApiLogger.debug("Storage", "Storage path: " + _dataDir.nativePath);
+                    ApiLogger.debug("Storage", "Application storage path: " + _dataDir.nativePath);
                     return _dataDir;
                 }
             } catch (_:Dynamic) {}
             #end
             var appStorage:Dynamic = getStaticProp(FileClass, "applicationStorageDirectory");
             if (appStorage != null) {
+                if (!appStorage.exists) appStorage.createDirectory();
                 _dataDir = appStorage;
-                ApiLogger.debug("Storage", "Storage path: " + _dataDir.nativePath);
+                ApiLogger.debug("Storage", "Application storage path: " + _dataDir.nativePath);
                 return _dataDir;
             }
         } catch (e:Dynamic) {
             ApiLogger.error("Storage", "Failed to resolve applicationStorageDirectory: " + e);
         }
+        return null;
+    }
 
+    /**
+     * Returns AIR's Documents directory when available. Access may be denied by the
+     * platform, so callers must always retain an applicationStorageDirectory fallback.
+     */
+    public static function getDocumentsDirectory():Dynamic {
+        var FileClass:Dynamic = getFileClass();
+        if (FileClass == null) return null;
+        if (isAndroid()) requestAndroidStoragePermission();
+        try {
+            #if flash
+            try {
+                var direct:Dynamic = untyped FileClass.documentsDirectory;
+                if (direct != null) return direct;
+            } catch (_:Dynamic) {}
+            #end
+            return getStaticProp(FileClass, "documentsDirectory");
+        } catch (e:Dynamic) {
+            ApiLogger.debug("Storage", "Could not resolve documentsDirectory: " + e);
+        }
+        return null;
+    }
+
+    private static function getUserSkillsFile():Dynamic {
+        var docs = getDocumentsDirectory();
+        if (docs == null) return null;
+        try { return docs.resolvePath("userSkills.json"); } catch (_:Dynamic) {}
         return null;
     }
 
     public static function getFile(fileName:String):Dynamic {
         var clean = cleanFileName(fileName);
+        if (clean == "userSkills.json") {
+            var skillsFile = getUserSkillsFile();
+            if (skillsFile != null) return skillsFile;
+        }
         var dir = getDataDirectory();
         if (dir == null) return null;
         try {
@@ -366,25 +371,46 @@ class ApiStorage {
             }
         } catch (_:Dynamic) {}
 
-        // Copy seed user files from applicationDirectory/assets to applicationStorageDirectory if not present
+        // Keep enhancements in app-private storage; userSkills.json is stored in Documents
+        // when possible, preserving any existing app-private user file during migration.
         var FileClass:Dynamic = getFileClass();
         var appDir:Dynamic = (FileClass != null) ? getStaticProp(FileClass, "applicationDirectory") : null;
         if (appDir != null) {
-            var seedFiles = ["userSkills.json", "userEnhancements.json"];
+            var seedFiles = ["userEnhancements.json"];
             for (fname in seedFiles) {
                 try {
                     var target = dir.resolvePath(fname);
                     if (!target.exists) {
                         var src = appDir.resolvePath("assets/" + fname);
-                        var content = readFileStream(src);
-                        if (content != null && StringTools.trim(content).length > 0) {
-                            writeFileStream(target, content);
+                        var seedContent = readFileStream(src);
+                        if (seedContent != null && StringTools.trim(seedContent).length > 0) {
+                            writeFileStream(target, seedContent);
                             ApiLogger.debug("Storage", "Seeded " + fname + " to applicationStorageDirectory");
                         }
                     }
                 } catch (e:Dynamic) {
                     ApiLogger.warn("Storage", "Failed to seed " + fname + ": " + e);
                 }
+            }
+
+            try {
+                var skillsTarget = getUserSkillsFile();
+                if (skillsTarget != null && !skillsTarget.exists) {
+                    var existingSkills = dir.resolvePath("userSkills.json");
+                    var existingContent = readFileStream(existingSkills);
+                    if (existingContent == null || StringTools.trim(existingContent).length == 0) {
+                        existingContent = readFileStream(appDir.resolvePath("assets/userSkills.json"));
+                    }
+                    if (existingContent != null && StringTools.trim(existingContent).length > 0) {
+                        if (writeFileStream(skillsTarget, existingContent)) {
+                            ApiLogger.info("Storage", "Migrated/seeded userSkills.json to Documents");
+                        } else {
+                            ApiLogger.warn("Storage", "Could not write userSkills.json to Documents; retaining app-storage fallback");
+                        }
+                    }
+                }
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Storage", "Failed to migrate/seed userSkills.json in Documents: " + e);
             }
 
             // Ensure scripts and assets folders exist in user storage
@@ -463,6 +489,13 @@ class ApiStorage {
         var clean = cleanFileName(fileName);
         if (clean == "") return null;
 
+        // Prefer Documents for userSkills.json, then fall back to app-private storage below.
+        if (clean == "userSkills.json") {
+            var docsSkills = getUserSkillsFile();
+            var docsText = readFileStream(docsSkills);
+            if (docsText != null && StringTools.trim(docsText).length > 0) return docsText;
+        }
+
         var dir = getDataDirectory();
         if (dir != null) {
             // 1. If it's an account-bound file and an account is active, check accounts/<acc>/<clean>
@@ -539,6 +572,22 @@ class ApiStorage {
     public static function writeText(fileName:String, content:String):Bool {
         var clean = cleanFileName(fileName);
         if (content == null) return false;
+
+        // userSkills.json belongs in Documents when AIR allows it; use app storage on failure.
+        if (clean == "userSkills.json") {
+            var docsSkills = getUserSkillsFile();
+            if (docsSkills != null) {
+                try {
+                    if (docsSkills.parent != null && !docsSkills.parent.exists) docsSkills.parent.createDirectory();
+                    if (writeFileStream(docsSkills, content)) {
+                        ApiLogger.debug("Storage", "Saved userSkills.json to Documents: " + docsSkills.nativePath);
+                        return true;
+                    }
+                } catch (e:Dynamic) {
+                    ApiLogger.warn("Storage", "Could not write userSkills.json to Documents: " + e);
+                }
+            }
+        }
 
         var dir = getDataDirectory();
         if (dir != null) {
