@@ -260,10 +260,7 @@ class ApiStorage {
         }
     }
 
-    /**
-     * App-private writable directory for normal runtime data on desktop and Android.
-     * userSkills.json is handled separately in File.documentsDirectory when available.
-     */
+    /** Single writable source of truth for all local runtime data. */
     public static function getDataDirectory():Dynamic {
         if (_dataDir != null) return _dataDir;
         var FileClass:Dynamic = getFileClass();
@@ -315,19 +312,8 @@ class ApiStorage {
         return null;
     }
 
-    private static function getUserSkillsFile():Dynamic {
-        var docs = getDocumentsDirectory();
-        if (docs == null) return null;
-        try { return docs.resolvePath("userSkills.json"); } catch (_:Dynamic) {}
-        return null;
-    }
-
     public static function getFile(fileName:String):Dynamic {
         var clean = cleanFileName(fileName);
-        if (clean == "userSkills.json") {
-            var skillsFile = getUserSkillsFile();
-            if (skillsFile != null) return skillsFile;
-        }
         var dir = getDataDirectory();
         if (dir == null) return null;
         try {
@@ -394,23 +380,40 @@ class ApiStorage {
             }
 
             try {
-                var skillsTarget = getUserSkillsFile();
-                if (skillsTarget != null && !skillsTarget.exists) {
-                    var existingSkills = dir.resolvePath("userSkills.json");
-                    var existingContent = readFileStream(existingSkills);
+                var skillsTarget = dir.resolvePath("userSkills.json");
+                if (!skillsTarget.exists) {
+                    // One-time migration: use the old Documents file only when no canonical
+                    // application-storage file exists. Never read Documents during normal use.
+                    var docsSkills = getDocumentsDirectory();
+                    var oldDocsFile:Dynamic = (docsSkills != null) ? docsSkills.resolvePath("userSkills.json") : null;
+                    var existingContent = readFileStream(oldDocsFile);
                     if (existingContent == null || StringTools.trim(existingContent).length == 0) {
                         existingContent = readFileStream(appDir.resolvePath("assets/userSkills.json"));
                     }
                     if (existingContent != null && StringTools.trim(existingContent).length > 0) {
                         if (writeFileStream(skillsTarget, existingContent)) {
-                            ApiLogger.info("Storage", "Migrated/seeded userSkills.json to Documents");
+                            ApiLogger.info("Storage", "Migrated/seeded userSkills.json to applicationStorageDirectory");
                         } else {
-                            ApiLogger.warn("Storage", "Could not write userSkills.json to Documents; retaining app-storage fallback");
+                            ApiLogger.warn("Storage", "Could not initialize userSkills.json in application storage");
+                        }
+                    }
+                } else {
+                    // Keep a copy of a legacy Documents file if both locations already exist.
+                    var docsSkills = getDocumentsDirectory();
+                    var oldDocsFile:Dynamic = (docsSkills != null) ? docsSkills.resolvePath("userSkills.json") : null;
+                    if (oldDocsFile != null && oldDocsFile.exists) {
+                        var backup = dir.resolvePath("userSkills.documents-backup.json");
+                        if (!backup.exists) {
+                            var oldContent = readFileStream(oldDocsFile);
+                            if (oldContent != null && StringTools.trim(oldContent).length > 0) {
+                                writeFileStream(backup, oldContent);
+                                ApiLogger.warn("Storage", "Legacy Documents userSkills.json backed up to userSkills.documents-backup.json; application storage remains canonical");
+                            }
                         }
                     }
                 }
             } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "Failed to migrate/seed userSkills.json in Documents: " + e);
+                ApiLogger.warn("Storage", "Failed to initialize userSkills.json in application storage: " + e);
             }
 
             // Ensure scripts and assets folders exist in user storage
@@ -489,13 +492,6 @@ class ApiStorage {
         var clean = cleanFileName(fileName);
         if (clean == "") return null;
 
-        // Prefer Documents for userSkills.json, then fall back to app-private storage below.
-        if (clean == "userSkills.json") {
-            var docsSkills = getUserSkillsFile();
-            var docsText = readFileStream(docsSkills);
-            if (docsText != null && StringTools.trim(docsText).length > 0) return docsText;
-        }
-
         var dir = getDataDirectory();
         if (dir != null) {
             // 1. If it's an account-bound file and an account is active, check accounts/<acc>/<clean>
@@ -572,22 +568,6 @@ class ApiStorage {
     public static function writeText(fileName:String, content:String):Bool {
         var clean = cleanFileName(fileName);
         if (content == null) return false;
-
-        // userSkills.json belongs in Documents when AIR allows it; use app storage on failure.
-        if (clean == "userSkills.json") {
-            var docsSkills = getUserSkillsFile();
-            if (docsSkills != null) {
-                try {
-                    if (docsSkills.parent != null && !docsSkills.parent.exists) docsSkills.parent.createDirectory();
-                    if (writeFileStream(docsSkills, content)) {
-                        ApiLogger.debug("Storage", "Saved userSkills.json to Documents: " + docsSkills.nativePath);
-                        return true;
-                    }
-                } catch (e:Dynamic) {
-                    ApiLogger.warn("Storage", "Could not write userSkills.json to Documents: " + e);
-                }
-            }
-        }
 
         var dir = getDataDirectory();
         if (dir != null) {
