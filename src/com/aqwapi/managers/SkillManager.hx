@@ -533,7 +533,10 @@ class SkillManager {
             var sanitized = sanitizeUserSkillsObject(data);
             var serialized = haxe.Json.stringify(sanitized, null, "  ");
             var ok = ApiStorage.writeText("userSkills.json", serialized);
-            _userSkillsCache = sanitized;
+            // Do not let the in-memory cache claim a save succeeded when disk I/O failed.
+            if (ok) {
+                _userSkillsCache = sanitized;
+            }
             return ok;
         } catch (e:Dynamic) {
             ApiLogger.error("Skills", "writeUserSkillsObject error: " + e);
