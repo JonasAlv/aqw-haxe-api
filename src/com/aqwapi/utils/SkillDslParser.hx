@@ -277,7 +277,7 @@ class SkillDslParser {
                 if (child == null || child.type == "Invalid") return {type: "Invalid"};
                 children.push(child);
             }
-            return {type: "ConditionGroup", operator: "OR", rules: children};
+            return {type: "ConditionGroup", logicalOp: "OR", rules: children};
         }
         return parseConditionAnd(expr);
     }
@@ -291,7 +291,7 @@ class SkillDslParser {
                 if (child == null || child.type == "Invalid") return {type: "Invalid"};
                 children.push(child);
             }
-            return {type: "ConditionGroup", operator: "AND", rules: children};
+            return {type: "ConditionGroup", logicalOp: "AND", rules: children};
         }
         var atom:String = unwrapConditionGroup(StringTools.trim(text));
         var rule:Dynamic = parseRule(atom);
@@ -948,7 +948,7 @@ class SkillDslParser {
                 if (childText == "") return "";
                 childStrings.push(childText);
             }
-            var op:String = (Std.string(r.operator).toUpperCase() == "OR") ? " | " : " & ";
+            var op:String = (Std.string(r.logicalOp).toUpperCase() == "OR") ? " | " : " & ";
             return "(" + childStrings.join(op) + ")";
         }
         if (rtype == "Wait") {

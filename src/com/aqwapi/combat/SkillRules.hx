@@ -82,7 +82,7 @@ class SkillRules {
             case "ConditionGroup":
                 if (!Std.isOfType(rule.rules, Array)) return false;
                 var children:Array<Dynamic> = cast rule.rules;
-                var isOr:Bool = (Std.string(rule.operator).toUpperCase() == "OR");
+                var isOr:Bool = (Std.string(rule.logicalOp).toUpperCase() == "OR");
                 if (children.length == 0) return false;
                 if (isOr) {
                     for (child in children) {
