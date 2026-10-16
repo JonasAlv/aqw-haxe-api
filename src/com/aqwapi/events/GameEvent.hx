@@ -11,6 +11,8 @@ class GameEvent extends Event {
     public static inline var GUILD_UPDATED:String = "guildUpdated";
     public static inline var PVP_UPDATED:String = "pvpUpdated";
     public static inline var HOUSE_UPDATED:String = "houseUpdated";
+    /** Raw combat response. `data.command` is the wire command and `data.payload` its payload. */
+    public static inline var COMBAT_UPDATED:String = "combatUpdated";
 
     public var data:Dynamic;
 

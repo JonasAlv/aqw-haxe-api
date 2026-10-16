@@ -183,7 +183,10 @@ class SkillRules {
 
     public static function compare(val:Float, threshold:Float, comp:String):Bool {
         if (comp == "equal" || comp == "==" || comp == "=") return val == threshold;
-        return comp == "greater" ? val >= threshold : val <= threshold;
+        if (comp == "greater" || comp == ">=") return val >= threshold;
+        if (comp == "strictGreater" || comp == ">") return val > threshold;
+        if (comp == "strictLess" || comp == "<") return val < threshold;
+        return val <= threshold;
     }
 
     public static function evaluatePartyHealth(rule:Dynamic, world:Dynamic, avatar:Dynamic):Bool {

@@ -87,6 +87,13 @@ class TransportAdapter {
         }
 
         switch (cmd) {
+            // Keep combat responses available to script and UI consumers as a typed event. Payloads
+            // remain raw because each command has a different, version-sensitive wire shape.
+            case "cb", "ct", "sar", "sars", "showAuraResult", "anim", "sAct", "stu", "event", "initMonData":
+                Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.COMBAT_UPDATED, {
+                    command: cmd,
+                    payload: dataObj
+                }));
             case "moveToArea":
                 var curUser:String = (Api.player != null) ? Api.player.username : "";
                 if (curUser == "" && _game != null && _game.sfc != null && _game.sfc.myUserName != null) {

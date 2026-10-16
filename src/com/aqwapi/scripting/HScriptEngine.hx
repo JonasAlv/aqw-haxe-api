@@ -36,6 +36,7 @@ class HScriptEngine {
     private var _hasOnZoneEntered:Bool = false;
     private var _hasOnQuestUpdated:Bool = false;
     private var _hasOnInventoryChanged:Bool = false;
+    private var _hasOnCombatUpdated:Bool = false;
 
     private static var _instance:HScriptEngine;
     public static var SINGLETON(get, never):HScriptEngine;
@@ -62,6 +63,7 @@ class HScriptEngine {
         Api.dispatcher.addEventListener(GameEvent.ZONE_ENTERED, onGameZoneEntered);
         Api.dispatcher.addEventListener(GameEvent.QUEST_UPDATED, onGameQuestUpdated);
         Api.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, onGameInventoryChanged);
+        Api.dispatcher.addEventListener(GameEvent.COMBAT_UPDATED, onGameCombatUpdated);
 
         _resetSandbox();
     }
@@ -82,6 +84,7 @@ class HScriptEngine {
                 _hasOnZoneEntered = _interp.variables.exists("onZoneEntered") && Reflect.isFunction(_interp.variables.get("onZoneEntered"));
                 _hasOnQuestUpdated = _interp.variables.exists("onQuestUpdated") && Reflect.isFunction(_interp.variables.get("onQuestUpdated"));
                 _hasOnInventoryChanged = _interp.variables.exists("onInventoryChanged") && Reflect.isFunction(_interp.variables.get("onInventoryChanged"));
+                _hasOnCombatUpdated = _interp.variables.exists("onCombatUpdated") && Reflect.isFunction(_interp.variables.get("onCombatUpdated"));
             } catch (e:Dynamic) {
                 ApiLogger.error("HScript", "Reset error: " + Std.string(e));
             }
@@ -98,6 +101,7 @@ class HScriptEngine {
         _hasOnZoneEntered = false;
         _hasOnQuestUpdated = false;
         _hasOnInventoryChanged = false;
+        _hasOnCombatUpdated = false;
         waitTimer = 0;
         statusText = "No script loaded.";
         _resetSandbox();
@@ -155,6 +159,7 @@ class HScriptEngine {
         _hasOnZoneEntered = _interp.variables.exists("onZoneEntered") && Reflect.isFunction(_interp.variables.get("onZoneEntered"));
         _hasOnQuestUpdated = _interp.variables.exists("onQuestUpdated") && Reflect.isFunction(_interp.variables.get("onQuestUpdated"));
         _hasOnInventoryChanged = _interp.variables.exists("onInventoryChanged") && Reflect.isFunction(_interp.variables.get("onInventoryChanged"));
+        _hasOnCombatUpdated = _interp.variables.exists("onCombatUpdated") && Reflect.isFunction(_interp.variables.get("onCombatUpdated"));
 
         statusText = "Loaded HScript (" + (_hasOnTick ? "tick-loop" : "exec-once") + ")";
         ApiLogger.info("HScript", statusText);
@@ -330,6 +335,12 @@ class HScriptEngine {
     private function onGameInventoryChanged(e:GameEvent):Void {
         if (isRunning && _hasOnInventoryChanged) {
             try { _interp.variables.get("onInventoryChanged")(e.data); } catch(err:Dynamic) { _handleScriptError("onInventoryChanged: " + err, err); }
+        }
+    }
+
+    private function onGameCombatUpdated(e:GameEvent):Void {
+        if (isRunning && _hasOnCombatUpdated) {
+            try { _interp.variables.get("onCombatUpdated")(e.data); } catch(err:Dynamic) { _handleScriptError("onCombatUpdated: " + err, err); }
         }
     }
 

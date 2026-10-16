@@ -76,7 +76,7 @@ Units: Seconds (`s`) or milliseconds (`ms`).
 | `hp > 80%` | Current player HP is above 80% of max HP. | `4[hp > 80%]` |
 | `hp < 2500` | Flat HP threshold (values > 100 are automatically treated as flat HP). | `2[hp < 2500]` |
 
-Aliases: `hp`, `health`. Comparisons: `<`, `<=`, `>`, `>=`, `==`.
+Aliases: `hp`, `health`. Comparisons preserve strict and inclusive boundaries: `<`, `<=`, `>`, `>=`, `==`.
 
 ### 3.4. Player Mana (MP)
 
@@ -86,7 +86,7 @@ Aliases: `hp`, `health`. Comparisons: `<`, `<=`, `>`, `>=`, `==`.
 | `mp < 20%` | Player MP is below 20% of max MP. | `1[mp < 20%]` |
 | `mp > 40` | Flat MP threshold. | `4[mp > 40]` |
 
-Aliases: `mp`, `mana`. Comparisons: `<`, `<=`, `>`, `>=`, `==`.
+Aliases: `mp`, `mana`. Comparisons preserve strict and inclusive boundaries: `<`, `<=`, `>`, `>=`, `==`.
 
 ### 3.5. Target Health
 

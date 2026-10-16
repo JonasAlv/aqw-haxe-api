@@ -496,10 +496,10 @@ class SkillDslParser {
                     comp = "less";
                     valStr = StringTools.trim(after.substring(2));
                 } else if (StringTools.startsWith(after, ">")) {
-                    comp = "greater";
+                    comp = "strictGreater";
                     valStr = StringTools.trim(after.substring(1));
                 } else if (StringTools.startsWith(after, "<")) {
-                    comp = "less";
+                    comp = "strictLess";
                     valStr = StringTools.trim(after.substring(1));
                 } else if (StringTools.startsWith(after, "==")) {
                     comp = "equal";
@@ -562,10 +562,10 @@ class SkillDslParser {
                         comp = "less";
                         val = ApiUtils.parseFloat(StringTools.trim(after.substring(2)), 0.0);
                     } else if (StringTools.startsWith(after, ">")) {
-                        comp = "greater";
+                        comp = "strictGreater";
                         val = ApiUtils.parseFloat(StringTools.trim(after.substring(1)), 0.0);
                     } else if (StringTools.startsWith(after, "<")) {
-                        comp = "less";
+                        comp = "strictLess";
                         val = ApiUtils.parseFloat(StringTools.trim(after.substring(1)), 0.0);
                     }
                 }
@@ -647,10 +647,10 @@ class SkillDslParser {
             comp = "equal";
             valStr = StringTools.trim(s.substring(1));
         } else if (StringTools.startsWith(s, "<")) {
-            comp = "less";
+            comp = "strictLess";
             valStr = StringTools.trim(s.substring(1));
         } else if (StringTools.startsWith(s, ">")) {
-            comp = "greater";
+            comp = "strictGreater";
             valStr = StringTools.trim(s.substring(1));
         }
 
@@ -706,10 +706,10 @@ class SkillDslParser {
             comp = "less";
             valStr = StringTools.trim(trimmed.substring(2));
         } else if (StringTools.startsWith(trimmed, ">")) {
-            comp = "greater";
+            comp = "strictGreater";
             valStr = StringTools.trim(trimmed.substring(1));
         } else if (StringTools.startsWith(trimmed, "<")) {
-            comp = "less";
+            comp = "strictLess";
             valStr = StringTools.trim(trimmed.substring(1));
         } else if (StringTools.startsWith(trimmed, "==")) {
             comp = "equal";
@@ -773,10 +773,37 @@ class SkillDslParser {
             var to:Int = (r.timeout != null) ? ApiUtils.parseInt(r.timeout, 0) : 0;
             return "wait(" + to + "ms)";
         }
+        if (rtype == "Counter" || rtype == "TargetAction" || rtype == "Hit") {
+            var prefix:String = "counter";
+            var actionType:String = (r.actionType != null && Std.string(r.actionType) != "") ? Std.string(r.actionType).toLowerCase() : "";
+            if (actionType == "critical") actionType = "crit";
+            if (actionType != "") prefix += "=" + actionType;
+            var count:Int = (r.count != null) ? ApiUtils.parseInt(r.count, 0) : 0;
+            if (count > 0) return prefix + " x" + count;
+            var window:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
+            if (window <= 0) return prefix;
+            if (window >= 1000) {
+                var seconds:Float = window / 1000;
+                var secondsStr:String = (seconds == Std.int(seconds)) ? Std.string(Std.int(seconds)) : Std.string(Math.round(seconds * 1000) / 1000);
+                return prefix + " <= " + secondsStr + "s";
+            }
+            return prefix + " <= " + window;
+        }
+        if (rtype == "Cooldown" || rtype == "SkillCooldown" || rtype == "Ready") {
+            var skillId:Int = (r.skillId != null) ? ApiUtils.parseInt(r.skillId, -1) : -1;
+            var slot:String = (skillId >= 0 && skillId <= 5) ? ("(" + skillId + ")") : "";
+            if (r.isReadyCheck == true) {
+                var negated:Bool = (r.isNegated == true);
+                return ((negated ? "cd" : "!cd") + slot);
+            }
+            var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
+            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(Math.round(val * 1000) / 1000);
+            return "cd" + slot + " " + formatComparison(r.comparison) + " " + valStr + "s";
+        }
         if (rtype == "TargetHealth") {
             var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
             var isPct:Bool = (r.isPercentage == true);
-            var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<");
+            var comp:String = formatComparison(r.comparison);
             var unit:String = isPct ? "%" : "";
             var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
             return "tgt:hp " + comp + " " + valStr + unit;
@@ -784,7 +811,7 @@ class SkillDslParser {
         if (rtype == "PartyHealth") {
             var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
             var isPct:Bool = (r.isPercentage == true);
-            var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<");
+            var comp:String = formatComparison(r.comparison);
             var unit:String = isPct ? "%" : "";
             var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
             return "party:hp " + comp + " " + valStr + unit;
@@ -793,7 +820,7 @@ class SkillDslParser {
             var stat:String = (rtype == "Health") ? "hp" : "mp";
             var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
             var isPct:Bool = (r.isPercentage == true);
-            var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<");
+            var comp:String = formatComparison(r.comparison);
             var unit:String = isPct ? "%" : "";
             var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
             return stat + " " + comp + " " + valStr + unit;
@@ -802,7 +829,7 @@ class SkillDslParser {
             var target:String = (r.auraTarget != null && r.auraTarget != "") ? Std.string(r.auraTarget) : "self";
             var name:String = (r.auraName != null) ? Std.string(r.auraName) : "";
             var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
-            var comp:String = (r.comparison == "greater") ? ">" : (r.comparison == "equal" ? "=" : "<=");
+            var comp:String = formatComparison(r.comparison);
             var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(Math.round(val * 10) / 10);
             return "auraTime(" + target + ":" + name + ") " + comp + " " + valStr + "s";
         }
@@ -816,10 +843,20 @@ class SkillDslParser {
             } else if (comp == "greater" && val <= 0.5) {
                 return "aura(" + target + ":" + name + ")";
             } else {
-                var c:String = (comp == "greater") ? ">=" : "<=";
+                var c:String = formatComparison(comp);
                 return "aura(" + target + ":" + name + ") " + c + " " + val;
             }
         }
         return "";
+    }
+
+    private static function formatComparison(comparison:Dynamic):String {
+        return switch (Std.string(comparison)) {
+            case "greater", ">=": ">=";
+            case "strictGreater", ">": ">";
+            case "strictLess", "<": "<";
+            case "equal", "==", "=": "=";
+            default: "<=";
+        };
     }
 }

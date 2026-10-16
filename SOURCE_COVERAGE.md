@@ -49,6 +49,14 @@ chat, social/friends, guild, PvP, and housing. Payloads are kept unmodified beca
 AE_source notes some shapes are version-sensitive and the adapter should not fabricate
 a normalized DTO until the payload contract is validated.
 
+Combat responses documented in AE_source (`cb`, `ct`, `sar`, `sars`,
+`showAuraResult`, `anim`, `sAct`, `stu`, `event`, and `initMonData`) are surfaced
+through `GameEvent.COMBAT_UPDATED`. Its `data` is `{ command: String,
+payload: Dynamic }`; `payload` stays in the game's wire format. HScript scripts
+may optionally define `onCombatUpdated(data)` to receive these responses while
+running. `ct` is a recurring composite tick, so consumers should filter by
+`data.command` and retain only fields they need.
+
 ## Deliberate boundaries
 
 - No public wire-packet format is exposed; API consumers use domain-level methods.
