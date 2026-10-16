@@ -28,6 +28,12 @@ class ApiTimings {
     /** Quest accept / complete / turn-in. 1000ms server cooldown + 100ms lag margin. */
     public static inline var QUEST_ACTION_MS:Float = 1100;
 
+    /** Maximum wait before a quest action is treated as unacknowledged. */
+    public static inline var QUEST_ACK_TIMEOUT_MS:Float = 10000;
+
+    /** Poll interval while waiting for quest state to confirm an action. */
+    public static inline var QUEST_ACK_POLL_MS:Float = 100;
+
     /** Bank / unbank item transfers. Same 1000ms server floor plus margin. */
     public static inline var BANK_ACTION_MS:Float = 1100;
 
@@ -126,6 +132,9 @@ class ApiTimings {
     /** Equip-swap timeout: how long to wait for the avatar to finish swapping before giving up. */
     public static inline var EQUIP_TIMEOUT_MS:Float = 2500;
 
+    /** Poll interval used to confirm that the requested item reached equipped state. */
+    public static inline var EQUIP_ACK_POLL_MS:Float = 100;
+
     // -------------------------------------------------------------------------
     // Introspection
     // -------------------------------------------------------------------------
@@ -137,6 +146,8 @@ class ApiTimings {
     public static function all():Dynamic {
         return {
             questAction: QUEST_ACTION_MS,
+            questAckTimeout: QUEST_ACK_TIMEOUT_MS,
+            questAckPoll: QUEST_ACK_POLL_MS,
             bankAction: BANK_ACTION_MS,
             shopLoad: SHOP_LOAD_MS,
             buy: SHOP_BUY_MS,
@@ -161,6 +172,7 @@ class ApiTimings {
             bankLoadPoll: BANK_LOAD_POLL_MS,
             questRefresh: QUEST_REFRESH_MS,
             equipTimeout: EQUIP_TIMEOUT_MS,
+            equipAckPoll: EQUIP_ACK_POLL_MS,
             questDataLoad: QUEST_DATA_LOAD_MS
         };
     }

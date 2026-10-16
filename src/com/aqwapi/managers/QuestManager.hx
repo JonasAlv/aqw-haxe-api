@@ -24,6 +24,8 @@ class QuestManager {
     private var _actionQueue:Array<{type:String, questId:Int, itemId:Int}> = [];
     private var _queueTimer:Timer = null;
     private var _lastActionTime:Float = 0;
+    private var _pendingAccepts:Map<Int, Float> = new Map<Int, Float>();
+    private var _pendingCompletions:Map<Int, Float> = new Map<Int, Float>();
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -457,7 +459,7 @@ class QuestManager {
     public function accept(questId:Dynamic):Void {
         var qid:Int = resolveQuestId(questId);
         if (_game == null || _game.world == null || qid <= 0) return;
-        if (isInProgress(qid)) return;
+        if (isInProgress(qid) || isAcceptPending(qid)) return;
 
         for (task in _actionQueue) {
             if (task.type == "accept" && task.questId == qid) return;
@@ -480,7 +482,7 @@ class QuestManager {
     public function ensureAccept(questId:Dynamic):Void {
         var qid:Int = resolveQuestId(questId);
         if (qid <= 0) return;
-        if (!isAccepted(qid) && !isAcceptQueued(qid)) {
+        if (!isAccepted(qid) && !isAcceptPending(qid) && !isAcceptQueued(qid)) {
             if (!isLoaded(qid)) load(qid);
             accept(qid);
         }
@@ -489,7 +491,7 @@ class QuestManager {
     public function complete(questId:Dynamic, itemId:Dynamic = -1):Void {
         var qid:Int = resolveQuestId(questId);
         if (_game == null || _game.world == null || qid <= 0) return;
-        if (!isInProgress(qid)) return;
+        if (!isInProgress(qid) || isCompletePending(qid)) return;
 
         var resolvedItemId:Int = resolveRewardId(qid, itemId);
 
@@ -519,9 +521,7 @@ class QuestManager {
 
             complete(qid, actualItemId);
             if (actualCallback != null && Reflect.isFunction(actualCallback)) {
-                haxe.Timer.delay(function() {
-                    try { actualCallback(); } catch (e:Dynamic) {}
-                }, 300);
+                waitForCompletion(qid, actualCallback);
             }
             return true;
         }
@@ -582,6 +582,53 @@ class QuestManager {
         }
     }
 
+    /** True while an accept request is awaiting server-confirmed quest state. */
+    public function isAcceptPending(questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0 || !_pendingAccepts.exists(qid)) return false;
+        if (isInProgress(qid)) {
+            _pendingAccepts.remove(qid);
+            return false;
+        }
+        if (ApiTime.now() - _pendingAccepts.get(qid) >= ApiTimings.QUEST_ACK_TIMEOUT_MS) {
+            _pendingAccepts.remove(qid);
+            ApiLogger.warn("Quest", "Accept request for quest " + qid + " was not acknowledged before timeout.");
+            return false;
+        }
+        return true;
+    }
+
+    /** True while a turn-in request is awaiting server-confirmed completion state. */
+    public function isCompletePending(questId:Dynamic):Bool {
+        var qid:Int = resolveQuestId(questId);
+        if (qid <= 0 || !_pendingCompletions.exists(qid)) return false;
+        if (hasBeenCompleted(qid)) {
+            _pendingCompletions.remove(qid);
+            return false;
+        }
+        if (ApiTime.now() - _pendingCompletions.get(qid) >= ApiTimings.QUEST_ACK_TIMEOUT_MS) {
+            _pendingCompletions.remove(qid);
+            ApiLogger.warn("Quest", "Turn-in request for quest " + qid + " was not acknowledged before timeout.");
+            return false;
+        }
+        return true;
+    }
+
+    private function waitForCompletion(questId:Int, callback:Dynamic):Void {
+        var deadline:Float = ApiTime.now() + ApiTimings.QUEST_ACK_TIMEOUT_MS;
+        var poll:Void->Void = null;
+        poll = function():Void {
+            if (hasBeenCompleted(questId)) {
+                try { callback(); } catch (e:Dynamic) {}
+            } else if (ApiTime.now() < deadline) {
+                haxe.Timer.delay(poll, Std.int(ApiTimings.QUEST_ACK_POLL_MS));
+            } else {
+                ApiLogger.warn("Quest", "Completion callback timed out waiting for quest " + questId + " confirmation.");
+            }
+        };
+        poll();
+    }
+
     private function _pauseScriptIfRunning():Void {
         try {
             var engine = com.aqwapi.scripting.HScriptEngine.SINGLETON;
@@ -595,18 +642,18 @@ class QuestManager {
         if (_actionQueue.length == 0) return;
         if (_queueTimer != null && _queueTimer.running) return;
 
+        clearResolvedPendingActions();
+        if (hasPendingActions()) {
+            scheduleQueueCheck(ApiTimings.QUEST_ACK_POLL_MS);
+            return;
+        }
+
         var now = ApiTime.now();
         var elapsed = now - _lastActionTime;
         if (elapsed < ApiTimings.QUEST_ACTION_MS) {
             var waitMs = Std.int(ApiTimings.QUEST_ACTION_MS - elapsed);
             if (waitMs < 20) waitMs = 20;
-            if (_queueTimer != null) {
-                _queueTimer.stop();
-                _queueTimer.removeEventListener(TimerEvent.TIMER, onQueueTimer);
-            }
-            _queueTimer = new Timer(waitMs, 1);
-            _queueTimer.addEventListener(TimerEvent.TIMER, onQueueTimer, false, 0, true);
-            _queueTimer.start();
+            scheduleQueueCheck(waitMs);
             return;
         }
 
@@ -622,14 +669,33 @@ class QuestManager {
         }
 
         if (_actionQueue.length > 0) {
-            if (_queueTimer != null) {
-                _queueTimer.stop();
-                _queueTimer.removeEventListener(TimerEvent.TIMER, onQueueTimer);
-            }
-            _queueTimer = new Timer(ApiTimings.QUEST_ACTION_MS, 1);
-            _queueTimer.addEventListener(TimerEvent.TIMER, onQueueTimer, false, 0, true);
-            _queueTimer.start();
+            scheduleQueueCheck(ApiTimings.QUEST_ACTION_MS);
         }
+    }
+
+    private function hasPendingActions():Bool {
+        return _pendingAccepts.iterator().hasNext() || _pendingCompletions.iterator().hasNext();
+    }
+
+    private function clearResolvedPendingActions():Void {
+        var acceptIds:Array<Int> = [];
+        for (qid in _pendingAccepts.keys()) acceptIds.push(qid);
+        for (qid in acceptIds) isAcceptPending(qid);
+        var completeIds:Array<Int> = [];
+        for (qid in _pendingCompletions.keys()) completeIds.push(qid);
+        for (qid in completeIds) isCompletePending(qid);
+    }
+
+    private function scheduleQueueCheck(delayMs:Float):Void {
+        if (_queueTimer != null) {
+            _queueTimer.stop();
+            _queueTimer.removeEventListener(TimerEvent.TIMER, onQueueTimer);
+        }
+        var delay:Int = Std.int(delayMs);
+        if (delay < 20) delay = 20;
+        _queueTimer = new Timer(delay, 1);
+        _queueTimer.addEventListener(TimerEvent.TIMER, onQueueTimer, false, 0, true);
+        _queueTimer.start();
     }
 
     private function onQueueTimer(e:TimerEvent):Void {
@@ -659,19 +725,24 @@ class QuestManager {
             try {
                 _game.world.acceptQuest(questId);
                 accepted = true;
-            } catch (e:Dynamic) {}
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Quest", "Native accept request failed for quest " + questId + ": " + Std.string(e));
+            }
         }
 
         if (!accepted && _game.sfc != null) {
             try {
                 var curRoom:Dynamic = _game.world.curRoom;
                 _game.sfc.sendXtMessage("zm", "acceptQuest", [questId], "str", curRoom);
-                if (_game.world.questTree != null) {
-                    var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-                    if (qData != null) qData.status = "p";
-                }
-            } catch (e:Dynamic) {}
+                accepted = true;
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Quest", "Accept request could not be sent for quest " + questId + ": " + Std.string(e));
+            }
         }
+        if (!accepted) {
+            ApiLogger.warn("Quest", "Cannot accept quest " + questId + ": no request transport is available.");
+        }
+        if (accepted) _pendingAccepts.set(questId, ApiTime.now());
     }
 
     private function _executeComplete(questId:Int, itemId:Int = -1):Void {
@@ -696,13 +767,6 @@ class QuestManager {
             } catch (e:Dynamic) {}
         }
 
-        if (_game.world != null && _game.world.questTree != null) {
-            try {
-                var qData:Dynamic = Reflect.field(_game.world.questTree, Std.string(questId));
-                if (qData != null) qData.status = null;
-            } catch (e:Dynamic) {}
-        }
-
         if (_game.world.tryQuestComplete != null) {
             try {
                 if (itemId > 0) {
@@ -710,7 +774,12 @@ class QuestManager {
                 } else {
                     _game.world.tryQuestComplete(questId);
                 }
-            } catch (e:Dynamic) {}
+                _pendingCompletions.set(questId, ApiTime.now());
+            } catch (e:Dynamic) {
+                ApiLogger.warn("Quest", "Turn-in request failed for quest " + questId + ": " + Std.string(e));
+            }
+        } else {
+            ApiLogger.warn("Quest", "Cannot turn in quest " + questId + ": native request method is unavailable.");
         }
     }
 

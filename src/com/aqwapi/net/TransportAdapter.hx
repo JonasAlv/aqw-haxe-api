@@ -113,7 +113,7 @@ class TransportAdapter {
                     Api.map.recordJoinTime();
                 }
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.ZONE_ENTERED, dataObj));
-            case "getQuests", "getQuests2", "getQuest", "acceptQuest":
+            case "getQuests", "getQuests2", "getQuest", "acceptQuest", "updateQuest", "ccqr":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));
             case "cc", "chatm", "whisper", "em":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.CHAT_MESSAGE, dataObj));
@@ -125,7 +125,7 @@ class TransportAdapter {
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.PVP_UPDATED, dataObj));
             case "house", "loadHouseInventory", "interior", "guildhall", "guildinv":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.HOUSE_UPDATED, dataObj));
-            case "equipItem", "unequipItem", "buyItem", "sellItem", "getDrop", "bankFromInv", "bankToInv", "loadBank":
+            case "initInventory", "loadInventoryBig", "balance", "addGoldExp", "equipItem", "unequipItem", "buyItem", "sellItem", "dropItem", "getDrop", "bankFromInv", "bankToInv", "bankSwapInv", "loadBank", "forceAddItem", "monsterDrops":
                 if (cmd == "loadBank" && Api.inventory != null) {
                     Api.inventory.onBankLoaded();
                 }

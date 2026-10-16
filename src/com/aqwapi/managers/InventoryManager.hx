@@ -208,7 +208,7 @@ class InventoryManager {
             var bestMatch = _findItem(str);
             if (bestMatch == null) { resolve(null); return; }
             var bEquip:Dynamic = bestMatch.bEquip;
-            if (bEquip == 1 || bEquip == "1" || bEquip == true) { resolve(null); return; }
+            if (bEquip == 1 || bEquip == "1" || bEquip == true) { resolve(bestMatch); return; }
 
             // If it is a consumable / potion / scroll, delegate to equipUsable
             var sES:String = (bestMatch.sES != null) ? Std.string(bestMatch.sES).toLowerCase() : "";
@@ -222,23 +222,33 @@ class InventoryManager {
 
             var listener:Dynamic->Void = null;
             var timeoutTimer:Timer = null;
+            var deadline:Float = com.aqwapi.utils.ApiTime.now() + ApiTimings.EQUIP_TIMEOUT_MS;
 
             var cleanup = function() {
                 if (timeoutTimer != null) { timeoutTimer.stop(); timeoutTimer = null; }
                 Api.dispatcher.removeEventListener(GameEvent.INVENTORY_CHANGED, listener);
             };
 
+            var checkEquipped:Void->Void = null;
+            checkEquipped = function():Void {
+                if (isEquipped(str)) {
+                    cleanup();
+                    resolve(_findItem(str));
+                } else if (com.aqwapi.utils.ApiTime.now() >= deadline) {
+                    cleanup();
+                    resolve(null);
+                }
+            };
+
             listener = function(e:Dynamic) {
-                cleanup();
-                resolve(e);
+                // Inventory events are shared by unrelated operations; only resolve when this
+                // requested item is actually equipped in the live client state.
+                checkEquipped();
             };
 
             Api.dispatcher.addEventListener(GameEvent.INVENTORY_CHANGED, listener);
-            timeoutTimer = new Timer(ApiTimings.EQUIP_TIMEOUT_MS, 1);
-            timeoutTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
-                cleanup();
-                resolve(null);
-            });
+            timeoutTimer = new Timer(ApiTimings.EQUIP_ACK_POLL_MS);
+            timeoutTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) checkEquipped());
             timeoutTimer.start();
 
             if (_game.world != null && _game.world.sendEquipItemRequest != null) {
@@ -254,7 +264,13 @@ class InventoryManager {
     }
 
     public function equipWait(itemNameOrId:Dynamic, onComplete:Void->Void):Void {
-        equip(itemNameOrId).then(function(_:Dynamic) { if (onComplete != null) onComplete(); });
+        equip(itemNameOrId).then(function(result:Dynamic) {
+            if (result != null) {
+                if (onComplete != null) onComplete();
+            } else {
+                ApiLogger.warn("Inventory", "Equip did not reach confirmed equipped state for '" + Std.string(itemNameOrId) + "'.");
+            }
+        });
     }
 
     public function equipUsable(itemNameOrId:Dynamic):Void {
