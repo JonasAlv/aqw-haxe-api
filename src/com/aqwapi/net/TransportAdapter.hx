@@ -36,16 +36,24 @@ class TransportAdapter {
     public function send(namespaceId:String, command:String, args:Array<Dynamic>):Void {
         if (!_isListening && _game != null && _game.sfc != null) start();
         if (_game == null || _game.sfc == null) return;
+        var safeArgs:Array<Dynamic> = (args != null) ? args : [];
         var packet:String = "%xt%" + namespaceId + "%" + command + "%";
-        packet += args.join("%") + "%";
+        packet += safeArgs.join("%") + "%";
         _game.sfc.sendString(packet);
-        ApiLogger.debug("Transport", "Sent: " + packet);
+        // Do not log complete frames: arguments may contain private chat or other user data.
+        ApiLogger.debug("Transport", "Sent namespace=" + namespaceId + " command=" + command + " argCount=" + safeArgs.length);
     }
 
     public function sendExtensionCommand(command:String, args:Array<Dynamic>):Void {
         if (_game == null || _game.sfc == null) return;
-        var roomId:Dynamic = (_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : _game.sfc.myUserId;
-        var fullArgs:Array<Dynamic> = [roomId].concat(args);
+        // Extension commands use the active room id. A user id is not a valid fallback.
+        if (_game.sfc.activeRoomId == null) {
+            ApiLogger.warn("Transport", "Skipped extension command without an active room: " + command);
+            return;
+        }
+        var roomId:Dynamic = _game.sfc.activeRoomId;
+        var safeArgs:Array<Dynamic> = (args != null) ? args : [];
+        var fullArgs:Array<Dynamic> = [roomId].concat(safeArgs);
         send("zm", command, fullArgs);
     }
 
@@ -55,16 +63,20 @@ class TransportAdapter {
         var cmd:String = "";
         var dataObj:Dynamic = null;
 
+        var payload:Dynamic = event.params.dataObj;
         if (type == "json") {
-            cmd = Std.string(event.params.dataObj.cmd);
-            dataObj = event.params.dataObj;
+            if (payload != null && payload.cmd != null) cmd = Std.string(payload.cmd);
+            dataObj = payload;
         } else if (type == "str") {
-            var resObj:Array<Dynamic> = cast event.params.dataObj;
-            cmd = resObj[0];
-            dataObj = resObj;
+            if (payload != null) {
+                var resObj:Array<Dynamic> = cast payload;
+                if (resObj.length > 0 && resObj[0] != null) cmd = Std.string(resObj[0]);
+                dataObj = resObj;
+            }
         } else if (type == "xml") {
-            if (event.params.dataObj != null)
-                cmd = Std.string(event.params.dataObj.name);
+            // XML response command extraction is not established as stable in AE_source;
+            // keep the payload available to script listeners but don't guess a command.
+            dataObj = payload;
         }
 
         if (Api.hscript != null) {
@@ -84,8 +96,18 @@ class TransportAdapter {
                     Api.map.recordJoinTime();
                 }
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.ZONE_ENTERED, dataObj));
-            case "getQuests", "getQuests2", "getQuest", "acceptQuest", "cc":
+            case "getQuests", "getQuests2", "getQuest", "acceptQuest":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));
+            case "cc", "chatm", "whisper", "em":
+                Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.CHAT_MESSAGE, dataObj));
+            case "friends", "getfriendlist", "loadFriendsList", "requestFriend", "addFriend", "declineFriend", "deleteFriend", "updateFriend":
+                Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.SOCIAL_UPDATED, dataObj));
+            case "gi", "gd", "ga", "gr", "gMOTD", "updateGuild", "gc", "guildDelete":
+                Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.GUILD_UPDATED, dataObj));
+            case "PVPQ", "PVPI", "PVPE", "PVPS", "PVPC", "di", "DuelEX", "dungeonMTC":
+                Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.PVP_UPDATED, dataObj));
+            case "house", "loadHouseInventory", "interior", "guildhall", "guildinv":
+                Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.HOUSE_UPDATED, dataObj));
             case "equipItem", "unequipItem", "buyItem", "sellItem", "getDrop", "bankFromInv", "bankToInv", "loadBank":
                 if (cmd == "loadBank" && Api.inventory != null) {
                     Api.inventory.onBankLoaded();

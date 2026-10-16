@@ -6,6 +6,11 @@ class GameEvent extends Event {
     public static inline var ZONE_ENTERED:String = "zoneEntered";
     public static inline var QUEST_UPDATED:String = "questUpdated";
     public static inline var INVENTORY_CHANGED:String = "inventoryChanged";
+    public static inline var CHAT_MESSAGE:String = "chatMessage";
+    public static inline var SOCIAL_UPDATED:String = "socialUpdated";
+    public static inline var GUILD_UPDATED:String = "guildUpdated";
+    public static inline var PVP_UPDATED:String = "pvpUpdated";
+    public static inline var HOUSE_UPDATED:String = "houseUpdated";
 
     public var data:Dynamic;
 
