@@ -74,9 +74,12 @@ class TransportAdapter {
                 dataObj = resObj;
             }
         } else if (type == "xml") {
-            // XML response command extraction is not established as stable in AE_source;
-            // keep the payload available to script listeners but don't guess a command.
+            // Preserve the legacy XML command extraction for existing HScript consumers.
+            // Guard it because malformed/unexpected XML payloads must not break dispatch.
             dataObj = payload;
+            try {
+                if (payload != null && payload.name != null) cmd = Std.string(payload.name);
+            } catch (_:Dynamic) {}
         }
 
         if (Api.hscript != null) {
