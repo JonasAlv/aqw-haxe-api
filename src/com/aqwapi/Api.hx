@@ -28,6 +28,8 @@ class Api {
     public static var script(default, null):com.aqwapi.modules.ScriptManager = com.aqwapi.modules.ScriptManager.SINGLETON;
     public static var visual(default, null):VisualManager = new VisualManager(null);
     public static var party(default, null):PartyManager = new PartyManager(null);
+    public static var social(default, null):SocialManager = new SocialManager(null);
+    public static var pvp(default, null):PvpManager = new PvpManager(null);
 
     // Plural aliases
     public static var quests(get, never):QuestManager;
@@ -482,6 +484,8 @@ class Api {
         monster = new MonsterManager(game);
         enhancement = new EnhancementManager(game);
         party = new PartyManager(game);
+        social = new SocialManager(game);
+        pvp = new PvpManager(game);
         hscript = HScriptEngine.SINGLETON;
 
         if (visual != null) {

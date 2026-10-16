@@ -76,6 +76,8 @@ class ScriptBindings {
         registerLoggingAndSystem();
         registerVisualShortcuts();
         registerPartyShortcuts();
+        registerSocialShortcuts();
+        registerPvpShortcuts();
     }
 
     public static function registerAll(interp:ScriptInterp):Void {
@@ -1353,6 +1355,33 @@ class ScriptBindings {
         });
         bind("partyTarget", function(username:String):Bool {
             return (Api.party != null) ? Api.party.targetMember(username) : false;
+        });
+    }
+
+    private static function registerSocialShortcuts():Void {
+        bind("requestFriend", function(username:String):Bool {
+            return (Api.social != null) ? Api.social.requestFriend(username) : false;
+        });
+        bind("acceptFriend", function(username:String):Bool {
+            return (Api.social != null) ? Api.social.acceptFriend(username) : false;
+        });
+        bind("declineFriend", function(username:String):Bool {
+            return (Api.social != null) ? Api.social.declineFriend(username) : false;
+        });
+        bind("removeFriend", function(username:String):Bool {
+            return (Api.social != null) ? Api.social.removeFriend(username) : false;
+        });
+        bind("refreshFriends", function():Bool {
+            return (Api.social != null) ? Api.social.refreshFriends() : false;
+        });
+    }
+
+    private static function registerPvpShortcuts():Void {
+        bind("pvpQueue", function(queueName:String):Bool {
+            return (Api.pvp != null) ? Api.pvp.requestQueue(queueName) : false;
+        });
+        bind("pvpLeaveQueue", function():Bool {
+            return (Api.pvp != null) ? Api.pvp.leaveQueue() : false;
         });
     }
 
