@@ -30,6 +30,8 @@ class Api {
     public static var party(default, null):PartyManager = new PartyManager(null);
     public static var social(default, null):SocialManager = new SocialManager(null);
     public static var pvp(default, null):PvpManager = new PvpManager(null);
+    /** Freshness/availability metadata for game-backed state reads. */
+    public static var stateHealth(default, null):com.aqwapi.managers.StateHealth = com.aqwapi.managers.StateHealth.instance();
 
     // Plural aliases
     public static var quests(get, never):QuestManager;

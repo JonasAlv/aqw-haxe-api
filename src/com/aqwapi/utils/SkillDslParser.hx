@@ -3,11 +3,13 @@ package com.aqwapi.utils;
 class SkillDslParser {
     /** Diagnostics from the most recent full parse or sequence parse. */
     public static var lastErrors:Array<String> = [];
+    private static var _context:String = "";
 
     private static function addParseError(message:String):Void {
-        lastErrors.push(message);
+        var diagnostic = (_context != "" ? _context + ": " : "") + message;
+        lastErrors.push(diagnostic);
         #if flash
-        ApiLogger.warn("Skills", message);
+        ApiLogger.warn("Skills", diagnostic);
         #end
     }
 
@@ -23,6 +25,7 @@ class SkillDslParser {
      */
     public static function parse(txt:String):Dynamic {
         lastErrors = [];
+        _context = "";
         if (txt == null || txt.length == 0) return {};
 
         var result:Dynamic = {};
@@ -31,7 +34,9 @@ class SkillDslParser {
         var currentData:Dynamic = null;
 
         var lines:Array<String> = txt.split("\n");
+        var lineNumber:Int = 0;
         for (rawLine in lines) {
+            lineNumber++;
             var line:String = StringTools.trim(rawLine);
             if (line.length == 0 || StringTools.startsWith(line, "#") || StringTools.startsWith(line, "//")) {
                 continue;
@@ -39,6 +44,7 @@ class SkillDslParser {
 
             // Section header: [ClassName : ModeName] or [ClassName]
             if (StringTools.startsWith(line, "[") && StringTools.endsWith(line, "]")) {
+                _context = "line " + lineNumber;
                 var inner:String = line.substring(1, line.length - 1);
                 var colonIdx:Int = inner.indexOf(":");
                 if (colonIdx != -1) {
@@ -64,15 +70,30 @@ class SkillDslParser {
                         combo: ""
                     };
                     Reflect.setField(classObj, currentMode, currentData);
-                }
+                } else addParseError("Empty class or mode name in section header.");
                 continue;
             }
 
-            if (currentData == null) continue;
+            if (StringTools.startsWith(line, "[")) {
+                _context = "line " + lineNumber;
+                addParseError("Malformed section header; expected [ClassName] or [ClassName : ModeName].");
+                currentData = null;
+                continue;
+            }
+
+            if (currentData == null) {
+                _context = "line " + lineNumber;
+                addParseError("Ignoring setting outside a valid section.");
+                continue;
+            }
 
             // Key = Value
             var eqIdx:Int = line.indexOf("=");
-            if (eqIdx == -1) continue;
+            _context = "line " + lineNumber + " [" + currentClass + " : " + currentMode + "]";
+            if (eqIdx == -1) {
+                addParseError("Expected key = value.");
+                continue;
+            }
 
             var key:String = StringTools.trim(line.substring(0, eqIdx)).toLowerCase();
             var val:String = StringTools.trim(line.substring(eqIdx + 1));
@@ -113,9 +134,12 @@ class SkillDslParser {
                     var flat:Array<Dynamic> = [];
                     for (branch in parsedBranches) for (skill in branch) flat.push(skill);
                     currentData.skills = flat;
+                default:
+                    addParseError("Unknown setting '" + key + "'.");
             }
         }
 
+        _context = "";
         return result;
     }
 
@@ -144,6 +168,7 @@ class SkillDslParser {
      */
     public static function parseBranches(comboStr:String):Array<Array<Dynamic>> {
         lastErrors = [];
+        _context = "";
         return parseBranchesInternal(comboStr);
     }
 
@@ -209,9 +234,13 @@ class SkillDslParser {
 
         var tokens:Array<String> = splitCombo(seqStr);
 
+        var tokenNumber:Int = 0;
         for (token in tokens) {
+            tokenNumber++;
+            var parentContext = _context;
+            _context = (parentContext != "" ? parentContext + ", " : "") + "combo token " + tokenNumber;
             var part:String = StringTools.trim(token);
-            if (part.length == 0) continue;
+            if (part.length == 0) { _context = parentContext; continue; }
 
             var bracketStart:Int = part.indexOf("[");
             var bracketEnd:Int = part.lastIndexOf("]");
@@ -231,6 +260,7 @@ class SkillDslParser {
                 var skillObj:Dynamic = { skillId: sid };
                 if (sid < 0 || sid > 5) {
                     addParseError("Invalid skill slot '" + sidStr + "' in token '" + part + "'. Expected 0..5 or aa.");
+                    _context = parentContext;
                     continue;
                 }
                 if (trailing.length > 0) {
@@ -261,6 +291,7 @@ class SkillDslParser {
                     skills.push({ skillId: pPart });
                 }
             }
+            _context = parentContext;
         }
 
         return skills;

@@ -239,6 +239,14 @@ class MapManager {
         }
     }
 
+    /** Join and report once the requested map/cell is reflected by live client state. */
+    public function joinWithResult(mapName:String, cell:String, pad:String, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = 30000):Void {
+        var targetCell = (cell == null || cell == "") ? "Enter" : cell;
+        com.aqwapi.utils.ActionWaiter.run("join", function() join(mapName, cell, pad), function() {
+            return isMap(mapName) && (targetCell == "Enter" || isCell(targetCell));
+        }, callback, timeoutMs, 150);
+    }
+
     public function joinHouse(username:String = ""):Void {
         var g = _g();
         if (g == null || g.world == null) return;
@@ -474,6 +482,19 @@ class MapManager {
             _lastSpawnCell = curCell;
             Api.player.setSpawnPoint(curCell, curPad);
         }
+    }
+
+    /** Move to a cell and report only after the live location matches. */
+    public function jumpWithResult(cell:String, pad:String, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = 8000):Void {
+        if (cell == null || StringTools.trim(cell) == "") {
+            if (callback != null) callback(new com.aqwapi.data.ActionResult("move", "failed", "Cell is required.", 0));
+            return;
+        }
+        var expectedPad = pad;
+        com.aqwapi.utils.ActionWaiter.run("move", function() jump(cell, pad), function() {
+            if (!isCell(cell)) return false;
+            return expectedPad == null || expectedPad == "" || Api.player == null || Api.player.pad == null || Api.player.pad.toLowerCase() == expectedPad.toLowerCase();
+        }, callback, timeoutMs, 100);
     }
 
     public function jump(cell:String, pad:String = null, force:Bool = false, autoCorrect:Bool = true, clientOnly:Bool = false):Void {

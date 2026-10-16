@@ -273,6 +273,33 @@ class InventoryManager {
         });
     }
 
+    /** Result-bearing counterpart to equipWait; reports success or timeout to HScript. */
+    public function equipWithResult(itemNameOrId:Dynamic, callback:com.aqwapi.data.ActionResult->Void):Void {
+        var itemName = Std.string(itemNameOrId);
+        if (_findItem(itemName) == null) {
+            if (callback != null) callback(new com.aqwapi.data.ActionResult("equip", "failed", "Item is not in inventory.", 0));
+            return;
+        }
+        var item:Dynamic = _findItem(itemName);
+        var sES = (item.sES != null) ? Std.string(item.sES).toLowerCase() : "";
+        var sType = (item.sType != null) ? Std.string(item.sType).toLowerCase() : "";
+        if (sES == "co" || sType == "item" || sType == "serveruse" || item.bU == 1 || item.bU == "1" || item.bU == true) {
+            if (callback != null) callback(new com.aqwapi.data.ActionResult("equip", "failed", "This is a usable item, not equipment; the API cannot confirm its use as an equip action.", 0));
+            return;
+        }
+        if (_game == null || (_game.world == null || _game.world.sendEquipItemRequest == null) && _game.sfc == null) {
+            if (callback != null) callback(new com.aqwapi.data.ActionResult("equip", "failed", "No equipped-item request channel is available.", 0));
+            return;
+        }
+        var started = com.aqwapi.utils.ApiTime.now();
+        equip(itemNameOrId).then(function(result:Dynamic) {
+            var ok = result != null && isEquipped(itemName);
+            if (callback != null) callback(new com.aqwapi.data.ActionResult("equip", ok ? "success" : "timeout",
+                ok ? "Item is equipped." : ("Could not confirm equipped state within " + Std.int(com.aqwapi.utils.ApiTimings.EQUIP_TIMEOUT_MS) + "ms."),
+                com.aqwapi.utils.ApiTime.now() - started));
+        });
+    }
+
     public function equipUsable(itemNameOrId:Dynamic):Void {
         var str = Std.string(itemNameOrId);
         var item = _findItem(str);

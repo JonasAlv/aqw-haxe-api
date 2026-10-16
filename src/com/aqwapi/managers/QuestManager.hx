@@ -470,6 +470,16 @@ class QuestManager {
         processQueue();
     }
 
+    /** Accept and report only after live quest state shows the quest active. */
+    public function acceptWithResult(questId:Dynamic, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = 15000):Void {
+        var qid = resolveQuestId(questId);
+        if (qid <= 0) {
+            if (callback != null) callback(new com.aqwapi.data.ActionResult("acceptQuest", "failed", "Invalid quest id.", 0));
+            return;
+        }
+        com.aqwapi.utils.ActionWaiter.run("acceptQuest", function() { accept(qid); }, function() { return isInProgress(qid); }, callback, timeoutMs, 150);
+    }
+
     public function acceptMultiple(questIds:Dynamic):Void {
         if (questIds == null) return;
         var rawList:Array<Dynamic> = Std.isOfType(questIds, Array) ? (cast questIds:Array<Dynamic>) : [questIds];
@@ -502,6 +512,16 @@ class QuestManager {
         _actionQueue.push({type: "complete", questId: qid, itemId: resolvedItemId});
         _pauseScriptIfRunning();
         processQueue();
+    }
+
+    /** Turn in and report only after the quest completion value is visible in client state. */
+    public function completeWithResult(questId:Dynamic, itemId:Dynamic, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = 15000):Void {
+        var qid = resolveQuestId(questId);
+        if (qid <= 0) {
+            if (callback != null) callback(new com.aqwapi.data.ActionResult("completeQuest", "failed", "Invalid quest id.", 0));
+            return;
+        }
+        com.aqwapi.utils.ActionWaiter.run("completeQuest", function() { complete(qid, itemId); }, function() { return isCompleted(qid); }, callback, timeoutMs, 150);
     }
 
     public function ensureComplete(questId:Dynamic, itemIdOrCallback:Dynamic = -1, ?callback:Dynamic):Bool {

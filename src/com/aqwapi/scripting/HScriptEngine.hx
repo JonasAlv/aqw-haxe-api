@@ -351,16 +351,28 @@ class HScriptEngine {
     }
 
     private function _handleScriptError(msg:String, err:Dynamic = null):Void {
+        var scriptName = (Api.script != null && Api.script.activeScriptName != null && Api.script.activeScriptName != "")
+            ? " [" + Api.script.activeScriptName + "]" : "";
+        msg = "script" + scriptName + ": " + msg;
         var fullMsg = msg;
         if (err != null) {
             try {
-                var stack:String = (Reflect.field(err, "getStackTrace") != null) ? (untyped err).getStackTrace() : "";
+                var stack:String = "";
+                var getStack = Reflect.field(err, "getStackTrace");
+                if (Reflect.isFunction(getStack)) stack = Std.string(Reflect.callMethod(err, getStack, []));
+                if ((stack == null || stack == "" || stack == "null") && Reflect.field(err, "stackTrace") != null) stack = Std.string(Reflect.field(err, "stackTrace"));
+                if ((stack == null || stack == "" || stack == "null") && Reflect.field(err, "stack") != null) stack = Std.string(Reflect.field(err, "stack"));
                 if (stack != null && stack != "") fullMsg += "\n" + stack;
             } catch (e:Dynamic) {}
+            try {
+                var line = Reflect.field(err, "lineNumber");
+                if (line == null) line = Reflect.field(err, "line");
+                if (line != null) fullMsg += " (line " + Std.string(line) + ")";
+            } catch (_:Dynamic) {}
         }
         ApiLogger.error("HScript", fullMsg);
-        statusText = "Error: " + msg;
         Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, "HScript Error: " + msg));
         stop();
+        statusText = "Error: " + msg;
     }
 }

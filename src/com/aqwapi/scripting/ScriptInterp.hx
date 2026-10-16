@@ -12,6 +12,7 @@ class ScriptInterp extends Interp {
         switch (id) {
             case "api", "bot", "Api", "Bot": return Api;
             case "player": return Api.player;
+            case "stateHealth": return Api.stateHealth;
             case "combat": return Api.combat;
             case "map": return Api.map;
             case "quests": return Api.quest;
