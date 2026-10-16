@@ -1,6 +1,16 @@
 package com.aqwapi.utils;
 
 class SkillDslParser {
+    /** Diagnostics from the most recent full parse or sequence parse. */
+    public static var lastErrors:Array<String> = [];
+
+    private static function addParseError(message:String):Void {
+        lastErrors.push(message);
+        #if flash
+        ApiLogger.warn("Skills", message);
+        #end
+    }
+
     /**
      * Parses the 1-liner combo DSL text format into the exact structure
      * expected by CombatEngine (_skillsData).
@@ -12,6 +22,7 @@ class SkillDslParser {
      *   combo = 1 > 2[hp < 50%] > 3[!aura(self:Buff)] > 4[mp < 10%]
      */
     public static function parse(txt:String):Dynamic {
+        lastErrors = [];
         if (txt == null || txt.length == 0) return {};
 
         var result:Dynamic = {};
@@ -97,8 +108,11 @@ class SkillDslParser {
 
                 case "combo", "skills", "rotation":
                     currentData.combo = val;
-                    currentData.branches = parseBranches(val);
-                    currentData.skills = parseCombo(val);
+                    var parsedBranches:Array<Array<Dynamic>> = parseBranchesInternal(val);
+                    currentData.branches = parsedBranches;
+                    var flat:Array<Dynamic> = [];
+                    for (branch in parsedBranches) for (skill in branch) flat.push(skill);
+                    currentData.skills = flat;
             }
         }
 
@@ -129,12 +143,17 @@ class SkillDslParser {
      * Each sub-rotation is an Array of skill objects.
      */
     public static function parseBranches(comboStr:String):Array<Array<Dynamic>> {
+        lastErrors = [];
+        return parseBranchesInternal(comboStr);
+    }
+
+    private static function parseBranchesInternal(comboStr:String):Array<Array<Dynamic>> {
         var branches:Array<Array<Dynamic>> = [];
         if (comboStr == null || comboStr.length == 0) return branches;
 
         var branchStrs:Array<String> = splitBranches(comboStr);
         for (bStr in branchStrs) {
-            var bSkills:Array<Dynamic> = parseSequence(bStr);
+            var bSkills:Array<Dynamic> = parseSequenceInternal(bStr);
             if (bSkills != null && bSkills.length > 0) {
                 branches.push(bSkills);
             }
@@ -180,6 +199,11 @@ class SkillDslParser {
      * Parses a single sequence of skills separated by '>' (e.g. "0[!aura(self:Buff)] > 2 > 3").
      */
     public static function parseSequence(seqStr:String):Array<Dynamic> {
+        lastErrors = [];
+        return parseSequenceInternal(seqStr);
+    }
+
+    private static function parseSequenceInternal(seqStr:String):Array<Dynamic> {
         var skills:Array<Dynamic> = [];
         if (seqStr == null || seqStr.length == 0) return skills;
 
@@ -195,6 +219,7 @@ class SkillDslParser {
             if (bracketStart != -1 && bracketEnd > bracketStart) {
                 var sidStr:String = StringTools.trim(part.substring(0, bracketStart));
                 var rulesStr:String = StringTools.trim(part.substring(bracketStart + 1, bracketEnd));
+                var trailing:String = StringTools.trim(part.substring(bracketEnd + 1));
                 var sid:Int = 1;
                 if (sidStr.toLowerCase() == "aa") {
                     sid = 0;
@@ -203,31 +228,24 @@ class SkillDslParser {
                     sid = (pSid != null) ? pSid : 1;
                 }
 
-                var isOr:Bool = (rulesStr.indexOf("|") != -1);
-                var ruleSep:String = isOr ? "|" : "&";
-                var rawRules:Array<String> = rulesStr.split(ruleSep);
-
-                var ruleObjs:Array<Dynamic> = [];
-                for (rr in rawRules) {
-                    var rTrimmed:String = StringTools.trim(rr);
-                    if (rTrimmed.length == 0) continue;
-                    var rObj:Dynamic = parseRule(rTrimmed);
-                    if (rObj != null) {
-                        ruleObjs.push(rObj);
-                    } else {
-                        #if flash
-                        ApiLogger.warn("Skills", "Unrecognised condition '" + rTrimmed
-                            + "' in sequence '" + seqStr + "' - ignored.");
-                        #end
-                    }
-                }
-
                 var skillObj:Dynamic = { skillId: sid };
-                if (ruleObjs.length > 0) {
-                    skillObj.rules = ruleObjs;
-                    if (ruleObjs.length > 1) {
-                        skillObj.isMultiAura = true;
-                        skillObj.multiAuraOperator = isOr ? "OR" : "AND";
+                if (sid < 0 || sid > 5) {
+                    addParseError("Invalid skill slot '" + sidStr + "' in token '" + part + "'. Expected 0..5 or aa.");
+                    continue;
+                }
+                if (trailing.length > 0) {
+                    addParseError("Unexpected text after condition list in token '" + part + "'. The affected skill will be disabled.");
+                    skillObj.invalidRules = true;
+                } else {
+                    var expression:Dynamic = parseConditionExpression(rulesStr);
+                    if (expression == null) {
+                        addParseError("Empty condition list in token '" + part + "'.");
+                        skillObj.invalidRules = true;
+                    } else if (expression.type == "Invalid") {
+                        skillObj.invalidRules = true;
+                    } else {
+                        skillObj.rules = [expression];
+                        skillObj.multiAuraOperator = "AND";
                     }
                 }
                 skills.push(skillObj);
@@ -236,12 +254,115 @@ class SkillDslParser {
                     skills.push({ skillId: 0 });
                 } else {
                     var pPart:Null<Int> = Std.parseInt(part);
-                    skills.push({ skillId: (pPart != null) ? pPart : 1 });
+                    if (pPart == null || pPart < 0 || pPart > 5) {
+                        addParseError("Invalid skill token '" + part + "'. Expected 0..5 or aa, optionally followed by conditions in [...].");
+                        continue;
+                    }
+                    skills.push({ skillId: pPart });
                 }
             }
         }
 
         return skills;
+    }
+
+    /** Parses boolean conditions with standard precedence: `&` binds more tightly than `|`. */
+    private static function parseConditionExpression(text:String):Dynamic {
+        var expr:String = unwrapConditionGroup(StringTools.trim(text));
+        var ors:Array<String> = splitCondition(expr, "|");
+        if (ors.length > 1) {
+            var children:Array<Dynamic> = [];
+            for (part in ors) {
+                var child:Dynamic = parseConditionAnd(part);
+                if (child == null || child.type == "Invalid") return {type: "Invalid"};
+                children.push(child);
+            }
+            return {type: "ConditionGroup", operator: "OR", rules: children};
+        }
+        return parseConditionAnd(expr);
+    }
+
+    private static function parseConditionAnd(text:String):Dynamic {
+        var parts:Array<String> = splitCondition(text, "&");
+        if (parts.length > 1) {
+            var children:Array<Dynamic> = [];
+            for (part in parts) {
+                var child:Dynamic = parseConditionExpression(part);
+                if (child == null || child.type == "Invalid") return {type: "Invalid"};
+                children.push(child);
+            }
+            return {type: "ConditionGroup", operator: "AND", rules: children};
+        }
+        var atom:String = unwrapConditionGroup(StringTools.trim(text));
+        var rule:Dynamic = parseRule(atom);
+        if (rule == null) {
+            addParseError("Unrecognised or malformed combat condition '" + atom + "'. The affected skill will be disabled.");
+            return {type: "Invalid"};
+        }
+        return rule;
+    }
+
+    /** Splits only boolean operators outside explicit groups and function-call arguments. */
+    private static function splitCondition(text:String, separator:String):Array<String> {
+        var out:Array<String> = [];
+        var start:Int = 0;
+        var groupDepth:Int = 0;
+        var functionDepth:Int = 0;
+        var i:Int = 0;
+        while (i < text.length) {
+            var c:String = text.charAt(i);
+            if (c == "(") {
+                if (isFunctionParen(text, i)) functionDepth++;
+                else groupDepth++;
+            } else if (c == ")") {
+                if (functionDepth > 0) functionDepth--;
+                else if (groupDepth > 0) groupDepth--;
+            } else if (c == separator && groupDepth == 0 && functionDepth == 0) {
+                out.push(StringTools.trim(text.substring(start, i)));
+                start = i + 1;
+            }
+            i++;
+        }
+        out.push(StringTools.trim(text.substring(start)));
+        return out;
+    }
+
+    private static function isFunctionParen(text:String, at:Int):Bool {
+        if (at <= 0) return false;
+        var prev:Int = text.charCodeAt(at - 1);
+        return (prev >= 48 && prev <= 57) || (prev >= 65 && prev <= 90) ||
+            (prev >= 97 && prev <= 122) || prev == 95;
+    }
+
+    /** Removes one or more wrapping groups only when they enclose the entire expression. */
+    private static function unwrapConditionGroup(text:String):String {
+        var out:String = StringTools.trim(text);
+        var changed:Bool = true;
+        while (changed && out.length >= 2 && out.charAt(0) == "(") {
+            changed = false;
+            var depth:Int = 0;
+            var functionDepth:Int = 0;
+            var encloses:Bool = true;
+            for (i in 0...out.length) {
+                var c:String = out.charAt(i);
+                if (c == "(") {
+                    if (isFunctionParen(out, i)) functionDepth++;
+                    else depth++;
+                } else if (c == ")") {
+                    if (functionDepth > 0) functionDepth--;
+                    else if (depth > 0) depth--;
+                    if (depth == 0 && functionDepth == 0 && i < out.length - 1) {
+                        encloses = false;
+                        break;
+                    }
+                }
+            }
+            if (encloses && depth == 0 && out.charAt(out.length - 1) == ")") {
+                out = StringTools.trim(out.substring(1, out.length - 1));
+                changed = true;
+            }
+        }
+        return out;
     }
 
     /**
@@ -289,6 +410,20 @@ class SkillDslParser {
             }
         }
         return true;
+    }
+
+    private static function isNumericValue(s:String):Bool {
+        if (s == null || s.length == 0) return false;
+        var start:Int = (s.charAt(0) == "-" || s.charAt(0) == "+") ? 1 : 0;
+        var digits:Int = 0;
+        var dots:Int = 0;
+        for (i in start...s.length) {
+            var c:Int = s.charCodeAt(i);
+            if (c >= 48 && c <= 57) digits++;
+            else if (c == 46 && dots == 0) dots++;
+            else return false;
+        }
+        return digits > 0;
     }
 
     /**
@@ -451,6 +586,29 @@ class SkillDslParser {
             var sub:String = StringTools.trim(r.substring(2));
             if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
             return parseStatRule("Mana", sub);
+        }
+
+        // Tests whether this skill's target is inside the game's observed action range.
+        if (lower == "inrange" || lower == "in_range" || StringTools.startsWith(lower, "inrange(") || StringTools.startsWith(lower, "in_range(")) {
+            var slot:Int = -1;
+            var open:Int = lower.indexOf("(");
+            if (open >= 0 && !StringTools.endsWith(lower, ")")) {
+                addParseError("Malformed inrange condition '" + r + "'.");
+                return {type: "Invalid"};
+            }
+            if (open >= 0) {
+                var rawSlot:String = StringTools.trim(lower.substring(open + 1, lower.length - 1));
+                if (rawSlot == "aa") slot = 0;
+                else {
+                    var parsedSlot:Null<Int> = Std.parseInt(rawSlot);
+                    if (parsedSlot == null || parsedSlot < 0 || parsedSlot > 5) {
+                        addParseError("Invalid inrange slot in condition '" + r + "'. Expected 0..5 or aa.");
+                        return {type: "Invalid"};
+                    }
+                    slot = parsedSlot;
+                }
+            }
+            return {type: "InRange", skillId: slot};
         }
 
         // 6. Aura Timer / Remaining: auraTime(self:Name) <= 1.5s, auraRemaining(target:Name) < 2s
@@ -698,23 +856,30 @@ class SkillDslParser {
         var trimmed:String = StringTools.trim(expr);
         var comp:String = "greater";
         var valStr:String = "";
+        var hasOperator:Bool = false;
 
         if (StringTools.startsWith(trimmed, ">=")) {
+            hasOperator = true;
             comp = "greater";
             valStr = StringTools.trim(trimmed.substring(2));
         } else if (StringTools.startsWith(trimmed, "<=")) {
+            hasOperator = true;
             comp = "less";
             valStr = StringTools.trim(trimmed.substring(2));
         } else if (StringTools.startsWith(trimmed, ">")) {
+            hasOperator = true;
             comp = "strictGreater";
             valStr = StringTools.trim(trimmed.substring(1));
         } else if (StringTools.startsWith(trimmed, "<")) {
+            hasOperator = true;
             comp = "strictLess";
             valStr = StringTools.trim(trimmed.substring(1));
         } else if (StringTools.startsWith(trimmed, "==")) {
+            hasOperator = true;
             comp = "equal";
             valStr = StringTools.trim(trimmed.substring(2));
         } else if (StringTools.startsWith(trimmed, "=")) {
+            hasOperator = true;
             comp = "equal";
             valStr = StringTools.trim(trimmed.substring(1));
         }
@@ -723,6 +888,11 @@ class SkillDslParser {
         var cleanStr:String = StringTools.replace(valStr, "%", "");
         cleanStr = StringTools.replace(cleanStr.toLowerCase(), "hp", "");
         cleanStr = StringTools.replace(cleanStr.toLowerCase(), "mp", "");
+
+        if (!hasOperator || !isNumericValue(StringTools.trim(cleanStr))) {
+            addParseError("Malformed " + type + " condition '" + expr + "'. Use a comparison and numeric threshold.");
+            return {type: "Invalid"};
+        }
 
         var val:Float = ApiUtils.parseFloat(StringTools.trim(cleanStr), 0.0);
 
@@ -769,9 +939,25 @@ class SkillDslParser {
         if (r == null) return "";
         var rtype:String = (r.type != null) ? Std.string(r.type) : "";
         if (rtype == "None" || rtype == "") return "";
+        if (rtype == "ConditionGroup") {
+            if (!Std.isOfType(r.rules, Array)) return "";
+            var children:Array<Dynamic> = cast r.rules;
+            var childStrings:Array<String> = [];
+            for (child in children) {
+                var childText:String = formatRule(child);
+                if (childText == "") return "";
+                childStrings.push(childText);
+            }
+            var op:String = (Std.string(r.operator).toUpperCase() == "OR") ? " | " : " & ";
+            return "(" + childStrings.join(op) + ")";
+        }
         if (rtype == "Wait") {
             var to:Int = (r.timeout != null) ? ApiUtils.parseInt(r.timeout, 0) : 0;
             return "wait(" + to + "ms)";
+        }
+        if (rtype == "InRange") {
+            var slot:Int = (r.skillId != null) ? ApiUtils.parseInt(r.skillId, -1) : -1;
+            return (slot >= 0) ? ("inrange(" + slot + ")") : "inrange";
         }
         if (rtype == "Counter" || rtype == "TargetAction" || rtype == "Hit") {
             var prefix:String = "counter";

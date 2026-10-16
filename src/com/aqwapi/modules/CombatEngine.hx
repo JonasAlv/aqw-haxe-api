@@ -513,6 +513,14 @@ class CombatEngine {
         return false;
     }
 
+    /** Public DSL-facing wrapper around the client-compatible action range calculation. */
+    public static function isTargetInRange(world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int):Bool {
+        if (skillId < 0 || skillId > 5) return false;
+        var act:Dynamic = SkillCaster.getSkillAction(skillId);
+        if (act == null) return false;
+        return targetWithinActionRange(world, avatar, target, act);
+    }
+
     /**
      * Asks the game to walk toward the current target, without requesting an Auto Attack.
      *

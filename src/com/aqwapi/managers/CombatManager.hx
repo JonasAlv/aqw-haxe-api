@@ -20,6 +20,8 @@ class CombatManager {
     public var autoPotionName:String = null;
     public var autoPotionIntervalMs:Float = 15000;
     public var autoPotionHpThreshold:Float = 0;
+    /** Opt in to high-frequency `ct` response events; raw packets remain available through `onPacket`. */
+    public var emitCombatTickEvents:Bool = false;
     private var _lastPotionUseTime:Float = 0;
 
     private var _infiniteRange:Bool = true;

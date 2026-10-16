@@ -54,8 +54,9 @@ Combat responses documented in AE_source (`cb`, `ct`, `sar`, `sars`,
 through `GameEvent.COMBAT_UPDATED`. Its `data` is `{ command: String,
 payload: Dynamic }`; `payload` stays in the game's wire format. HScript scripts
 may optionally define `onCombatUpdated(data)` to receive these responses while
-running. `ct` is a recurring composite tick, so consumers should filter by
-`data.command` and retain only fields they need.
+running. `ct` is opt-in via `Api.combat.emitCombatTickEvents` (off by default)
+because it is a recurring composite tick; raw `ct` packets remain available to
+scripts through `onPacket`.
 
 ## Deliberate boundaries
 

@@ -18,21 +18,35 @@ class SkillRules {
      * hard lock, so the normal skip behaviour still applies to it.
      */
     public static function hasHardLockRule(skill:Dynamic):Bool {
+        if (skill != null && skill.invalidRules == true) return false;
         if (skill == null || !Std.isOfType(skill.rules, Array)) return false;
         var rules:Array<Dynamic> = cast skill.rules;
         for (r in rules) {
-            if (r == null) continue;
-            var t:String = (r.type != null) ? Std.string(r.type).toLowerCase() : "";
-            if (t != "counter" && t != "targetaction" && t != "hit") continue;
-            // A count form is a hard lock too: it waits for N attacks, so the slot must not be skipped.
-            if (r.count != null && Std.int(r.count) > 0) return true;
-            var v:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0) : 0;
-            if (v <= 0) return true;
+            if (containsHardLockRule(r)) return true;
         }
         return false;
     }
 
+    private static function containsHardLockRule(rule:Dynamic):Bool {
+        if (rule == null) return false;
+        if (Std.string(rule.type) == "ConditionGroup") {
+            if (!Std.isOfType(rule.rules, Array)) return false;
+            var children:Array<Dynamic> = cast rule.rules;
+            for (child in children) {
+                if (containsHardLockRule(child)) return true;
+            }
+            return false;
+        }
+        var t:String = (rule.type != null) ? Std.string(rule.type).toLowerCase() : "";
+        if (t != "counter" && t != "targetaction" && t != "hit") return false;
+        // A count form is a hard lock too: it waits for N attacks, so the slot must not be skipped.
+        if (rule.count != null && Std.int(rule.count) > 0) return true;
+        var v:Float = (rule.value != null) ? ApiUtils.parseFloat(rule.value, 0) : 0;
+        return v <= 0;
+    }
+
     public static function evaluateSkillRules(skill:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, skillId:Int, waitUntil:Dynamic):Bool {
+        if (skill != null && skill.invalidRules == true) return false;
         if (skill == null || skill.rules == null) return true;
         var rules:Dynamic = skill.rules;
         if (!Std.isOfType(rules, Array)) return true;
@@ -62,6 +76,25 @@ class SkillRules {
     public static function evaluateRule(rule:Dynamic, world:Dynamic, avatar:Dynamic, target:Dynamic, pStats:Dynamic, skillId:Int, waitUntil:Dynamic):Bool {
         if (rule == null) return true;
         switch (Std.string(rule.type)) {
+            case "Invalid":
+                return false;
+
+            case "ConditionGroup":
+                if (!Std.isOfType(rule.rules, Array)) return false;
+                var children:Array<Dynamic> = cast rule.rules;
+                var isOr:Bool = (Std.string(rule.operator).toUpperCase() == "OR");
+                if (children.length == 0) return false;
+                if (isOr) {
+                    for (child in children) {
+                        if (evaluateRule(child, world, avatar, target, pStats, skillId, waitUntil)) return true;
+                    }
+                    return false;
+                }
+                for (child in children) {
+                    if (!evaluateRule(child, world, avatar, target, pStats, skillId, waitUntil)) return false;
+                }
+                return true;
+
             case "None":
                 return true;
 
@@ -105,12 +138,18 @@ class SkillRules {
                 return compare(currentVal, targetVal, Std.string(rule.comparison));
 
             case "Mana":
-                var mp:Float = getStat(pStats, avatar, "MP");
-                var maxMp:Float = getStat(pStats, avatar, "MaxMP");
+                var current:Float = getStat(pStats, avatar, "MP");
+                var maximum:Float = getStat(pStats, avatar, "MaxMP");
                 var targetVal:Float = ApiUtils.parseFloat(rule.value, 0);
                 var isPct:Bool = (rule.isPercentage == true);
-                var currentVal:Float = isPct ? (maxMp > 0 ? (mp / maxMp * 100) : 0) : mp;
+                if (isPct && maximum <= 0) return false;
+                var currentVal:Float = isPct ? (current / maximum * 100) : current;
                 return compare(currentVal, targetVal, Std.string(rule.comparison));
+
+            case "InRange":
+                if (target == null) return false;
+                var rangeSlot:Int = (rule.skillId != null && rule.skillId >= 0) ? ApiUtils.parseInt(rule.skillId, skillId) : skillId;
+                return com.aqwapi.modules.CombatEngine.isTargetInRange(world, avatar, target, rangeSlot);
 
             case "PartyHealth":
                 return evaluatePartyHealth(rule, world, avatar);

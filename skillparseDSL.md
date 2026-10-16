@@ -88,7 +88,18 @@ Aliases: `hp`, `health`. Comparisons preserve strict and inclusive boundaries: `
 
 Aliases: `mp`, `mana`. Comparisons preserve strict and inclusive boundaries: `<`, `<=`, `>`, `>=`, `==`.
 
-### 3.5. Target Health
+### 3.5. Action Range
+
+`inrange` checks the range of the current skill against the selected target. A slot may be specified explicitly:
+
+```text
+2[inrange]
+3[inrange(4)]
+```
+
+This mirrors the API's client-compatible reach calculation; the game's own action validation still decides whether the action can be sent.
+
+### 3.6. Target Health
 
 | Rule Syntax | Description | Example |
 | :--- | :--- | :--- |
@@ -98,7 +109,7 @@ Aliases: `mp`, `mana`. Comparisons preserve strict and inclusive boundaries: `<`
 
 Aliases: `tgt:hp`, `target:hp`, `target_hp`, `target.hp`, `mon:hp`, `tgt:health`, `target:health`.
 
-### 3.6. Party Health
+### 3.7. Party Health
 
 | Rule Syntax | Description | Example |
 | :--- | :--- | :--- |
@@ -106,7 +117,7 @@ Aliases: `tgt:hp`, `target:hp`, `target_hp`, `target.hp`, `mon:hp`, `tgt:health`
 
 Aliases: `party:hp`, `party_hp`, `party.hp`, `party:health`.
 
-### 3.7. Counter & Reaction (Incoming Enemy Attacks)
+### 3.8. Counter & Reaction (Incoming Enemy Attacks)
 
 Used for classes with riposte, dodge, or reactionary counters:
 
@@ -119,13 +130,13 @@ Used for classes with riposte, dodge, or reactionary counters:
 
 Aliases: `counter`, `hit`, `attacked`, `mobattack`.
 
-### 3.8. Artificial Delays
+### 3.9. Artificial Delays
 
 | Rule Syntax | Description | Example |
 | :--- | :--- | :--- |
 | `wait(500ms)` | Waits 500 milliseconds before allowing this skill to fire. | `2[wait(500ms)]` |
 
-### 3.9. Skill Cooldown & Readiness Checks
+### 3.10. Skill Cooldown & Readiness Checks
 
 Allows checking if a skill is ready to fire or currently on cooldown:
 
@@ -150,9 +161,7 @@ Allows checking if a skill is ready to fire or currently on cooldown:
 
 ## 4. Logical Operators Inside Brackets
 
-You can combine multiple conditions on a single skill using:
-- **`&` (AND)**: All conditions must pass.
-- **`|` (OR)**: At least one condition must pass.
+You can combine conditions with `&` (AND) and `|` (OR). AND binds more tightly than OR; use parentheses to make mixed conditions clear.
 
 ### Examples:
 ```text
@@ -164,6 +173,9 @@ You can combine multiple conditions on a single skill using:
 
 // Cast emergency heal if player HP is under 40% OR party HP is under 50%:
 3[hp < 40% | party:hp < 50%]
+
+// Cast when either health condition passes and the aura is also active:
+3[(hp < 40% | party:hp < 50%) & aura(self:Emergency Focus)]
 ```
 
 ---
@@ -361,6 +373,8 @@ combo = 4[!aura(self:Depravity)] > 3[!aura(self:Anathema)] > 1 > 2
 ---
 
 ## 9. Guidelines for AI / LLM Generation
+
+Malformed conditions and invalid skill slots are recorded in `SkillDslParser.lastErrors`; a malformed condition disables its affected skill instead of silently turning it into an unconditional cast. Check these diagnostics when loading user-authored DSL.
 
 When an AI assistant is asked to create or update an AQW rotation:
 
