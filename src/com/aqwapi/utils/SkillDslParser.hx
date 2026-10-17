@@ -1,0 +1,1079 @@
+package com.aqwapi.utils;
+
+class SkillDslParser {
+    /** Diagnostics from the most recent full parse or sequence parse. */
+    public static var lastErrors:Array<String> = [];
+    private static var _context:String = "";
+
+    private static function addParseError(message:String):Void {
+        var diagnostic = (_context != "" ? _context + ": " : "") + message;
+        lastErrors.push(diagnostic);
+        #if flash
+        ApiLogger.warn("Skills", diagnostic);
+        #end
+    }
+
+    /**
+     * Parses the 1-liner combo DSL text format into the exact structure
+     * expected by CombatEngine (_skillsData).
+     *
+     * Format:
+     *   [ClassName : ModeName]
+     *   mode = WaitForCooldown | UseIfAvailable
+     *   timeout = 100
+     *   combo = 1 > 2[hp < 50%] > 3[!aura(self:Buff)] > 4[mp < 10%]
+     */
+    public static function parse(txt:String):Dynamic {
+        lastErrors = [];
+        _context = "";
+        if (txt == null || txt.length == 0) return {};
+
+        var result:Dynamic = {};
+        var currentClass:String = null;
+        var currentMode:String = "Base";
+        var currentData:Dynamic = null;
+
+        var lines:Array<String> = txt.split("\n");
+        var lineNumber:Int = 0;
+        for (rawLine in lines) {
+            lineNumber++;
+            var line:String = StringTools.trim(rawLine);
+            if (line.length == 0 || StringTools.startsWith(line, "#") || StringTools.startsWith(line, "//")) {
+                continue;
+            }
+
+            // Section header: [ClassName : ModeName] or [ClassName]
+            if (StringTools.startsWith(line, "[") && StringTools.endsWith(line, "]")) {
+                _context = "line " + lineNumber;
+                var inner:String = line.substring(1, line.length - 1);
+                var colonIdx:Int = inner.indexOf(":");
+                if (colonIdx != -1) {
+                    currentClass = StringTools.trim(inner.substring(0, colonIdx));
+                    currentMode = StringTools.trim(inner.substring(colonIdx + 1));
+                } else {
+                    currentClass = StringTools.trim(inner);
+                    currentMode = "Base";
+                }
+
+                currentData = null;
+                if (currentClass != "" && currentMode != "") {
+                    var classObj:Dynamic = Reflect.field(result, currentClass);
+                    if (classObj == null) {
+                        classObj = {};
+                        Reflect.setField(result, currentClass, classObj);
+                    }
+                    currentData = {
+                        skillUseMode: "WaitForCooldown",
+                        skillTimeout: 1500,
+                        skills: [],
+                        branches: [],
+                        combo: ""
+                    };
+                    Reflect.setField(classObj, currentMode, currentData);
+                } else addParseError("Empty class or mode name in section header.");
+                continue;
+            }
+
+            if (StringTools.startsWith(line, "[")) {
+                _context = "line " + lineNumber;
+                addParseError("Malformed section header; expected [ClassName] or [ClassName : ModeName].");
+                currentData = null;
+                continue;
+            }
+
+            if (currentData == null) {
+                _context = "line " + lineNumber;
+                addParseError("Ignoring setting outside a valid section.");
+                continue;
+            }
+
+            // Key = Value
+            var eqIdx:Int = line.indexOf("=");
+            _context = "line " + lineNumber + " [" + currentClass + " : " + currentMode + "]";
+            if (eqIdx == -1) {
+                addParseError("Expected key = value.");
+                continue;
+            }
+
+            var key:String = StringTools.trim(line.substring(0, eqIdx)).toLowerCase();
+            var val:String = StringTools.trim(line.substring(eqIdx + 1));
+
+            switch (key) {
+                case "mode", "skillusemode":
+                    var lowerVal:String = val.toLowerCase();
+                    if (lowerVal == "useifavailable" || lowerVal == "priority" || lowerVal == "avail") {
+                        currentData.skillUseMode = "UseIfAvailable";
+                        if (currentData.skillTimeout == 1500) currentData.skillTimeout = 0;
+                    } else {
+                        currentData.skillUseMode = "WaitForCooldown";
+                        if (currentData.skillTimeout < 1500) currentData.skillTimeout = 1500;
+                    }
+
+                case "timeout", "skilltimeout":
+                    var pTo:Null<Int> = Std.parseInt(val);
+                    var rawTo:Int = (pTo != null) ? pTo : 0;
+                    var isUseIfAvail:Bool = (currentData.skillUseMode != null && currentData.skillUseMode.toLowerCase() == "useifavailable");
+                    currentData.skillTimeout = isUseIfAvail ? ((rawTo > 0) ? rawTo : 0) : ((rawTo >= 1500) ? rawTo : 1500);
+
+                case "stopontargetauras", "stop_on_target_auras", "stopauras":
+                    currentData.stopOnTargetAuras = val;
+
+                case "resetcomboontargetchange", "resetontarget":
+                    var lowerVal:String = val.toLowerCase();
+                    currentData.resetComboOnTargetChange = (lowerVal == "true" || lowerVal == "1" || lowerVal == "yes");
+
+                case "autoattack", "auto":
+                    var lowerVal:String = val.toLowerCase();
+                    if (lowerVal == "true" || lowerVal == "1" || lowerVal == "yes") currentData.autoattack = true;
+                    else if (lowerVal == "false" || lowerVal == "0" || lowerVal == "no") currentData.autoattack = false;
+
+                case "combo", "skills", "rotation":
+                    currentData.combo = val;
+                    var parsedBranches:Array<Array<Dynamic>> = parseBranchesInternal(val);
+                    currentData.branches = parsedBranches;
+                    var flat:Array<Dynamic> = [];
+                    for (branch in parsedBranches) for (skill in branch) flat.push(skill);
+                    currentData.skills = flat;
+                default:
+                    addParseError("Unknown setting '" + key + "'.");
+            }
+        }
+
+        _context = "";
+        return result;
+    }
+
+    /**
+     * Parses a combo string into an Array of skill objects.
+     * If the combo contains multiple '|' branches, flattens all branch skills
+     * into a single array for backwards-compatibility with single-rotation callers.
+     */
+    public static function parseCombo(comboStr:String):Array<Dynamic> {
+        var branches:Array<Array<Dynamic>> = parseBranches(comboStr);
+        if (branches.length == 0) return [];
+        if (branches.length == 1) return branches[0];
+
+        var flat:Array<Dynamic> = [];
+        for (b in branches) {
+            for (s in b) {
+                flat.push(s);
+            }
+        }
+        return flat;
+    }
+
+    /**
+     * Parses a combo string with '|' branch separators into an Array of sub-rotations.
+     * Each sub-rotation is an Array of skill objects.
+     */
+    public static function parseBranches(comboStr:String):Array<Array<Dynamic>> {
+        lastErrors = [];
+        _context = "";
+        return parseBranchesInternal(comboStr);
+    }
+
+    private static function parseBranchesInternal(comboStr:String):Array<Array<Dynamic>> {
+        var branches:Array<Array<Dynamic>> = [];
+        if (comboStr == null || comboStr.length == 0) return branches;
+
+        var branchStrs:Array<String> = splitBranches(comboStr);
+        for (bStr in branchStrs) {
+            var bSkills:Array<Dynamic> = parseSequenceInternal(bStr);
+            if (bSkills != null && bSkills.length > 0) {
+                branches.push(bSkills);
+            }
+        }
+        return branches;
+    }
+
+    /**
+     * Splits a combo string on '|' delimiters into individual branch strings,
+     * ignoring any '|' inside square brackets '[...]'.
+     */
+    public static function splitBranches(comboStr:String):Array<String> {
+        var branches:Array<String> = [];
+        if (comboStr == null || comboStr.length == 0) return branches;
+
+        var cur:StringBuf = new StringBuf();
+        var depth:Int = 0;
+
+        for (i in 0...comboStr.length) {
+            var c:String = comboStr.charAt(i);
+            if (c == "[") {
+                depth++;
+                cur.add(c);
+            } else if (c == "]") {
+                if (depth > 0) depth--;
+                cur.add(c);
+            } else if (c == "|" && depth == 0) {
+                var s:String = StringTools.trim(cur.toString());
+                if (s.length > 0) branches.push(s);
+                cur = new StringBuf();
+            } else {
+                cur.add(c);
+            }
+        }
+
+        var remaining:String = StringTools.trim(cur.toString());
+        if (remaining.length > 0) branches.push(remaining);
+
+        return branches;
+    }
+
+    /**
+     * Parses a single sequence of skills separated by '>' (e.g. "0[!aura(self:Buff)] > 2 > 3").
+     */
+    public static function parseSequence(seqStr:String):Array<Dynamic> {
+        lastErrors = [];
+        return parseSequenceInternal(seqStr);
+    }
+
+    private static function parseSequenceInternal(seqStr:String):Array<Dynamic> {
+        var skills:Array<Dynamic> = [];
+        if (seqStr == null || seqStr.length == 0) return skills;
+
+        var tokens:Array<String> = splitCombo(seqStr);
+
+        var tokenNumber:Int = 0;
+        for (token in tokens) {
+            tokenNumber++;
+            var parentContext = _context;
+            _context = (parentContext != "" ? parentContext + ", " : "") + "combo token " + tokenNumber;
+            var part:String = StringTools.trim(token);
+            if (part.length == 0) { _context = parentContext; continue; }
+
+            var bracketStart:Int = part.indexOf("[");
+            var bracketEnd:Int = part.lastIndexOf("]");
+
+            if (bracketStart != -1 && bracketEnd > bracketStart) {
+                var sidStr:String = StringTools.trim(part.substring(0, bracketStart));
+                var rulesStr:String = StringTools.trim(part.substring(bracketStart + 1, bracketEnd));
+                var trailing:String = StringTools.trim(part.substring(bracketEnd + 1));
+                var sid:Int = 1;
+                if (sidStr.toLowerCase() == "aa") {
+                    sid = 0;
+                } else {
+                    var pSid:Null<Int> = Std.parseInt(sidStr);
+                    sid = (pSid != null) ? pSid : 1;
+                }
+
+                var skillObj:Dynamic = { skillId: sid };
+                if (sid < 0 || sid > 5) {
+                    addParseError("Invalid skill slot '" + sidStr + "' in token '" + part + "'. Expected 0..5 or aa.");
+                    _context = parentContext;
+                    continue;
+                }
+                if (trailing.length > 0) {
+                    addParseError("Unexpected text after condition list in token '" + part + "'. The affected skill will be disabled.");
+                    skillObj.invalidRules = true;
+                } else {
+                    var expression:Dynamic = parseConditionExpression(rulesStr);
+                    if (expression == null) {
+                        addParseError("Empty condition list in token '" + part + "'.");
+                        skillObj.invalidRules = true;
+                    } else if (expression.type == "Invalid") {
+                        skillObj.invalidRules = true;
+                    } else {
+                        skillObj.rules = [expression];
+                        skillObj.multiAuraOperator = "AND";
+                    }
+                }
+                skills.push(skillObj);
+            } else {
+                if (part.toLowerCase() == "aa") {
+                    skills.push({ skillId: 0 });
+                } else {
+                    var pPart:Null<Int> = Std.parseInt(part);
+                    if (pPart == null || pPart < 0 || pPart > 5) {
+                        addParseError("Invalid skill token '" + part + "'. Expected 0..5 or aa, optionally followed by conditions in [...].");
+                        continue;
+                    }
+                    skills.push({ skillId: pPart });
+                }
+            }
+            _context = parentContext;
+        }
+
+        return skills;
+    }
+
+    /** Parses boolean conditions with standard precedence: `&` binds more tightly than `|`. */
+    private static function parseConditionExpression(text:String):Dynamic {
+        var expr:String = unwrapConditionGroup(StringTools.trim(text));
+        var ors:Array<String> = splitCondition(expr, "|");
+        if (ors.length > 1) {
+            var children:Array<Dynamic> = [];
+            for (part in ors) {
+                var child:Dynamic = parseConditionAnd(part);
+                if (child == null || child.type == "Invalid") return {type: "Invalid"};
+                children.push(child);
+            }
+            return {type: "ConditionGroup", logicalOp: "OR", rules: children};
+        }
+        return parseConditionAnd(expr);
+    }
+
+    private static function parseConditionAnd(text:String):Dynamic {
+        var parts:Array<String> = splitCondition(text, "&");
+        if (parts.length > 1) {
+            var children:Array<Dynamic> = [];
+            for (part in parts) {
+                var child:Dynamic = parseConditionExpression(part);
+                if (child == null || child.type == "Invalid") return {type: "Invalid"};
+                children.push(child);
+            }
+            return {type: "ConditionGroup", logicalOp: "AND", rules: children};
+        }
+        var atom:String = unwrapConditionGroup(StringTools.trim(text));
+        var rule:Dynamic = parseRule(atom);
+        if (rule == null) {
+            addParseError("Unrecognised or malformed combat condition '" + atom + "'. The affected skill will be disabled.");
+            return {type: "Invalid"};
+        }
+        return rule;
+    }
+
+    /** Splits only boolean operators outside explicit groups and function-call arguments. */
+    private static function splitCondition(text:String, separator:String):Array<String> {
+        var out:Array<String> = [];
+        var start:Int = 0;
+        var groupDepth:Int = 0;
+        var functionDepth:Int = 0;
+        var i:Int = 0;
+        while (i < text.length) {
+            var c:String = text.charAt(i);
+            if (c == "(") {
+                if (isFunctionParen(text, i)) functionDepth++;
+                else groupDepth++;
+            } else if (c == ")") {
+                if (functionDepth > 0) functionDepth--;
+                else if (groupDepth > 0) groupDepth--;
+            } else if (c == separator && groupDepth == 0 && functionDepth == 0) {
+                out.push(StringTools.trim(text.substring(start, i)));
+                start = i + 1;
+            }
+            i++;
+        }
+        out.push(StringTools.trim(text.substring(start)));
+        return out;
+    }
+
+    private static function isFunctionParen(text:String, at:Int):Bool {
+        if (at <= 0) return false;
+        var prev:Int = text.charCodeAt(at - 1);
+        return (prev >= 48 && prev <= 57) || (prev >= 65 && prev <= 90) ||
+            (prev >= 97 && prev <= 122) || prev == 95;
+    }
+
+    /** Removes one or more wrapping groups only when they enclose the entire expression. */
+    private static function unwrapConditionGroup(text:String):String {
+        var out:String = StringTools.trim(text);
+        var changed:Bool = true;
+        while (changed && out.length >= 2 && out.charAt(0) == "(") {
+            changed = false;
+            var depth:Int = 0;
+            var functionDepth:Int = 0;
+            var encloses:Bool = true;
+            for (i in 0...out.length) {
+                var c:String = out.charAt(i);
+                if (c == "(") {
+                    if (isFunctionParen(out, i)) functionDepth++;
+                    else depth++;
+                } else if (c == ")") {
+                    if (functionDepth > 0) functionDepth--;
+                    else if (depth > 0) depth--;
+                    if (depth == 0 && functionDepth == 0 && i < out.length - 1) {
+                        encloses = false;
+                        break;
+                    }
+                }
+            }
+            if (encloses && depth == 0 && out.charAt(out.length - 1) == ")") {
+                out = StringTools.trim(out.substring(1, out.length - 1));
+                changed = true;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Splits a combo string on '>' delimiters, ignoring any '>' inside square brackets '[...]'.
+     */
+    private static function splitCombo(comboStr:String):Array<String> {
+        var tokens:Array<String> = [];
+        var cur:StringBuf = new StringBuf();
+        var depth:Int = 0;
+
+        for (i in 0...comboStr.length) {
+            var c:String = comboStr.charAt(i);
+            if (c == "[") {
+                depth++;
+                cur.add(c);
+            } else if (c == "]") {
+                if (depth > 0) depth--;
+                cur.add(c);
+            } else if (c == ">" && depth == 0) {
+                var s:String = StringTools.trim(cur.toString());
+                if (s.length > 0) tokens.push(s);
+                cur = new StringBuf();
+            } else {
+                cur.add(c);
+            }
+        }
+
+        var remaining:String = StringTools.trim(cur.toString());
+        if (remaining.length > 0) tokens.push(remaining);
+
+        return tokens;
+    }
+
+    /** True for digits with at most one decimal point. Keeps words out of the counter window parse. */
+    private static function isAllDigits(s:String):Bool {
+        if (s == null || s.length == 0) return false;
+        var seenDot:Bool = false;
+        for (i in 0...s.length) {
+            var c:Int = s.charCodeAt(i);
+            if (c == 46) {
+                if (seenDot) return false;
+                seenDot = true;
+            } else if (c < 48 || c > 57) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static function isNumericValue(s:String):Bool {
+        if (s == null || s.length == 0) return false;
+        var start:Int = (s.charAt(0) == "-" || s.charAt(0) == "+") ? 1 : 0;
+        var digits:Int = 0;
+        var dots:Int = 0;
+        for (i in start...s.length) {
+            var c:Int = s.charCodeAt(i);
+            if (c >= 48 && c <= 57) digits++;
+            else if (c == 46 && dots == 0) dots++;
+            else return false;
+        }
+        return digits > 0;
+    }
+
+    /**
+     * The resolution types the server actually sends in `sar`/`sars` (`World.as:10009-10074`), plus
+     * the two aliases meaning "don't filter".
+     */
+    private static function isResolutionType(t:String):Bool {
+        return (t == "hit" || t == "crit" || t == "critical" || t == "miss" || t == "dodge" ||
+            t == "parry" || t == "block" || t == "none" || t == "any" || t == "all");
+    }
+
+    /** `critical` aliases to `crit`; `any`/`all` mean no filter, which is null. */
+    private static function normalizeResolutionType(t:String):String {
+        if (t == "critical") return "crit";
+        if (t == "any" || t == "all") return null;
+        return t;
+    }
+
+    private static function parseRule(r:String):Dynamic {
+        if (r == null || r.length == 0) return null;
+
+        var lower:String = r.toLowerCase();
+
+        // 1. Wait: wait(5000ms) or wait(5000)
+        if (StringTools.startsWith(lower, "wait(") && StringTools.endsWith(lower, ")")) {
+            var inside:String = r.substring(5, r.length - 1);
+            var numBuf:StringBuf = new StringBuf();
+            for (i in 0...inside.length) {
+                var code:Int = inside.charCodeAt(i);
+                if (code >= 48 && code <= 57) numBuf.addChar(code);
+            }
+            var pTo:Null<Int> = Std.parseInt(numBuf.toString());
+            return {
+                type: "Wait",
+                timeout: (pTo != null) ? pTo : 0
+            };
+        }
+
+        // 2. Counter: [counter], [counter <= 1500], [counter <= 1.5s], [hit], [attacked], [mobattack]
+        //    Opens when the target resolved an attack against us. The value is a freshness window: a
+        //    plain number is milliseconds (like `[wait(500ms)]`), an `s` suffix is seconds.
+        //
+        //    An `=type` suffix narrows to one resolution type, taken from the packet's own enum:
+        //    hit, crit, miss, dodge, parry, block, none. `[counter=miss]` only opens on a swing that
+        //    missed us, `[counter=dodge <= 2s]` on a dodge inside a 2s window. Plain `[counter]` takes
+        //    every type, which is what a riposte wants - the reaction has to be available on the
+        //    swings that miss as well as the ones that land.
+        var cPrefix:Int = -1;
+        if (lower.indexOf("counter") == 0) cPrefix = 7;
+        else if (lower.indexOf("mobattack") == 0) cPrefix = 9;
+        else if (lower.indexOf("attacked") == 0) cPrefix = 8;
+        else if (lower.indexOf("hit") == 0) cPrefix = 3;
+        if (cPrefix > 0) {
+            var out:Dynamic = {type: "Counter"};
+
+            // Normalize the comparison/wrapping noise into plain spaces so the remainder can be
+            // tokenized: `counter=miss <= 1.5s`, `counter: 1500` and `hit(1500)` all reduce to words
+            // and one number.
+            var norm:String = r.substring(cPrefix).toLowerCase();
+            norm = StringTools.replace(norm, "<=", " ");
+            norm = StringTools.replace(norm, "=", " ");
+            norm = StringTools.replace(norm, ">", " ");
+            norm = StringTools.replace(norm, "(", " ");
+            norm = StringTools.replace(norm, ")", " ");
+            norm = StringTools.replace(norm, ":", " ");
+
+            // Scan tokens rather than slicing on `=`. Slicing cannot tell `[counter=miss <= 1500]`
+            // apart from `[counter=1500]`, and reading the `s` in `miss` as a seconds suffix turned
+            // 1500ms into 1500000ms. A token is a type only when it is letters-only and names a real
+            // resolution, so the `s` in `miss` can never reach the seconds check.
+            var tokens:Array<String> = norm.split(" ");
+            for (tok in tokens) {
+                var t:String = StringTools.trim(tok);
+                if (t == "") continue;
+
+                if (isResolutionType(t)) {
+                    out.actionType = normalizeResolutionType(t);
+                    continue;
+                }
+
+                // `xN` counts how many resolved attacks must land before the rule opens.
+                // Deliberately NOT `=N`: `=` followed by digits has always meant a millisecond window
+                // (`[counter=1500]`), so letting `=` also mean a count would silently turn every
+                // existing window into "wait for 1500 hits". `x` cannot collide - no resolution type
+                // or alias begins with it.
+                if (t.charAt(0) == "x") {
+                    var digitsN:String = t.substr(1);
+                    if (isAllDigits(digitsN)) {
+                        var n:Int = ApiUtils.parseInt(digitsN, 0);
+                        if (n > 0) out.count = n;
+                        continue;
+                    }
+                }
+
+                // A numeric token is the window. Only a trailing `s` counts as seconds, and only when
+                // what precedes it is a number.
+                var num:String = t;
+                var isSeconds:Bool = false;
+                if (num.charAt(num.length - 1) == "s") {
+                    var head:String = num.substr(0, num.length - 1);
+                    if (head != "" && isAllDigits(head)) {
+                        num = head;
+                        isSeconds = true;
+                    }
+                }
+                if (!isAllDigits(num)) continue;
+                var amount:Float = ApiUtils.parseFloat(num, 0);
+                if (amount <= 0) continue;
+                out.value = isSeconds ? amount * 1000 : amount;
+            }
+            return out;
+        }
+
+        // 3. Target Health: target:hp, tgt:hp, target_hp, target.hp, mon:hp, target:health
+        if (StringTools.startsWith(lower, "target:hp") || StringTools.startsWith(lower, "tgt:hp") ||
+            StringTools.startsWith(lower, "target_hp") || StringTools.startsWith(lower, "target.hp") ||
+            StringTools.startsWith(lower, "tgt_hp") || StringTools.startsWith(lower, "mon:hp") ||
+            StringTools.startsWith(lower, "mon_hp")) {
+            var hpIdx:Int = lower.indexOf("hp");
+            var sub:String = StringTools.trim(r.substring(hpIdx + 2));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("TargetHealth", sub);
+        } else if (StringTools.startsWith(lower, "target:health") || StringTools.startsWith(lower, "tgt:health") || StringTools.startsWith(lower, "mon:health")) {
+            var hIdx:Int = lower.indexOf("health");
+            var sub:String = StringTools.trim(r.substring(hIdx + 6));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("TargetHealth", sub);
+        }
+
+        // 3. Party Health: party:hp, party_hp, party.hp, party:health
+        if (StringTools.startsWith(lower, "party:hp") || StringTools.startsWith(lower, "party_hp") || StringTools.startsWith(lower, "party.hp")) {
+            var sub:String = StringTools.trim(r.substring(8));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("PartyHealth", sub);
+        } else if (StringTools.startsWith(lower, "party:health")) {
+            var sub:String = StringTools.trim(r.substring(12));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("PartyHealth", sub);
+        }
+
+        // 4. Health: hp > 70%, hp < 2000, health < 50%
+        if (StringTools.startsWith(lower, "health")) {
+            var sub:String = StringTools.trim(r.substring(6));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("Health", sub);
+        }
+        if (StringTools.startsWith(lower, "hp")) {
+            var sub:String = StringTools.trim(r.substring(2));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("Health", sub);
+        }
+
+        // 5. Mana: mp < 70%, mp > 30, mana < 20%
+        if (StringTools.startsWith(lower, "mana")) {
+            var sub:String = StringTools.trim(r.substring(4));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("Mana", sub);
+        }
+        if (StringTools.startsWith(lower, "mp")) {
+            var sub:String = StringTools.trim(r.substring(2));
+            if (StringTools.startsWith(sub, ":")) sub = StringTools.trim(sub.substring(1));
+            return parseStatRule("Mana", sub);
+        }
+
+        // Tests whether this skill's target is inside the game's observed action range.
+        if (lower == "inrange" || lower == "in_range" || StringTools.startsWith(lower, "inrange(") || StringTools.startsWith(lower, "in_range(")) {
+            var slot:Int = -1;
+            var open:Int = lower.indexOf("(");
+            if (open >= 0 && !StringTools.endsWith(lower, ")")) {
+                addParseError("Malformed inrange condition '" + r + "'.");
+                return {type: "Invalid"};
+            }
+            if (open >= 0) {
+                var rawSlot:String = StringTools.trim(lower.substring(open + 1, lower.length - 1));
+                if (rawSlot == "aa") slot = 0;
+                else {
+                    var parsedSlot:Null<Int> = Std.parseInt(rawSlot);
+                    if (parsedSlot == null || parsedSlot < 0 || parsedSlot > 5) {
+                        addParseError("Invalid inrange slot in condition '" + r + "'. Expected 0..5 or aa.");
+                        return {type: "Invalid"};
+                    }
+                    slot = parsedSlot;
+                }
+            }
+            return {type: "InRange", skillId: slot};
+        }
+
+        // 6. Aura Timer / Remaining: auraTime(self:Name) <= 1.5s, auraRemaining(target:Name) < 2s
+        var atIdx:Int = -1;
+        var atPrefixLen:Int = 0;
+        if (lower.indexOf("auratime(") != -1) {
+            atIdx = lower.indexOf("auratime(");
+            atPrefixLen = 9;
+        } else if (lower.indexOf("aura_time(") != -1) {
+            atIdx = lower.indexOf("aura_time(");
+            atPrefixLen = 10;
+        } else if (lower.indexOf("auratimer(") != -1) {
+            atIdx = lower.indexOf("auratimer(");
+            atPrefixLen = 10;
+        } else if (lower.indexOf("auraremaining(") != -1) {
+            atIdx = lower.indexOf("auraremaining(");
+            atPrefixLen = 14;
+        }
+
+        if (atIdx != -1) {
+            var openParen:Int = atIdx + atPrefixLen;
+            var closeParen:Int = r.indexOf(")", openParen);
+            if (closeParen != -1) {
+                var inside:String = r.substring(openParen, closeParen);
+                var after:String = StringTools.trim(r.substring(closeParen + 1));
+
+                var target:String = "self";
+                var name:String = inside;
+
+                var colonIdx:Int = inside.indexOf(":");
+                if (colonIdx != -1) {
+                    target = StringTools.trim(inside.substring(0, colonIdx)).toLowerCase();
+                    name = StringTools.trim(inside.substring(colonIdx + 1));
+                }
+
+                var comp:String = "less";
+                var valStr:String = "";
+
+                if (StringTools.startsWith(after, ">=")) {
+                    comp = "greater";
+                    valStr = StringTools.trim(after.substring(2));
+                } else if (StringTools.startsWith(after, "<=")) {
+                    comp = "less";
+                    valStr = StringTools.trim(after.substring(2));
+                } else if (StringTools.startsWith(after, ">")) {
+                    comp = "strictGreater";
+                    valStr = StringTools.trim(after.substring(1));
+                } else if (StringTools.startsWith(after, "<")) {
+                    comp = "strictLess";
+                    valStr = StringTools.trim(after.substring(1));
+                } else if (StringTools.startsWith(after, "==")) {
+                    comp = "equal";
+                    valStr = StringTools.trim(after.substring(2));
+                } else if (StringTools.startsWith(after, "=")) {
+                    comp = "equal";
+                    valStr = StringTools.trim(after.substring(1));
+                } else {
+                    valStr = after;
+                }
+
+                var afterLower = valStr.toLowerCase();
+                var isMs:Bool = (afterLower.indexOf("ms") != -1);
+                var numStr = StringTools.replace(afterLower, "ms", "");
+                numStr = StringTools.replace(numStr, "s", "");
+                var parsedVal:Float = ApiUtils.parseFloat(StringTools.trim(numStr), 0.0);
+                if (isMs) {
+                    parsedVal = parsedVal / 1000.0;
+                } else if (parsedVal > 60 && afterLower.indexOf("s") == -1) {
+                    parsedVal = parsedVal / 1000.0;
+                }
+
+                return {
+                    type: "AuraTime",
+                    auraName: name,
+                    auraTarget: target,
+                    comparison: comp,
+                    value: parsedVal
+                };
+            }
+        }
+
+        // 7. Aura: !aura(self:Name) or aura(target:Name) >= 22 or aura(Name)
+        var auraIdx:Int = lower.indexOf("aura(");
+        if (auraIdx != -1) {
+            var isNeg:Bool = (auraIdx > 0 && r.charAt(auraIdx - 1) == "!");
+            var openParen:Int = auraIdx + 5;
+            var closeParen:Int = r.indexOf(")", openParen);
+            if (closeParen != -1) {
+                var inside:String = r.substring(openParen, closeParen);
+                var after:String = StringTools.trim(r.substring(closeParen + 1));
+
+                var target:String = "self";
+                var name:String = inside;
+
+                var colonIdx:Int = inside.indexOf(":");
+                if (colonIdx != -1) {
+                    target = StringTools.trim(inside.substring(0, colonIdx)).toLowerCase();
+                    name = StringTools.trim(inside.substring(colonIdx + 1));
+                }
+
+                var comp:String = isNeg ? "less" : "greater";
+                var val:Float = 0.0;
+
+                if (after.length > 0) {
+                    if (StringTools.startsWith(after, ">=")) {
+                        comp = "greater";
+                        val = ApiUtils.parseFloat(StringTools.trim(after.substring(2)), 0.0);
+                    } else if (StringTools.startsWith(after, "<=")) {
+                        comp = "less";
+                        val = ApiUtils.parseFloat(StringTools.trim(after.substring(2)), 0.0);
+                    } else if (StringTools.startsWith(after, ">")) {
+                        comp = "strictGreater";
+                        val = ApiUtils.parseFloat(StringTools.trim(after.substring(1)), 0.0);
+                    } else if (StringTools.startsWith(after, "<")) {
+                        comp = "strictLess";
+                        val = ApiUtils.parseFloat(StringTools.trim(after.substring(1)), 0.0);
+                    }
+                }
+
+                return {
+                    type: "Aura",
+                    auraName: name,
+                    auraTarget: target,
+                    comparison: comp,
+                    value: val
+                };
+            }
+        }
+
+        // 8. Cooldown / Ready: !onCooldown(4), onCooldown(4), ready(4), !ready(4), !cd(4), cd(4),
+        //    cd(4) <= 1.5s, cooldown(4) <= 2s, ready, !ready, !cd, cd <= 1.5s
+        var cdRule:Dynamic = parseCooldownRule(r);
+        if (cdRule != null) return cdRule;
+
+        return null;
+    }
+
+    private static function parseCooldownRule(r:String):Dynamic {
+        if (r == null || r.length == 0) return null;
+        var lower:String = StringTools.trim(r).toLowerCase();
+
+        var isNeg:Bool = false;
+        var s:String = lower;
+        if (StringTools.startsWith(s, "!")) {
+            isNeg = true;
+            s = StringTools.trim(s.substring(1));
+        }
+
+        var matched:Bool = false;
+        var prefix:String = "";
+        var candidates:Array<String> = ["on_cooldown", "oncooldown", "cooldown", "ready", "cd"];
+        for (p in candidates) {
+            if (StringTools.startsWith(s, p)) {
+                var rest:String = StringTools.trim(s.substring(p.length));
+                if (rest.length == 0 || StringTools.startsWith(rest, "(") || StringTools.startsWith(rest, "<") || StringTools.startsWith(rest, ">") || StringTools.startsWith(rest, "=")) {
+                    matched = true;
+                    prefix = p;
+                    s = rest;
+                    break;
+                }
+            }
+        }
+
+        if (!matched) return null;
+
+        var skillId:Int = -1;
+        if (StringTools.startsWith(s, "(")) {
+            var closeP:Int = s.indexOf(")");
+            if (closeP != -1) {
+                var inside:String = StringTools.trim(s.substring(1, closeP));
+                s = StringTools.trim(s.substring(closeP + 1));
+                if (inside == "aa") {
+                    skillId = 0;
+                } else {
+                    var pId:Null<Int> = Std.parseInt(inside);
+                    if (pId != null) skillId = pId;
+                }
+            }
+        }
+
+        // Check for comparison operator: <=, >=, ==, =, <, >
+        var comp:String = null;
+        var valStr:String = "";
+        if (StringTools.startsWith(s, "<=")) {
+            comp = "less";
+            valStr = StringTools.trim(s.substring(2));
+        } else if (StringTools.startsWith(s, ">=")) {
+            comp = "greater";
+            valStr = StringTools.trim(s.substring(2));
+        } else if (StringTools.startsWith(s, "==")) {
+            comp = "equal";
+            valStr = StringTools.trim(s.substring(2));
+        } else if (StringTools.startsWith(s, "=")) {
+            comp = "equal";
+            valStr = StringTools.trim(s.substring(1));
+        } else if (StringTools.startsWith(s, "<")) {
+            comp = "strictLess";
+            valStr = StringTools.trim(s.substring(1));
+        } else if (StringTools.startsWith(s, ">")) {
+            comp = "strictGreater";
+            valStr = StringTools.trim(s.substring(1));
+        }
+
+        if (comp != null && valStr.length > 0) {
+            var valLower:String = valStr.toLowerCase();
+            var isMs:Bool = (valLower.indexOf("ms") != -1);
+            var numStr:String = StringTools.replace(valLower, "ms", "");
+            numStr = StringTools.replace(numStr, "s", "");
+            var parsedVal:Float = ApiUtils.parseFloat(StringTools.trim(numStr), 0.0);
+            if (isMs) {
+                parsedVal = parsedVal / 1000.0;
+            } else if (parsedVal > 60 && valLower.indexOf("s") == -1) {
+                parsedVal = parsedVal / 1000.0;
+            }
+            return {
+                type: "Cooldown",
+                skillId: skillId,
+                comparison: comp,
+                value: parsedVal,
+                isReadyCheck: false
+            };
+        }
+
+        // Boolean readiness check:
+        // ready: true if off cooldown (cd <= 0)
+        // !ready: true if on cooldown (cd > 0)
+        // !cd, !cooldown, !oncooldown: true if off cooldown (cd <= 0)
+        // cd, cooldown, oncooldown: true if on cooldown (cd > 0)
+        var negated:Bool = false;
+        if (prefix == "ready") {
+            negated = isNeg;
+        } else {
+            negated = !isNeg;
+        }
+
+        return {
+            type: "Cooldown",
+            skillId: skillId,
+            isReadyCheck: true,
+            isNegated: negated
+        };
+    }
+
+    private static function parseStatRule(type:String, expr:String):Dynamic {
+        var trimmed:String = StringTools.trim(expr);
+        var comp:String = "greater";
+        var valStr:String = "";
+        var hasOperator:Bool = false;
+
+        if (StringTools.startsWith(trimmed, ">=")) {
+            hasOperator = true;
+            comp = "greater";
+            valStr = StringTools.trim(trimmed.substring(2));
+        } else if (StringTools.startsWith(trimmed, "<=")) {
+            hasOperator = true;
+            comp = "less";
+            valStr = StringTools.trim(trimmed.substring(2));
+        } else if (StringTools.startsWith(trimmed, ">")) {
+            hasOperator = true;
+            comp = "strictGreater";
+            valStr = StringTools.trim(trimmed.substring(1));
+        } else if (StringTools.startsWith(trimmed, "<")) {
+            hasOperator = true;
+            comp = "strictLess";
+            valStr = StringTools.trim(trimmed.substring(1));
+        } else if (StringTools.startsWith(trimmed, "==")) {
+            hasOperator = true;
+            comp = "equal";
+            valStr = StringTools.trim(trimmed.substring(2));
+        } else if (StringTools.startsWith(trimmed, "=")) {
+            hasOperator = true;
+            comp = "equal";
+            valStr = StringTools.trim(trimmed.substring(1));
+        }
+
+        var isPercentage:Bool = (valStr.indexOf("%") != -1);
+        var cleanStr:String = StringTools.replace(valStr, "%", "");
+        cleanStr = StringTools.replace(cleanStr.toLowerCase(), "hp", "");
+        cleanStr = StringTools.replace(cleanStr.toLowerCase(), "mp", "");
+
+        if (!hasOperator || !isNumericValue(StringTools.trim(cleanStr))) {
+            addParseError("Malformed " + type + " condition '" + expr + "'. Use a comparison and numeric threshold.");
+            return {type: "Invalid"};
+        }
+
+        var val:Float = ApiUtils.parseFloat(StringTools.trim(cleanStr), 0.0);
+
+        // Values over 100 cannot be percentages (e.g. hp < 2500)
+        if (val > 100) {
+            isPercentage = false;
+        }
+
+        return {
+            type: type,
+            comparison: comp,
+            value: val,
+            isPercentage: isPercentage
+        };
+    }
+
+    public static function formatCombo(skills:Array<Dynamic>):String {
+        if (skills == null || skills.length == 0) return "";
+        var parts:Array<String> = [];
+        for (s in skills) {
+            parts.push(formatSkill(s));
+        }
+        return parts.join(" > ");
+    }
+
+    public static function formatSkill(s:Dynamic):String {
+        if (s == null) return "1";
+        var sid:Int = (s.skillId != null) ? ApiUtils.parseInt(s.skillId, 1) : 1;
+        var rules:Array<Dynamic> = (s.rules != null && Std.isOfType(s.rules, Array)) ? cast s.rules : [];
+        if (rules.length == 0) return Std.string(sid);
+
+        var ruleStrs:Array<String> = [];
+        for (r in rules) {
+            var formatted = formatRule(r);
+            if (formatted != null && formatted.length > 0) ruleStrs.push(formatted);
+        }
+        if (ruleStrs.length == 0) return Std.string(sid);
+
+        var op:String = (s.multiAuraOperator == "OR") ? " | " : " & ";
+        return sid + "[" + ruleStrs.join(op) + "]";
+    }
+
+    public static function formatRule(r:Dynamic):String {
+        if (r == null) return "";
+        var rtype:String = (r.type != null) ? Std.string(r.type) : "";
+        if (rtype == "None" || rtype == "") return "";
+        if (rtype == "ConditionGroup") {
+            if (!Std.isOfType(r.rules, Array)) return "";
+            var children:Array<Dynamic> = cast r.rules;
+            var childStrings:Array<String> = [];
+            for (child in children) {
+                var childText:String = formatRule(child);
+                if (childText == "") return "";
+                childStrings.push(childText);
+            }
+            var op:String = (Std.string(r.logicalOp).toUpperCase() == "OR") ? " | " : " & ";
+            return "(" + childStrings.join(op) + ")";
+        }
+        if (rtype == "Wait") {
+            var to:Int = (r.timeout != null) ? ApiUtils.parseInt(r.timeout, 0) : 0;
+            return "wait(" + to + "ms)";
+        }
+        if (rtype == "InRange") {
+            var slot:Int = (r.skillId != null) ? ApiUtils.parseInt(r.skillId, -1) : -1;
+            return (slot >= 0) ? ("inrange(" + slot + ")") : "inrange";
+        }
+        if (rtype == "Counter" || rtype == "TargetAction" || rtype == "Hit") {
+            var prefix:String = "counter";
+            var actionType:String = (r.actionType != null && Std.string(r.actionType) != "") ? Std.string(r.actionType).toLowerCase() : "";
+            if (actionType == "critical") actionType = "crit";
+            if (actionType != "") prefix += "=" + actionType;
+            var count:Int = (r.count != null) ? ApiUtils.parseInt(r.count, 0) : 0;
+            if (count > 0) return prefix + " x" + count;
+            var window:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
+            if (window <= 0) return prefix;
+            if (window >= 1000) {
+                var seconds:Float = window / 1000;
+                var secondsStr:String = (seconds == Std.int(seconds)) ? Std.string(Std.int(seconds)) : Std.string(Math.round(seconds * 1000) / 1000);
+                return prefix + " <= " + secondsStr + "s";
+            }
+            return prefix + " <= " + window;
+        }
+        if (rtype == "Cooldown" || rtype == "SkillCooldown" || rtype == "Ready") {
+            var skillId:Int = (r.skillId != null) ? ApiUtils.parseInt(r.skillId, -1) : -1;
+            var slot:String = (skillId >= 0 && skillId <= 5) ? ("(" + skillId + ")") : "";
+            if (r.isReadyCheck == true) {
+                var negated:Bool = (r.isNegated == true);
+                return ((negated ? "cd" : "!cd") + slot);
+            }
+            var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
+            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(Math.round(val * 1000) / 1000);
+            return "cd" + slot + " " + formatComparison(r.comparison) + " " + valStr + "s";
+        }
+        if (rtype == "TargetHealth") {
+            var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
+            var isPct:Bool = (r.isPercentage == true);
+            var comp:String = formatComparison(r.comparison);
+            var unit:String = isPct ? "%" : "";
+            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
+            return "tgt:hp " + comp + " " + valStr + unit;
+        }
+        if (rtype == "PartyHealth") {
+            var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
+            var isPct:Bool = (r.isPercentage == true);
+            var comp:String = formatComparison(r.comparison);
+            var unit:String = isPct ? "%" : "";
+            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
+            return "party:hp " + comp + " " + valStr + unit;
+        }
+        if (rtype == "Health" || rtype == "Mana") {
+            var stat:String = (rtype == "Health") ? "hp" : "mp";
+            var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
+            var isPct:Bool = (r.isPercentage == true);
+            var comp:String = formatComparison(r.comparison);
+            var unit:String = isPct ? "%" : "";
+            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(val);
+            return stat + " " + comp + " " + valStr + unit;
+        }
+        if (rtype == "AuraTime" || rtype == "AuraRemaining" || rtype == "AuraTimer") {
+            var target:String = (r.auraTarget != null && r.auraTarget != "") ? Std.string(r.auraTarget) : "self";
+            var name:String = (r.auraName != null) ? Std.string(r.auraName) : "";
+            var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
+            var comp:String = formatComparison(r.comparison);
+            var valStr:String = (val == Std.int(val)) ? Std.string(Std.int(val)) : Std.string(Math.round(val * 10) / 10);
+            return "auraTime(" + target + ":" + name + ") " + comp + " " + valStr + "s";
+        }
+        if (rtype == "Aura" || rtype == "MultiAura") {
+            var target:String = (r.auraTarget != null && r.auraTarget != "") ? Std.string(r.auraTarget) : "self";
+            var name:String = (r.auraName != null) ? Std.string(r.auraName) : "";
+            var val:Float = (r.value != null) ? ApiUtils.parseFloat(r.value, 0.0) : 0.0;
+            var comp:String = (r.comparison != null) ? Std.string(r.comparison) : "greater";
+            if (comp == "less" && val <= 0.5) {
+                return "!aura(" + target + ":" + name + ")";
+            } else if (comp == "greater" && val <= 0.5) {
+                return "aura(" + target + ":" + name + ")";
+            } else {
+                var c:String = formatComparison(comp);
+                return "aura(" + target + ":" + name + ") " + c + " " + val;
+            }
+        }
+        return "";
+    }
+
+    private static function formatComparison(comparison:Dynamic):String {
+        return switch (Std.string(comparison)) {
+            case "greater", ">=": ">=";
+            case "strictGreater", ">": ">";
+            case "strictLess", "<": "<";
+            case "equal", "==", "=": "=";
+            default: "<=";
+        };
+    }
+}

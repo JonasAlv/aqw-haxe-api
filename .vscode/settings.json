@@ -1,0 +1,8 @@
+{
+  "haxe.configurations": [
+    ["build.hxml"]
+  ],
+  "haxe.displayServer.arguments": [
+    "build.hxml"
+  ]
+}

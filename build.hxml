@@ -1,0 +1,15 @@
+-cp src
+-D air
+-swf-version 40
+-lib hscript
+-resource assets/skills.json@default_skills
+-resource assets/userSkills.json@default_user_skills
+-resource assets/item_presets.json@default_item_presets
+-resource assets/enhancements.json@default_enhancements
+-swf bin/AqwApi.swc
+
+--macro include('com.aqwapi')
+Api
+Bot
+hscript.Parser
+hscript.Interp
