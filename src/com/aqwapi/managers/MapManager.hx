@@ -243,7 +243,7 @@ class MapManager {
     public function joinWithResult(mapName:String, cell:String, pad:String, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = 30000):Void {
         var targetCell = (cell == null || cell == "") ? "Enter" : cell;
         com.aqwapi.utils.ActionWaiter.run("join", function() join(mapName, cell, pad), function() {
-            return isMap(mapName) && (targetCell == "Enter" || isCell(targetCell));
+            return isLoaded && isMap(mapName) && (targetCell == "Enter" || isCell(targetCell));
         }, callback, timeoutMs, 150);
     }
 
@@ -492,7 +492,7 @@ class MapManager {
         }
         var expectedPad = pad;
         com.aqwapi.utils.ActionWaiter.run("move", function() jump(cell, pad), function() {
-            if (!isCell(cell)) return false;
+            if (!isLoaded || !isCell(cell)) return false;
             return expectedPad == null || expectedPad == "" || Api.player == null || Api.player.pad == null || Api.player.pad.toLowerCase() == expectedPad.toLowerCase();
         }, callback, timeoutMs, 100);
     }

@@ -1,5 +1,6 @@
 import com.aqwapi.data.ActionResult;
 import com.aqwapi.utils.SkillDslParser;
+import hscript.Parser;
 
 /** Small runtime-independent checks for parser diagnostics and action result semantics. */
 class RegressionChecks {
@@ -25,6 +26,11 @@ class RegressionChecks {
         var ok = new ActionResult("move", "success", "confirmed", 125);
         var timeout = new ActionResult("move", "timeout", "timed out", 8000);
         assertTrue(ok.success && !timeout.success, "action result success must follow status");
+
+        var scriptParser = new Parser();
+        scriptParser.allowTypes = true;
+        scriptParser.allowJSON = true;
+        scriptParser.parseString(sys.io.File.getContent("assets/scripts/ShadowBattleon_API_Test.hxs"));
         Sys.println("API regression checks passed.");
     }
 }
