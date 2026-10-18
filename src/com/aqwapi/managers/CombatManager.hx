@@ -182,8 +182,8 @@ class CombatManager {
         magnetizeAll("*");
     }
 
-    public inline function enableTaunt(presetOrBoss:String, ?announceParty:Bool):Void {
-        if (taunt != null) taunt.configurePreset(presetOrBoss, announceParty);
+    public inline function enableTaunt(presetOrBoss:String):Void {
+        if (taunt != null) taunt.configurePreset(presetOrBoss);
     }
 
     public inline function disableTaunt():Void {

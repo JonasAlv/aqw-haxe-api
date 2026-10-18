@@ -696,18 +696,50 @@ class MapManager {
         }
     }
 
-    public function getMapItem(itemId:Int):Bool {
+    public function getMapItem(itemId:Int, qty:Int = 1):Bool {
         var g = _g();
         if (g == null || g.world == null || g.sfc == null) return false;
         var now = ApiTime.now();
         if (now - _lastMapItemTime < ApiTimings.MAP_ITEM_MS) return false;
         _lastMapItemTime = now;
+        var count:Int = qty > 1 ? qty : 1;
         _pauseScriptIfRunning(2000);
         try {
             var roomId:Dynamic = (g.world.curRoom != null) ? g.world.curRoom : (g.sfc.activeRoomId != null ? g.sfc.activeRoomId : 1);
-            g.sfc.sendString("%xt%zm%getMapItem%" + roomId + "%" + itemId + "%");
+            for (i in 0...count) {
+                g.sfc.sendString("%xt%zm%getMapItem%" + roomId + "%" + itemId + "%");
+            }
             return true;
         } catch (e:Dynamic) { return false; }
+    }
+
+    public function canGoto():Bool {
+        var g = _g();
+        if (g == null || g.world == null) return false;
+        if (Api.player != null && (!Api.player.isAlive || Api.player.isInCombat)) return false;
+        try {
+            if (g.world.map != null && g.world.map.nogoto == true) return false;
+        } catch (_:Dynamic) {}
+        return true;
+    }
+
+    public function gotoPlayer(username:String):Bool {
+        if (username == null || StringTools.trim(username) == "") return false;
+        if (!canGoto()) return false;
+        var g = _g();
+        if (g == null || g.world == null) return false;
+        var target = StringTools.trim(username);
+        try {
+            if (g.world.goto != null) {
+                g.world.goto(target);
+                return true;
+            }
+        } catch (_:Dynamic) {}
+        if (Api.transport != null) {
+            Api.transport.send("zm", "cmd", ["1", "goto", target]);
+            return true;
+        }
+        return false;
     }
 
     public function snapTo(target:Dynamic):Void {

@@ -1437,7 +1437,12 @@ class InventoryManager {
     public function get_usedSlots_prop():Int { return get_usedSlots(); }
     public function get_usedSlots():Int {
         if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.items != null) {
-            return (cast _game.world.myAvatar.items : Array<Dynamic>).length;
+            var items:Array<Dynamic> = cast _game.world.myAvatar.items;
+            var invCat:Dynamic = _getInvCat();
+            if (invCat != null && invCat.countBag != null) {
+                try { return Std.int(invCat.countBag(items)); } catch (_:Dynamic) {}
+            }
+            return items.length;
         }
         return 0;
     }
@@ -1700,6 +1705,25 @@ class InventoryManager {
         }
     }
 
+    private static var _numericMetaRegex = ~/^\s*\d+\s*$/;
+
+    private function _getInvCat():Dynamic {
+        if (_game == null) return null;
+        try {
+            var domain:Dynamic = _game.loaderInfo;
+            if (domain != null && domain.applicationDomain != null && domain.applicationDomain.hasDefinition != null) {
+                if (domain.applicationDomain.hasDefinition("InvCat")) {
+                    return domain.applicationDomain.getDefinition("InvCat");
+                }
+            }
+        } catch (_:Dynamic) {}
+        try {
+            var globalInvCat:Dynamic = untyped __global__["InvCat"];
+            if (globalInvCat != null) return globalInvCat;
+        } catch (_:Dynamic) {}
+        return null;
+    }
+
     /**
      * Whether the loaded game client separates bag, misc, class, and house inventories.
      *
@@ -1707,43 +1731,35 @@ class InventoryManager {
      * return false.
      */
     public function hasCategories():Bool {
-        if (_game == null) return false;
-        try {
-            var domain:Dynamic = _game.loaderInfo;
-            if (domain != null && domain.applicationDomain != null && domain.applicationDomain.hasDefinition != null) {
-                return domain.applicationDomain.hasDefinition("InvCat");
-            }
-        } catch (_:Dynamic) {}
-        return false;
+        return _getInvCat() != null;
     }
 
     /**
-     * Total misc inventory capacity, including the current server limit.
-     *
-     * Reports miscellaneous inventory slots. Older clients return zero.
+     * Total misc inventory capacity (`myAvatar.objData.iBagSlots` on category clients per InvCat.as:105).
      */
     public function getMiscSlots():Int {
-        try {
-            if (_game != null && _game.world != null && _game.world.myAvatar != null) {
-                var av:Dynamic = _game.world.myAvatar;
-                if (av.miscSlots != null) return Std.int(av.miscSlots);
-                if (av.dataLeaf != null && av.dataLeaf.miscSlots != null) return Std.int(av.dataLeaf.miscSlots);
-            }
-        } catch (_:Dynamic) {}
-        return 0;
+        if (!hasCategories()) return 0;
+        return maxSlots;
     }
 
     /**
-     * Number of misc inventory slots currently in use.
-     *
-     * Reports used miscellaneous inventory slots. Older clients return zero.
+     * Number of misc inventory slots currently in use (`InvCat.countMisc(myAvatar.items)`).
      */
     public function getMiscUsedSlots():Int {
         try {
-            if (_game != null && _game.world != null && _game.world.myAvatar != null) {
-                var av:Dynamic = _game.world.myAvatar;
-                if (av.miscUsedSlots != null) return Std.int(av.miscUsedSlots);
-                if (av.dataLeaf != null && av.dataLeaf.miscUsedSlots != null) return Std.int(av.dataLeaf.miscUsedSlots);
+            if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.items != null) {
+                var items:Array<Dynamic> = cast _game.world.myAvatar.items;
+                var invCat:Dynamic = _getInvCat();
+                if (invCat != null && invCat.countMisc != null) {
+                    return Std.int(invCat.countMisc(items));
+                }
+                if (hasCategories()) {
+                    var count:Int = 0;
+                    for (it in items) {
+                        if (getPool(it) == "misc") count++;
+                    }
+                    return count;
+                }
             }
         } catch (_:Dynamic) {}
         return 0;
@@ -1751,94 +1767,123 @@ class InventoryManager {
 
     /**
      * Free misc inventory slots (capacity minus usage).
-     *
-     * Reports free miscellaneous inventory slots. Older clients return zero.
      */
     public function getMiscFreeSlots():Int {
         var cap = getMiscSlots();
         var used = getMiscUsedSlots();
-        return (cap > 0) ? (cap - used) : 0;
+        var free = cap - used;
+        return (cap > 0 && free > 0) ? free : 0;
     }
 
     /**
-     * Which inventory an item belongs to: bag, misc, class, or house.
-     *
-     * Returns the storage pool for an item. Older clients return "bag".
+     * Which inventory an item belongs to: bag, misc, class, or house (`InvCat.poolOf` in InvCat.as:110).
      */
     public function getPool(item:Dynamic):String {
         if (item == null) return "bag";
         try {
-            if (item.bHouse == 1 || item.bHouse == "1" || item.bHouse == true) return "house";
-            var sType:String = (item.sType != null) ? Std.string(item.sType).toLowerCase() : "";
-            if (sType == "class") return "class";
+            var invCat:Dynamic = _getInvCat();
+            if (invCat != null && invCat.poolOf != null) {
+                return Std.string(invCat.poolOf(item));
+            }
+            var sType:String = (item.sType != null) ? Std.string(item.sType) : "";
+            if (sType == "Class" || sType.toLowerCase() == "class") return "class";
+            if (item.bHouse == 1 || item.bHouse == "1" || item.bHouse == true || sType == "House" || sType == "Wall Item" || sType == "Floor Item" || sType == "Guild") {
+                return "house";
+            }
+            if (sType == "Item" || sType == "Note" || sType == "Quest Item" || sType == "Resource") {
+                if (!(sType == "Item" && item.sMeta != null && _numericMetaRegex.match(Std.string(item.sMeta)))) {
+                    return "misc";
+                }
+            }
             if (item.bMisc == 1 || item.bMisc == "1" || item.bMisc == true) return "misc";
         } catch (_:Dynamic) {}
         return "bag";
     }
 
     /**
+     * Checks whether the destination pool (Bag or Misc) is full for the given item (`InvCat.isFullFor` in InvCat.as:92).
+     */
+    public function isFullFor(item:Dynamic, freedSlots:Int = 0):Bool {
+        if (item == null) return false;
+        try {
+            var pool:String = getPool(item);
+            if (pool == "class" || pool == "house") return false;
+            var cap:Int = maxSlots;
+            if (cap <= 0) return false;
+            if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.items != null) {
+                var items:Array<Dynamic> = cast _game.world.myAvatar.items;
+                var invCat:Dynamic = _getInvCat();
+                if (invCat != null && invCat.isFullFor != null) {
+                    return invCat.isFullFor(items, item, cap, freedSlots) == true;
+                }
+                var itemId:Int = (item.ItemID != null) ? Std.int(item.ItemID) : 0;
+                if (itemId > 0) {
+                    for (owned in items) {
+                        if (owned != null && owned.ItemID != null && Std.int(owned.ItemID) == itemId) {
+                            var iQty:Int = (owned.iQty != null) ? Std.int(owned.iQty) : 1;
+                            var iStk:Int = (owned.iStk != null) ? Std.int(owned.iStk) : 1;
+                            if (iQty < iStk) return false;
+                            if (pool == "misc") return false;
+                            break;
+                        }
+                    }
+                }
+                if (pool == "misc") {
+                    return (getMiscUsedSlots() - freedSlots) >= cap;
+                }
+                return (usedSlots - freedSlots) >= cap;
+            }
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
+    /**
      * Whether the destination inventory has room for the given item and quantity.
-     *
-     * Checks whether inventory has room for an item. For shop items
-     * the check includes slots freed by purchase materials and tokens.
+     * For shop items, includes slots freed by consumed turn-in materials and tokens (`InvCat.freedBy`).
      */
     public function hasSpaceFor(item:Dynamic, quantity:Int = 1):Bool {
         if (item == null || quantity <= 0) return false;
         try {
             var pool:String = getPool(item);
-            if (pool == "misc") {
-                return getMiscFreeSlots() >= quantity;
+            if (pool == "class" || pool == "house") return true;
+            var freed:Int = 0;
+            if (_game != null && _game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.items != null) {
+                var invCat:Dynamic = _getInvCat();
+                if (invCat != null && invCat.freedBy != null) {
+                    try {
+                        freed = Std.int(invCat.freedBy(_game.world.myAvatar.items, item, quantity));
+                    } catch (_:Dynamic) {}
+                }
             }
-            if (pool == "class") {
-                // Classes live in inventory only on category clients; bag capacity applies.
-                return true;
-            }
-            if (pool == "house") {
-                return true;
-            }
-            // bag: check against max slots minus used slots
-            var maxSlots:Int = get_maxSlots();
-            if (maxSlots > 0) {
-                return (maxSlots - get_usedSlots()) >= quantity;
-            }
+            return !isFullFor(item, freed);
         } catch (_:Dynamic) {}
         return true;
     }
 
     /**
-     * Whether the current character has marked an item as a favorite.
-     *
-     * Checks whether an item is favorited. Clients without a favorite store
-     * return false.
+     * Whether the current character has marked an item as a favorite (`liteAssets.draw.FavStore.has` in FavStore.as:36).
      */
     public function isFavorited(itemId:Int):Bool {
+        if (itemId <= 0 || _game == null) return false;
         try {
-            if (_game != null && _game.world != null && _game.world.myAvatar != null) {
-                var av:Dynamic = _game.world.myAvatar;
-                var fav:Dynamic = Reflect.field(av, "favoriteItems");
-                if (fav != null) {
-                    if (Std.isOfType(fav, Array)) {
-                        var arr:Array<Dynamic> = cast fav;
-                        for (id in arr) {
-                            if (Std.int(id) == itemId) return true;
-                        }
-                    } else if (Reflect.hasField(fav, "has")) {
-                        var has:Dynamic = Reflect.field(fav, "has");
-                        if (has != null) {
-                            var result:Dynamic = Reflect.callMethod(has, has, [itemId]);
-                            if (result == true) return true;
-                        }
+            var domain:Dynamic = _game.loaderInfo;
+            if (domain != null && domain.applicationDomain != null && domain.applicationDomain.hasDefinition != null) {
+                if (domain.applicationDomain.hasDefinition("liteAssets.draw.FavStore")) {
+                    var favStore:Dynamic = domain.applicationDomain.getDefinition("liteAssets.draw.FavStore");
+                    if (favStore != null && favStore.has != null) {
+                        return favStore.has(itemId) == true;
                     }
                 }
-                if (av.dataLeaf != null) {
-                    var leaf:Dynamic = av.dataLeaf;
-                    if (Reflect.hasField(leaf, "favoriteItems")) {
-                        var fav2:Dynamic = Reflect.field(leaf, "favoriteItems");
-                        if (fav2 != null && Std.isOfType(fav2, Array)) {
-                            var arr2:Array<Dynamic> = cast fav2;
-                            for (id in arr2) {
-                                if (Std.int(id) == itemId) return true;
-                            }
+            }
+        } catch (_:Dynamic) {}
+        try {
+            if (_game.litePreference != null && _game.litePreference.data != null && _game.litePreference.data.favs != null) {
+                if (_game.world != null && _game.world.myAvatar != null && _game.world.myAvatar.objData != null && _game.world.myAvatar.objData.CharID != null) {
+                    var cidKey:String = Std.string(_game.world.myAvatar.objData.CharID);
+                    var list:Dynamic = Reflect.field(_game.litePreference.data.favs, cidKey);
+                    if (list != null && Std.isOfType(list, Array)) {
+                        for (v in (cast list : Array<Dynamic>)) {
+                            if (Std.int(v) == itemId) return true;
                         }
                     }
                 }
@@ -1849,27 +1894,14 @@ class InventoryManager {
 
     /**
      * Whether an item can be banked under the current game client.
-     *
-     * New game client compatibility behavior: when the game loads inventory
-     * categories (InvCat), classes live in inventory only and cannot be banked. Banking a class
-     * silently fails, so callers must skip them instead of queueing a doomed request.
-     *
-     * Determines whether an item can be banked based on its category.
+     * When the game loads inventory categories (InvCat), classes live in inventory only and cannot be banked.
      */
     public function canBank(item:Dynamic):Bool {
         if (item == null) return true;
-        if (_game == null) return true;
-        try {
-            var hasCategories:Bool = false;
-            var domain:Dynamic = _game.loaderInfo;
-            if (domain != null && domain.applicationDomain != null && domain.applicationDomain.hasDefinition != null) {
-                hasCategories = domain.applicationDomain.hasDefinition("InvCat");
-            }
-            if (hasCategories) {
-                var sType:String = (item.sType != null) ? Std.string(item.sType).toLowerCase() : "";
-                if (sType == "class") return false;
-            }
-        } catch (_:Dynamic) {}
+        if (hasCategories()) {
+            var sType:String = (item.sType != null) ? Std.string(item.sType).toLowerCase() : "";
+            if (sType == "class") return false;
+        }
         return true;
     }
 }

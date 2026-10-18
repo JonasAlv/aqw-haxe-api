@@ -316,5 +316,7 @@ class QuestDTO {
     public var isAccepted(get, never):Bool;
     @:getter(isAccepted)
     public function get_isAccepted_prop():Bool { return get_isAccepted(); }
-    public function get_isAccepted():Bool { return status == "a"; }
+    public function get_isAccepted():Bool {
+        return status != null && status != "" && status != "null";
+    }
 }

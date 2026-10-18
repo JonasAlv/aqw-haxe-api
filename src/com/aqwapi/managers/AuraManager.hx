@@ -126,8 +126,12 @@ class AuraManager {
             if (a.e == 1 || a.e == "1" || a.e == true) return;
             var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : ((a.sName != null) ? Std.string(a.sName) : ""));
             if (name != "" && normalizeAuraName(name) == search) {
-                // If aura has duration and start timestamp, check if it already expired
-                if (a.dur != null) {
+                // Check hudAuras getTimer()-based expiry (`end` field in World.hudAuraSync)
+                if (a.end != null) {
+                    var endTimer:Float = ApiUtils.parseFloat(a.end, 0.0);
+                    if (endTimer > 0 && ApiTime.now() >= endTimer) return;
+                } else if (a.dur != null) {
+                    // Check standard aura epoch timestamp expiry (`ts` + `dur`)
                     var dur:Float = ApiUtils.parseFloat(a.dur, 0.0);
                     if (dur > 0) {
                         var ts:Float = (a.ts != null) ? ApiUtils.parseFloat(a.ts, 0.0) : 0.0;
@@ -140,6 +144,7 @@ class AuraManager {
                 }
                 var val:Float = 1.0;
                 if (a.val != null) val = ApiUtils.parseFloat(a.val, 1.0);
+                else if (a.n != null) val = ApiUtils.parseFloat(a.n, 1.0);
                 else if (a.value != null) val = ApiUtils.parseFloat(a.value, 1.0);
                 else if (a.stack != null) val = ApiUtils.parseFloat(a.stack, 1.0);
                 if (val > maxVal) maxVal = val;
@@ -162,7 +167,7 @@ class AuraManager {
         var auras = getRawAuras(target, world, avatar, targetObj);
         if (auras == null) return 0.0;
 
-var search:String = normalizeAuraName(auraName);
+        var search:String = normalizeAuraName(auraName);
         if (search == "") return 0.0;
         var maxRemaining:Float = 0.0;
 
@@ -171,6 +176,14 @@ var search:String = normalizeAuraName(auraName);
             if (a.e == 1 || a.e == "1" || a.e == true) return;
             var name:String = (a.nam != null) ? Std.string(a.nam) : ((a.name != null) ? Std.string(a.name) : ((a.sName != null) ? Std.string(a.sName) : ""));
             if (name != "" && normalizeAuraName(name) == search) {
+                if (a.end != null) {
+                    var endTimer:Float = ApiUtils.parseFloat(a.end, 0.0);
+                    if (endTimer > 0) {
+                        var remTimer:Float = (endTimer - ApiTime.now()) / 1000.0;
+                        if (remTimer > maxRemaining) maxRemaining = remTimer;
+                        return;
+                    }
+                }
                 var dur:Float = (a.dur != null) ? ApiUtils.parseFloat(a.dur, 0.0) : 0.0;
                 if (dur <= 0) return;
                 var ts:Float = (a.ts != null) ? ApiUtils.parseFloat(a.ts, 0.0) : 0.0;
@@ -376,40 +389,89 @@ var search:String = normalizeAuraName(auraName);
     public function getSnapshots(target:String = "player", ?world:Dynamic, ?avatar:Dynamic, ?targetObj:Dynamic):Array<Dynamic> {
         var result:Array<Dynamic> = [];
         try {
-            var g:Dynamic = (world != null) ? world : _game.world;
-            if (g == null) return result;
-            var leaf:Dynamic = (target == "target")
-                ? ((g.world != null && g.world.myAvatar != null) ? g.world.myAvatar.target : null)
-                : ((g.world != null && g.world.myAvatar != null) ? g.world.myAvatar : null);
-            if (leaf != null && leaf.dataLeaf != null && leaf.dataLeaf.hudAuras != null) {
-                var arr:Array<Dynamic> = cast leaf.dataLeaf.hudAuras;
+            var g = _g();
+            var w:Dynamic = (world != null) ? world : ((g != null) ? g.world : null);
+            if (w == null) return result;
+            var isTarget:Bool = (target != null && target.toLowerCase() == "target");
+            var ent:Dynamic = isTarget
+                ? ((targetObj != null) ? targetObj : ((w.myAvatar != null) ? w.myAvatar.target : null))
+                : ((avatar != null) ? avatar : w.myAvatar);
+            if (ent != null && ent.dataLeaf != null && ent.dataLeaf.hudAuras != null) {
+                var arr:Array<Dynamic> = cast ent.dataLeaf.hudAuras;
                 for (raw in arr) {
-                    result.push(buildSnapshot(raw));
+                    if (raw != null) result.push(buildSnapshot(raw, w));
                 }
                 if (result.length > 0) return result;
             }
-            var rawAuras:Dynamic = getRawAuras(target, world, avatar, targetObj);
+            var rawAuras:Dynamic = getRawAuras(target, w, avatar, targetObj);
             if (rawAuras != null && Std.isOfType(rawAuras, Array)) {
                 var arr2:Array<Dynamic> = cast rawAuras;
                 for (raw in arr2) {
-                    result.push(buildSnapshot(raw));
+                    if (raw != null) result.push(buildSnapshot(raw, w));
                 }
             }
         } catch (_:Dynamic) {}
         return result;
     }
 
-    private function buildSnapshot(raw:Dynamic):Dynamic {
+    private function buildSnapshot(raw:Dynamic, ?w:Dynamic):Dynamic {
+        var name:String = (raw.nam != null) ? Std.string(raw.nam) : ((raw.name != null) ? Std.string(raw.name) : "");
+        var stacks:Int = 1;
+        if (raw.n != null) stacks = Std.int(ApiUtils.parseFloat(raw.n, 1));
+        else if (raw.val != null) stacks = Std.int(ApiUtils.parseFloat(raw.val, 1));
+        else if (raw.value != null) stacks = Std.int(ApiUtils.parseFloat(raw.value, 1));
+        else if (raw.stack != null) stacks = Std.int(ApiUtils.parseFloat(raw.stack, 1));
+
+        var dur:Float = (raw.dur != null) ? ApiUtils.parseFloat(raw.dur, 0.0) : 0.0;
+        var rem:Float = 0.0;
+        if (raw.remaining != null) {
+            rem = ApiUtils.parseFloat(raw.remaining, 0.0);
+        } else if (raw.end != null && ApiUtils.parseFloat(raw.end, 0.0) > 0) {
+            rem = Math.max(0.0, (ApiUtils.parseFloat(raw.end, 0.0) - ApiTime.now()) / 1000.0);
+        } else if (dur > 0 && raw.ts != null && ApiUtils.parseFloat(raw.ts, 0.0) > 0) {
+            var ts:Float = ApiUtils.parseFloat(raw.ts, 0.0);
+            var tsMs:Float = (ts < 10000000000.0) ? (ts * 1000.0) : ts;
+            rem = Math.max(0.0, (tsMs + (dur * 1000.0) - ApiTime.epochMs()) / 1000.0);
+        }
+
+        var desc:String = (raw.desc != null) ? Std.string(raw.desc) : "";
+        if (desc == "" && name != "") {
+            desc = getDescription(name, w);
+        }
+
         return {
-            Name: (raw.nam != null) ? Std.string(raw.nam) : "",
-            Stacks: (raw.n != null) ? Std.int(raw.n) : 0,
-            Duration: (raw.dur != null) ? Std.parseFloat(raw.dur) : 0.0,
-            RemainingTime: (raw.remaining != null) ? Std.parseFloat(raw.remaining) : 0.0,
+            Name: name,
+            Stacks: stacks,
+            Duration: dur,
+            RemainingTime: rem,
             Persistent: (raw.persist != null) ? (raw.persist == true || raw.persist == "1" || raw.persist == 1) : false,
             Icon: (raw.icon != null) ? Std.string(raw.icon) : "",
-            Description: (raw.desc != null) ? Std.string(raw.desc) : "",
-            Value: (raw.value != null) ? Std.parseFloat(raw.value) : 0.0
+            Description: desc,
+            Value: (raw.value != null) ? ApiUtils.parseFloat(raw.value, 0.0) : ((raw.val != null) ? ApiUtils.parseFloat(raw.val, 0.0) : 0.0)
         };
+    }
+
+    /**
+     * Returns the server-sent aura description from `world.auraDescs` (World.as:11019), or `""` if unknown.
+     */
+    public function getDescription(auraName:String, ?world:Dynamic):String {
+        if (auraName == null || auraName == "") return "";
+        try {
+            var g = _g();
+            var w:Dynamic = (world != null) ? world : ((g != null) ? g.world : null);
+            if (w != null && w.auraDescs != null) {
+                var d:Dynamic = Reflect.field(w.auraDescs, auraName);
+                if (d != null) return Std.string(d);
+                var lower:String = auraName.toLowerCase();
+                for (k in Reflect.fields(w.auraDescs)) {
+                    if (k != null && k.toLowerCase() == lower) {
+                        var v:Dynamic = Reflect.field(w.auraDescs, k);
+                        if (v != null) return Std.string(v);
+                    }
+                }
+            }
+        } catch (_:Dynamic) {}
+        return "";
     }
 
     /**

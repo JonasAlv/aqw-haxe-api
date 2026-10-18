@@ -21,7 +21,7 @@ class QuestManager {
     private var _lastGlobalLoadTime:Float = 0;
     private var _lastAcceptTime:Float = 0;
     private var _lastCompleteTime:Float = 0;
-    private var _actionQueue:Array<{type:String, questId:Int, itemId:Int}> = [];
+    private var _actionQueue:Array<{type:String, questId:Int, itemId:Int, qty:Int}> = [];
     private var _queueTimer:Timer = null;
     private var _lastActionTime:Float = 0;
     private var _pendingAccepts:Map<Int, Float> = new Map<Int, Float>();
@@ -465,7 +465,7 @@ class QuestManager {
             if (task.type == "accept" && task.questId == qid) return;
         }
 
-        _actionQueue.push({type: "accept", questId: qid, itemId: -1});
+        _actionQueue.push({type: "accept", questId: qid, itemId: -1, qty: 1});
         _pauseScriptIfRunning();
         processQueue();
     }
@@ -498,7 +498,22 @@ class QuestManager {
         }
     }
 
-    public function complete(questId:Dynamic, itemId:Dynamic = -1):Void {
+    /**
+     * Returns the maximum number of times the quest can currently be turned in at once
+     * (`World.maximumQuestTurnIns` in World.as:12323, which also returns 0 if a required item is equipped).
+     */
+    public function getMaxTurnIns(questId:Dynamic):Int {
+        var qid:Int = resolveQuestId(questId);
+        if (_game == null || _game.world == null || qid <= 0) return 0;
+        try {
+            if (_game.world.maximumQuestTurnIns != null) {
+                return Std.int(_game.world.maximumQuestTurnIns(qid));
+            }
+        } catch (_:Dynamic) {}
+        return canComplete(qid) ? 1 : 0;
+    }
+
+    public function complete(questId:Dynamic, itemId:Dynamic = -1, qty:Int = 1):Void {
         var qid:Int = resolveQuestId(questId);
         if (_game == null || _game.world == null || qid <= 0) return;
         if (!isInProgress(qid) || isCompletePending(qid)) return;
@@ -509,7 +524,7 @@ class QuestManager {
             if (task.type == "complete" && task.questId == qid) return;
         }
 
-        _actionQueue.push({type: "complete", questId: qid, itemId: resolvedItemId});
+        _actionQueue.push({type: "complete", questId: qid, itemId: resolvedItemId, qty: qty});
         _pauseScriptIfRunning();
         processQueue();
     }
@@ -685,7 +700,7 @@ class QuestManager {
         if (task.type == "accept") {
             _executeAccept(task.questId);
         } else if (task.type == "complete") {
-            _executeComplete(task.questId, task.itemId);
+            _executeComplete(task.questId, task.itemId, task.qty);
         }
 
         if (_actionQueue.length > 0) {
@@ -765,13 +780,21 @@ class QuestManager {
         if (accepted) _pendingAccepts.set(questId, ApiTime.now());
     }
 
-    private function _executeComplete(questId:Int, itemId:Int = -1):Void {
+    private function _executeComplete(questId:Int, itemId:Int = -1, qty:Int = 1):Void {
         if (_game == null || _game.world == null || questId <= 0) return;
         if (!isInProgress(questId)) return;
         if (!canComplete(questId)) {
             ApiLogger.warn("Quest", "Cannot complete quest " + questId + ": requirements not satisfied yet.");
             return;
         }
+
+        var maxTurnIns:Int = getMaxTurnIns(questId);
+        if (maxTurnIns <= 0) {
+            ApiLogger.warn("Quest", "Cannot complete quest " + questId + ": maximumQuestTurnIns returned 0 (check if a required turn-in item is equipped).");
+            return;
+        }
+        var turnInQty:Int = (qty <= 0) ? maxTurnIns : Std.int(Math.min(qty, maxTurnIns));
+        if (turnInQty < 1) turnInQty = 1;
 
         var now = ApiTime.now();
         var lastQTurnIn:Float = Reflect.hasField(_lastTurnIns, Std.string(questId)) ? Reflect.field(_lastTurnIns, Std.string(questId)) : 0.0;
@@ -789,7 +812,9 @@ class QuestManager {
 
         if (_game.world.tryQuestComplete != null) {
             try {
-                if (itemId > 0) {
+                if (turnInQty > 1) {
+                    _game.world.tryQuestComplete(questId, itemId, false, turnInQty);
+                } else if (itemId > 0) {
                     _game.world.tryQuestComplete(questId, itemId);
                 } else {
                     _game.world.tryQuestComplete(questId);
@@ -801,6 +826,24 @@ class QuestManager {
         } else {
             ApiLogger.warn("Quest", "Cannot turn in quest " + questId + ": native request method is unavailable.");
         }
+    }
+
+    /**
+     * Handles the server `ccqr` (Complete Quest Result) packet (`Game.as:1255`) so turn-in
+     * acknowledgement or rejection is processed immediately instead of waiting for timeout.
+     */
+    public function onCompleteQuestResult(dataObj:Dynamic):Void {
+        if (dataObj == null) return;
+        try {
+            var qid:Int = (dataObj.QuestID != null) ? ApiUtils.parseInt(dataObj.QuestID, 0) : 0;
+            if (qid > 0) {
+                _pendingCompletions.remove(qid);
+            }
+            if (dataObj.bSuccess != null && Std.int(dataObj.bSuccess) == 0) {
+                var msg:String = (dataObj.sMsg != null) ? Std.string(dataObj.sMsg) : "Turn-in rejected by server";
+                ApiLogger.warn("Quest", "Quest " + (qid > 0 ? Std.string(qid) : "") + " turn-in failed: " + msg);
+            }
+        } catch (_:Dynamic) {}
     }
 
     public function getQuestValue(slot:Int):Int {
@@ -968,6 +1011,10 @@ class QuestManager {
         return isInProgress(questId);
     }
 
+    public inline function canAccept(questId:Dynamic):Bool {
+        return isAvailable(questId);
+    }
+
     public function isAvailable(questId:Dynamic):Bool {
         var q = get(questId);
         if (q == null) return false;
@@ -1001,6 +1048,42 @@ class QuestManager {
 
         // 5. Daily or Special Achievement Flag
         if (isDailyComplete(questId)) return false;
+
+        // 6. Additional QFrameMC.as:472 eligibility checks (class rank, faction rep, required inventory items)
+        if (q.raw != null) {
+            try {
+                var iClass:Int = (q.raw.iClass != null) ? Std.int(q.raw.iClass) : 0;
+                var iReqCP:Int = (q.raw.iReqCP != null) ? Std.int(q.raw.iReqCP) : 0;
+                if (iClass > 0 && iReqCP > 0 && myAvatar.getCPByID != null && _game.arrRanks != null) {
+                    var curCp:Int = Std.int(myAvatar.getCPByID(iClass));
+                    var reqCp:Int = Std.int(_game.arrRanks[iReqCP - 1]);
+                    if (curCp < reqCp) return false;
+                }
+            } catch (_:Dynamic) {}
+            try {
+                var iFaction:Int = (q.raw.iFaction != null) ? Std.int(q.raw.iFaction) : 0;
+                var iReqRep:Int = (q.raw.iReqRep != null) ? Std.int(q.raw.iReqRep) : 0;
+                if (iFaction > 1 && iReqRep > 0 && myAvatar.getRep != null) {
+                    var curRep:Int = Std.int(myAvatar.getRep(iFaction));
+                    if (curRep < iReqRep) return false;
+                }
+            } catch (_:Dynamic) {}
+            try {
+                if (q.raw.reqd != null) {
+                    for (k in Reflect.fields(q.raw.reqd)) {
+                        var reqItem:Dynamic = Reflect.field(q.raw.reqd, k);
+                        if (reqItem != null && reqItem.ItemID != null && myAvatar.isItemInInventory != null) {
+                            var reqQty:Int = (reqItem.iQty != null && Std.int(reqItem.iQty) > 0) ? Std.int(reqItem.iQty) : 1;
+                            if (Api.inventory != null) {
+                                if (!Api.inventory.hasItemById(Std.int(reqItem.ItemID), reqQty)) return false;
+                            } else if (!myAvatar.isItemInInventory(reqItem.ItemID)) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
 
         return true;
     }

@@ -4,6 +4,50 @@ class ApiStorage {
     private static var _dataDir:Dynamic = null;
     private static var _provisioned:Bool = false;
     private static var _so:Dynamic = null;
+    private static var _bundledScripts:Map<String, String> = null;
+    private static var _defaultPresetsCache:String = null;
+
+    private static function getBundledScriptsMap():Map<String, String> {
+        if (_bundledScripts != null) return _bundledScripts;
+        try {
+            _bundledScripts = com.aqwapi.modules.DefaultSkillsData.getBundledScriptsConst();
+        } catch (_:Dynamic) {
+            _bundledScripts = new Map<String, String>();
+        }
+        return _bundledScripts;
+    }
+
+    public static function getEmbeddedAsset(fileName:String):String {
+        if (fileName == null) return null;
+        var clean = cleanFileName(fileName).toLowerCase();
+        switch (clean) {
+            case "skills.json":
+                return com.aqwapi.modules.DefaultSkillsData.getDefaultSkills();
+            case "userskills.json":
+                return com.aqwapi.modules.DefaultSkillsData.getDefaultUserSkills();
+            case "enhancements.json", "userenhancements.json":
+                return com.aqwapi.modules.DefaultEnhancementsData.getDefaultEnhancements();
+            case "item_presets.json":
+                if (_defaultPresetsCache != null && _defaultPresetsCache.length > 0) return _defaultPresetsCache;
+                try {
+                    var emb = com.aqwapi.modules.DefaultSkillsData.getPresetsConst();
+                    if (emb != null && emb.length > 0) {
+                        _defaultPresetsCache = emb;
+                        return _defaultPresetsCache;
+                    }
+                } catch (_:Dynamic) {}
+                try {
+                    var res = haxe.Resource.getString("default_item_presets");
+                    if (res != null && res.length > 0) {
+                        _defaultPresetsCache = res;
+                        return _defaultPresetsCache;
+                    }
+                } catch (_:Dynamic) {}
+                return null;
+            default:
+                return null;
+        }
+    }
 
     public static function getSharedObjectStorage():Dynamic {
         if (_so != null) return _so;
@@ -11,9 +55,28 @@ class ApiStorage {
         try {
             var soCls = flash.net.SharedObject;
             if (soCls != null) {
-                _so = soCls.getLocal("AqwApiStorage");
+                try {
+                    _so = soCls.getLocal("AqwApiStorage", "/");
+                } catch (_:Dynamic) {
+                    _so = soCls.getLocal("AqwApiStorage");
+                }
                 if (_so != null && _so.data == null) {
                     _so.data = {};
+                }
+                // Migrate legacy path-scoped SharedObject if root-scoped SharedObject is newly created
+                if (_so != null && _so.data != null && !Reflect.hasField(_so.data, "_rootMigrated")) {
+                    try {
+                        var legacySo = soCls.getLocal("AqwApiStorage");
+                        if (legacySo != null && legacySo != _so && legacySo.data != null) {
+                            for (f in Reflect.fields(legacySo.data)) {
+                                if (!Reflect.hasField(_so.data, f)) {
+                                    Reflect.setField(_so.data, f, Reflect.field(legacySo.data, f));
+                                }
+                            }
+                        }
+                    } catch (_:Dynamic) {}
+                    Reflect.setField(_so.data, "_rootMigrated", true);
+                    try { if (_so.flush != null) _so.flush(); } catch (_:Dynamic) {}
                 }
             }
         } catch (_:Dynamic) {}
@@ -106,6 +169,26 @@ class ApiStorage {
                 }
             } catch (e:Dynamic) {
                 ApiLogger.warn("Storage", "Error initializing account directory for " + acc + ": " + e);
+            }
+        } else {
+            // Non-AIR / Ruffle SharedObject account seeding & migration
+            var so = getSharedObjectStorage();
+            if (so != null && so.data != null) {
+                var changed = false;
+                var filesToMigrate = ["item_presets.json", "api_blacklist.json", "config.json"];
+                for (fname in filesToMigrate) {
+                    var accKey = "accounts/" + acc + "/" + fname;
+                    if (!Reflect.hasField(so.data, accKey)) {
+                        var seedVal:Dynamic = Reflect.hasField(so.data, fname) ? Reflect.field(so.data, fname) : getEmbeddedAsset(fname);
+                        if (seedVal != null && StringTools.trim(Std.string(seedVal)).length > 0) {
+                            Reflect.setField(so.data, accKey, Std.string(seedVal));
+                            changed = true;
+                        }
+                    }
+                }
+                if (changed) {
+                    try { if (so.flush != null) so.flush(); } catch (_:Dynamic) {}
+                }
             }
         }
 
@@ -313,19 +396,20 @@ class ApiStorage {
         if (dir == null) {
             var so = getSharedObjectStorage();
             if (so != null && so.data != null) {
-                if (!Reflect.hasField(so.data, "userSkills.json")) {
-                    try {
-                        var raw = haxe.Resource.getString("default_user_skills");
-                        if (raw != null) Reflect.setField(so.data, "userSkills.json", raw);
-                    } catch (_:Dynamic) {}
+                var changed = false;
+                var seedDefaults = ["userSkills.json", "userEnhancements.json", "item_presets.json"];
+                for (fname in seedDefaults) {
+                    if (!Reflect.hasField(so.data, fname)) {
+                        var raw = getEmbeddedAsset(fname);
+                        if (raw != null && StringTools.trim(raw).length > 0) {
+                            Reflect.setField(so.data, fname, raw);
+                            changed = true;
+                        }
+                    }
                 }
-                if (!Reflect.hasField(so.data, "userEnhancements.json")) {
-                    try {
-                        var raw = haxe.Resource.getString("default_enhancements");
-                        if (raw != null) Reflect.setField(so.data, "userEnhancements.json", raw);
-                    } catch (_:Dynamic) {}
+                if (changed) {
+                    try { if (so.flush != null) so.flush(); } catch (_:Dynamic) {}
                 }
-                try { if (so.flush != null) so.flush(); } catch (_:Dynamic) {}
             }
             return;
         }
@@ -346,6 +430,9 @@ class ApiStorage {
                     if (!target.exists) {
                         var src = appDir.resolvePath("assets/" + fname);
                         var seedContent = readFileStream(src);
+                        if (seedContent == null || StringTools.trim(seedContent).length == 0) {
+                            seedContent = getEmbeddedAsset(fname);
+                        }
                         if (seedContent != null && StringTools.trim(seedContent).length > 0) {
                             writeFileStream(target, seedContent);
                             ApiLogger.debug("Storage", "Seeded " + fname + " to applicationStorageDirectory");
@@ -360,6 +447,9 @@ class ApiStorage {
                 var skillsTarget = dir.resolvePath("userSkills.json");
                 if (!skillsTarget.exists) {
                     var defaultSkills = readFileStream(appDir.resolvePath("assets/userSkills.json"));
+                    if (defaultSkills == null || StringTools.trim(defaultSkills).length == 0) {
+                        defaultSkills = getEmbeddedAsset("userSkills.json");
+                    }
                     if (defaultSkills != null && StringTools.trim(defaultSkills).length > 0) {
                         if (writeFileStream(skillsTarget, defaultSkills)) {
                             ApiLogger.info("Storage", "Seeded userSkills.json to applicationStorageDirectory");
@@ -501,7 +591,7 @@ class ApiStorage {
             ApiLogger.warn("Storage", "Error reading bundled asset " + clean + ": " + e);
         }
 
-        // 4. Fallback for non-AIR (Mugetsu / Flash Player): persistent SharedObject
+        // 4. Fallback for non-AIR (Mugetsu / Ruffle): persistent SharedObject
         var so = getSharedObjectStorage();
         if (so != null && so.data != null) {
             var acc = getActiveAccount();
@@ -516,6 +606,12 @@ class ApiStorage {
                 var val = Reflect.field(so.data, clean);
                 if (val != null && Std.string(val).length > 0) return Std.string(val);
             }
+        }
+
+        // 5. Self-contained compile-time embedded defaults (skills, enhancements, userSkills, item_presets)
+        var embedded = getEmbeddedAsset(clean);
+        if (embedded != null && StringTools.trim(embedded).length > 0) {
+            return embedded;
         }
 
         return null;
@@ -549,7 +645,7 @@ class ApiStorage {
             }
         }
 
-        // Non-AIR fallback (Mugetsu / Flash Player): persistent SharedObject
+        // Non-AIR fallback (Mugetsu / Ruffle): persistent SharedObject
         var so = getSharedObjectStorage();
         if (so != null && so.data != null) {
             var acc = getActiveAccount();
@@ -628,7 +724,7 @@ class ApiStorage {
             }
         };
 
-        // 1. Scan bundled scripts in applicationDirectory/assets/scripts
+        // 1. Scan bundled scripts in applicationDirectory/assets/scripts (AIR)
         try {
             var FileClass:Dynamic = getFileClass();
             if (FileClass != null) {
@@ -642,7 +738,17 @@ class ApiStorage {
             ApiLogger.warn("Storage", "Error scanning bundled scripts: " + e);
         }
 
-        // 2. Scan user scripts in applicationStorageDirectory/scripts
+        // 2. Include compile-time embedded bundled scripts (Ruffle / self-contained)
+        var bundledMap = getBundledScriptsMap();
+        if (bundledMap != null) {
+            for (k in bundledMap.keys()) {
+                if (k != null && k != "" && scripts.indexOf(k) == -1) {
+                    scripts.push(k);
+                }
+            }
+        }
+
+        // 3. Scan user scripts in applicationStorageDirectory/scripts (AIR)
         try {
             var dir = getDataDirectory();
             if (dir != null) {
@@ -653,7 +759,7 @@ class ApiStorage {
             ApiLogger.warn("Storage", "Error scanning user scripts: " + e);
         }
 
-        // 3. Scan scripts stored in SharedObject (Mugetsu / Flash Player)
+        // 4. Scan scripts stored in SharedObject (Mugetsu / Ruffle)
         var so = getSharedObjectStorage();
         if (so != null && so.data != null) {
             for (field in Reflect.fields(so.data)) {
@@ -681,6 +787,13 @@ class ApiStorage {
         var clean = cleanFileName(scriptName);
         if (StringTools.endsWith(clean.toLowerCase(), ".hxs")) {
             clean = clean.substring(0, clean.length - 4);
+        }
+        var bundledMap = getBundledScriptsMap();
+        if (bundledMap != null) {
+            if (bundledMap.exists(clean)) return true;
+            if (clean.indexOf("/") == -1) {
+                if (bundledMap.exists("rep/" + clean) || bundledMap.exists("saga/LordofChaos/" + clean)) return true;
+            }
         }
         try {
             var FileClass:Dynamic = getFileClass();
@@ -743,7 +856,7 @@ class ApiStorage {
             clean = clean.substring(0, clean.length - 4);
         }
 
-        // 1. If it's a user script, read from user storage
+        // 1. If it exists in user storage (AIR), read from user storage
         var dir = getDataDirectory();
         if (dir != null) {
             try {
@@ -763,7 +876,19 @@ class ApiStorage {
             } catch (_:Dynamic) {}
         }
 
-        // 2. If it's a bundled script, read from applicationDirectory assets
+        // 2. If it's a user-saved/modified script in SharedObject (Ruffle), read from SharedObject
+        if (!isBundledScript(clean)) {
+            var so = getSharedObjectStorage();
+            if (so != null && so.data != null) {
+                var sKey = "scripts/" + clean + ".hxs";
+                if (Reflect.hasField(so.data, sKey)) {
+                    var txt = Reflect.field(so.data, sKey);
+                    if (txt != null && Std.string(txt).length > 0) return Std.string(txt);
+                }
+            }
+        }
+
+        // 3. If it's a bundled script on AIR, read from applicationDirectory assets
         try {
             var FileClass:Dynamic = getFileClass();
             if (FileClass != null) {
@@ -792,7 +917,17 @@ class ApiStorage {
             }
         } catch (_:Dynamic) {}
 
-        // 3. Fallback: Read from SharedObject (Mugetsu / Flash Player)
+        // 4. Read from compile-time embedded bundled scripts (Ruffle / self-contained)
+        var bundledMap = getBundledScriptsMap();
+        if (bundledMap != null) {
+            if (bundledMap.exists(clean)) return bundledMap.get(clean);
+            if (clean.indexOf("/") == -1) {
+                if (bundledMap.exists("rep/" + clean)) return bundledMap.get("rep/" + clean);
+                if (bundledMap.exists("saga/LordofChaos/" + clean)) return bundledMap.get("saga/LordofChaos/" + clean);
+            }
+        }
+
+        // 5. Fallback: Read from SharedObject even if bundled name matched
         var so = getSharedObjectStorage();
         if (so != null && so.data != null) {
             var sKey = "scripts/" + clean + ".hxs";

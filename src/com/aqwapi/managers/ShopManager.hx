@@ -1,7 +1,7 @@
 package com.aqwapi.managers;
 
 import com.aqwapi.utils.ApiTimings;
-
+import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.Game;
 import flash.events.TimerEvent;
@@ -181,6 +181,10 @@ class ShopManager {
                     if (matches) {
                         if (i.bEquip == true) continue;
                         if (i.CharItemID == null || i.CharItemID == 0) continue;
+                        if (_protectFavorites && Api.inventory != null && i.ItemID != null && Api.inventory.isFavorited(Std.int(i.ItemID))) {
+                            ApiLogger.warn("Shop", "Skipped selling favorited item: " + Std.string(i.sName));
+                            continue;
+                        }
                         if (_game.sfc != null) {
                             var reqId:Dynamic = (_game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : ((_game.sfc.activeRoomId != null) ? _game.sfc.activeRoomId : 1);
                             _game.sfc.sendString("%xt%zm%sellItem%" + reqId + "%" + i.ItemID + "%" + quantity + "%" + i.CharItemID + "%");
@@ -192,6 +196,42 @@ class ShopManager {
                 }
             }
         } catch(e:Dynamic) {}
+    }
+
+    /**
+     * Returns the maximum quantity of a shop item that the player can currently buy (`World.maximumShopBuys` in World.as:7163).
+     */
+    public function getMaxBuyQuantity(itemNameOrId:Dynamic):Int {
+        if (_game == null || _game.world == null || itemNameOrId == null) return 0;
+        var item:Dynamic = itemNameOrId;
+        if (Std.isOfType(itemNameOrId, String) || Std.isOfType(itemNameOrId, Int) || Std.isOfType(itemNameOrId, Float)) {
+            item = null;
+            var strVal:String = Std.string(itemNameOrId);
+            var targetId:Int = ApiUtils.parseInt(itemNameOrId, 0);
+            var isIdLookup:Bool = targetId > 0;
+            var target:String = strVal.toLowerCase();
+            try {
+                var shopInfo:Dynamic = _game.world.shopinfo;
+                if (shopInfo != null && shopInfo.items != null && Std.isOfType(shopInfo.items, Array)) {
+                    var sItems:Array<Dynamic> = cast shopInfo.items;
+                    for (si in sItems) {
+                        if (si == null || si.sName == null) continue;
+                        var matches:Bool = isIdLookup ? (si.ItemID == targetId) : (Std.string(si.sName).toLowerCase() == target);
+                        if (matches) {
+                            item = si;
+                            break;
+                        }
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+        if (item == null) return 0;
+        try {
+            if (_game.world.maximumShopBuys != null) {
+                return Std.int(_game.world.maximumShopBuys(item));
+            }
+        } catch (_:Dynamic) {}
+        return 1;
     }
 
     public var isShopLoaded(get, never):Bool;
@@ -238,11 +278,9 @@ class ShopManager {
     private var _protectFavorites:Bool = true;
 
     /**
-     * Missing inventory materials, missing tokens, and unmet quest requirements for a purchase.
-     *
-     * Returns unmet purchase requirements for a shop item.
-     * Returns an array of requirement descriptions; empty when the purchase is affordable. The
-     * default quantity selects the purchase bundle.
+     * Missing inventory materials (`item.turnin`), missing tokens (`item.TokID`/`TokQty`),
+     * LQS stock (`item.bLimited`/`iQtyRemain`), achievement locks (`shopinfo.sField`/`iIndex`),
+     * and unmet quest progress (`item.iQSindex`/`iQSvalue`) for a purchase (`InvCat.as` & `LPFFrameSimpleListShop.as`).
      */
     public function getUnmetPurchaseRequirements(item:Dynamic, quantity:Int = -1):Array<String> {
         var result:Array<String> = [];
@@ -251,53 +289,62 @@ class ShopManager {
             return result;
         }
         try {
-            var qty:Int = (quantity <= 0) ? getDefaultQuantity(item) : quantity;
-            // Materials
-            var mats:Dynamic = Reflect.field(item, "matCost");
-            if (mats != null) {
-                if (Std.isOfType(mats, Array)) {
-                    var arr:Array<Dynamic> = cast mats;
-                    for (m in arr) {
-                        if (m == null) continue;
-                        var matId:Int = Std.int(Reflect.field(m, "id"));
-                        var matQty:Int = Std.int(Reflect.field(m, "qty")) * qty;
-                        if (matId > 0 && matQty > 0) {
-                            var inv = com.aqwapi.Api.inventory;
-                            if (inv != null && !inv.hasItemById(matId, matQty)) {
-                                result.push("Missing material x" + matQty + " (id " + matId + ")");
-                            }
-                        }
+            var bundleQty:Int = getDefaultQuantity(item);
+            var totalQty:Int = (quantity <= 0) ? bundleQty : quantity;
+            var purchases:Int = Std.int(Math.max(1, Math.floor(totalQty / (bundleQty > 0 ? bundleQty : 1))));
+            var inv = com.aqwapi.Api.inventory;
+            var w:Dynamic = (_game != null) ? _game.world : null;
+
+            // 1. Merge / Turn-in materials (`item.turnin` in InvCat.as:145)
+            var turnin:Dynamic = (item.turnin != null) ? item.turnin : Reflect.field(item, "matCost");
+            if (turnin != null && Std.isOfType(turnin, Array)) {
+                var arr:Array<Dynamic> = cast turnin;
+                for (m in arr) {
+                    if (m == null) continue;
+                    var matId:Int = (m.ItemID != null) ? Std.int(m.ItemID) : ((m.id != null) ? Std.int(m.id) : 0);
+                    var baseMatQty:Int = (m.iQty != null) ? Std.int(m.iQty) : ((m.qty != null) ? Std.int(m.qty) : 1);
+                    var matQty:Int = baseMatQty * purchases;
+                    if (matId > 0 && matQty > 0 && inv != null && !inv.hasItemById(matId, matQty)) {
+                        var matName:String = (m.sName != null && Std.string(m.sName) != "") ? Std.string(m.sName) : ("id " + matId);
+                        result.push("Missing material " + matName + " x" + matQty);
                     }
                 }
             }
-            // Tokens
-            var tokId:Dynamic = Reflect.field(item, "tID");
-            var tokQty:Dynamic = Reflect.field(item, "tQty");
+
+            // 2. Tokens (`item.TokID` & `item.TokQty` in InvCat.as:211)
+            var tokId:Dynamic = (item.TokID != null) ? item.TokID : Reflect.field(item, "tID");
+            var tokQty:Dynamic = (item.TokQty != null) ? item.TokQty : Reflect.field(item, "tQty");
             if (tokId != null && tokQty != null) {
-                var tokIdNum:Int = Std.int(tokId);
-                var tokQtyNum:Float = Std.parseFloat(tokQty) * qty;
-                if (tokIdNum > 0 && tokQtyNum > 0) {
-                    var inv = com.aqwapi.Api.inventory;
-                    if (inv != null && !inv.hasItemById(tokIdNum, Std.int(Math.ceil(tokQtyNum)))) {
-                        result.push("Missing token x" + tokQtyNum + " (id " + tokIdNum + ")");
-                    }
+                var tokIdNum:Int = ApiUtils.parseInt(tokId, 0);
+                var tokNeed:Int = Std.int(Math.ceil(ApiUtils.parseFloat(tokQty, 0) * purchases));
+                if (tokIdNum > 0 && tokNeed > 0 && inv != null && !inv.hasItemById(tokIdNum, tokNeed)) {
+                    var tokName:String = (item.TokName != null && Std.string(item.TokName) != "") ? Std.string(item.TokName) : ("id " + tokIdNum);
+                    result.push("Missing token " + tokName + " x" + tokNeed);
                 }
             }
-            // Quest requirements
-            var questReq:Dynamic = Reflect.field(item, "qReq");
-            if (questReq != null && Std.string(questReq) != "") {
-                var qm = com.aqwapi.Api.quest;
-                if (qm != null) {
-                    var questId:Int = Std.int(questReq);
-                    if (questId > 0) {
-                        try {
-                            if (!qm.isCompleted(questId)) {
-                                result.push("Unmet quest requirement (id " + questId + ")");
-                            }
-                        } catch (_:Dynamic) {
-                            result.push("Unmet quest requirement (id " + questId + ")");
-                        }
-                    }
+
+            // 3. Quest progress lock (`item.iQSindex` & `item.iQSvalue` in InvCat.as:182)
+            if (item.iQSindex != null && ApiUtils.parseInt(item.iQSindex, -1) >= 0 && item.iQSvalue != null) {
+                var qsIdx:Int = ApiUtils.parseInt(item.iQSindex, -1);
+                var qsVal:Int = ApiUtils.parseInt(item.iQSvalue, 0);
+                var curVal:Int = (com.aqwapi.Api.quest != null) ? com.aqwapi.Api.quest.getQuestValue(qsIdx) : 0;
+                if (curVal < qsVal) {
+                    result.push("Unmet quest slot requirement (slot " + qsIdx + " < " + qsVal + ")");
+                }
+            }
+
+            // 4. Limited Quantity Shop stock (`item.bLimited` & `item.iQtyRemain` in LPFFrameSimpleListShop.as)
+            var isLimited:Bool = (item.bLimited == 1 || item.bLimited == "1" || item.bLimited == true);
+            if (isLimited && item.iQtyRemain != null && ApiUtils.parseInt(item.iQtyRemain, 1) <= 0) {
+                result.push("Limited quantity item is out of stock");
+            }
+
+            // 5. Shop achievement lock (`shopinfo.sField` & `shopinfo.iIndex` in LPFFrameSimpleListShop.as)
+            if (w != null && w.shopinfo != null && w.shopinfo.sField != null && Std.string(w.shopinfo.sField) != "" && w.getAchievement != null) {
+                var sField:String = Std.string(w.shopinfo.sField);
+                var iIndex:Int = (w.shopinfo.iIndex != null) ? ApiUtils.parseInt(w.shopinfo.iIndex, 0) : 0;
+                if (Std.int(w.getAchievement(sField, iIndex)) != 1) {
+                    result.push("Unmet shop achievement requirement (" + sField + ":" + iIndex + ")");
                 }
             }
         } catch (err:Dynamic) {
@@ -308,17 +355,11 @@ class ShopManager {
 
     private function getDefaultQuantity(item:Dynamic):Int {
         try {
-            var bundles:Dynamic = Reflect.field(item, "bundles");
-            if (bundles != null && Std.isOfType(bundles, Array)) {
-                var arr:Array<Dynamic> = cast bundles;
-                if (arr.length > 0) {
-                    var first:Dynamic = arr[0];
-                    var q:Dynamic = Reflect.field(first, "qty");
-                    if (q != null) return Std.int(q);
-                }
+            if (item.iQty != null && ApiUtils.parseInt(item.iQty, 0) > 0) {
+                return ApiUtils.parseInt(item.iQty, 1);
             }
             var qty:Dynamic = Reflect.field(item, "qty");
-            if (qty != null) return Std.int(qty);
+            if (qty != null && ApiUtils.parseInt(qty, 0) > 0) return ApiUtils.parseInt(qty, 1);
         } catch (_:Dynamic) {}
         return 1;
     }

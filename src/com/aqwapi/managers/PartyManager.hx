@@ -225,8 +225,9 @@ class PartyManager {
                 if (av == null) av = w.getAvatarByUserName(name);
             }
             if (av == null && w.avatars != null) {
-                var avList:Array<Dynamic> = cast w.avatars;
-                for (a in avList) {
+                var keys:Array<Dynamic> = untyped __keys__(w.avatars);
+                for (k in keys) {
+                    var a:Dynamic = untyped w.avatars[k];
                     if (a != null && a.pnm != null && Std.string(a.pnm).toLowerCase() == lower) {
                         av = a;
                         break;

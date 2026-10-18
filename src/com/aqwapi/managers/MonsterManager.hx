@@ -578,4 +578,18 @@ class MonsterManager {
         }
         return result;
     }
+
+    public function getTargets(monMapIdOrName:Dynamic):Array<String> {
+        if (monMapIdOrName == null) return [];
+        var ent = findByMapId(Std.string(monMapIdOrName), false);
+        if (ent == null) ent = findByName(Std.string(monMapIdOrName), false);
+        return (ent != null && ent.targetUserIds != null) ? ent.targetUserIds : [];
+    }
+
+    public function isTargetingMe(monMapIdOrName:Dynamic):Bool {
+        if (monMapIdOrName == null) return false;
+        var ent = findByMapId(Std.string(monMapIdOrName), false);
+        if (ent == null) ent = findByName(Std.string(monMapIdOrName), false);
+        return (ent != null) ? ent.isTargetingMe : false;
+    }
 }

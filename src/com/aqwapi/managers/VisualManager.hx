@@ -107,7 +107,7 @@ class VisualManager {
         cleanArena = ApiConfig.getBool("api_clean_arena", false);
         cachePlayers = ApiConfig.getBool("api_cache_players", false);
         cacheMonsters = ApiConfig.getBool("api_cache_monsters", false);
-        suppressTargetGlow = ApiConfig.getBool("api_suppress_target_glow", ApiConfig.getBool("api_frame_nameplates_enabled", false));
+        suppressTargetGlow = ApiConfig.getBool("api_suppress_target_glow", false);
         showNames = ApiConfig.getBool("api_visual_show_names", false);
         showShadows = ApiConfig.getBool("api_visual_show_shadows", false);
     }
@@ -158,8 +158,9 @@ class VisualManager {
 
     /**
      * Suppresses or restores native AQW target color wash.
-     * When enabled, zeroes out world.avtMCT and world.avtPCT so targeting units
+     * When enabled, zeroes out world.avtMCT and/or world.avtPCT so targeting units
      * no longer washes them out with bright additive colors.
+     * Respects granular replacement state (enemy vs player plates) when driven by nameplates.
      */
     public function applyTargetGlow():Void {
         var g:Game = (_game != null) ? _game : Api.game;
@@ -168,22 +169,45 @@ class VisualManager {
 
         try {
             if (suppressTargetGlow) {
-                world.avtMCT = new ColorTransform(0, 0, 0, 0, 0, 0, 0, 0);
-                world.avtPCT = new ColorTransform(0, 0, 0, 0, 0, 0, 0, 0);
+                var suppressMonsters:Bool = true;
+                var suppressPlayers:Bool = true;
+
+                // When suppression is enabled via nameplates rather than standalone visual override,
+                // coordinate with whether plates are actually active on each unit type:
+                var nameplatesEnabled:Bool = ApiConfig.getBool("api_frame_nameplates_enabled", false);
+                if (nameplatesEnabled && !ApiConfig.getBool("api_suppress_target_glow", false)) {
+                    suppressMonsters = ApiConfig.getBool("api_frame_nameplates_enemies", false) || ApiConfig.getBool("api_frame_nameplates_enemy_names", false);
+                    suppressPlayers = ApiConfig.getBool("api_frame_nameplates_players", false) || ApiConfig.getBool("api_frame_nameplates_player_names", false);
+                }
+
+                world.avtMCT = suppressMonsters ? new ColorTransform(0, 0, 0, 0, 0, 0, 0, 0) : new ColorTransform(0, 0, 0, 0, 30, 0, 0, 0);
+                world.avtPCT = suppressPlayers ? new ColorTransform(0, 0, 0, 0, 0, 0, 0, 0) : new ColorTransform(0, 0, 0, 0, 40, 40, 70, 0);
+
                 if (world.myAvatar != null && world.myAvatar.target != null && world.myAvatar.target.pMC != null) {
-                    var pMC:Dynamic = world.myAvatar.target.pMC;
-                    if (pMC.totalTransform != null) {
-                        pMC.totalTransform.redOffset = 0;
-                        pMC.totalTransform.greenOffset = 0;
-                        pMC.totalTransform.blueOffset = 0;
-                    }
-                    if (pMC.clampedTransform != null) {
-                        pMC.clampedTransform.redOffset = 0;
-                        pMC.clampedTransform.greenOffset = 0;
-                        pMC.clampedTransform.blueOffset = 0;
-                    }
-                    if (pMC.transform != null) {
-                        pMC.transform.colorTransform = new ColorTransform();
+                    var tgt:Dynamic = world.myAvatar.target;
+                    var isMon:Bool = (tgt.isMonster == true) || (tgt.npcType == "monster");
+                    var isSuppressed:Bool = isMon ? suppressMonsters : suppressPlayers;
+
+                    if (isSuppressed) {
+                        var pMC:Dynamic = tgt.pMC;
+                        if (pMC.totalTransform != null) {
+                            pMC.totalTransform.redOffset = 0;
+                            pMC.totalTransform.greenOffset = 0;
+                            pMC.totalTransform.blueOffset = 0;
+                        }
+                        if (pMC.clampedTransform != null) {
+                            pMC.clampedTransform.redOffset = 0;
+                            pMC.clampedTransform.greenOffset = 0;
+                            pMC.clampedTransform.blueOffset = 0;
+                        }
+                        if (pMC.transform != null) {
+                            pMC.transform.colorTransform = new ColorTransform();
+                        }
+                    } else {
+                        var ct:Dynamic = isMon ? world.avtMCT : world.avtPCT;
+                        if (tgt.pMC.modulateColor != null) {
+                            tgt.pMC.modulateColor(ct, "+");
+                        }
                     }
                 }
             } else {
@@ -191,7 +215,7 @@ class VisualManager {
                 world.avtPCT = new ColorTransform(0, 0, 0, 0, 40, 40, 70, 0);
                 if (world.myAvatar != null && world.myAvatar.target != null && world.myAvatar.target.pMC != null) {
                     var tgt:Dynamic = world.myAvatar.target;
-                    var ct:Dynamic = (tgt.isMonster == true) ? world.avtMCT : world.avtPCT;
+                    var ct:Dynamic = (tgt.isMonster == true || tgt.npcType == "monster") ? world.avtMCT : world.avtPCT;
                     if (tgt.pMC.modulateColor != null) {
                         tgt.pMC.modulateColor(ct, "+");
                     }
@@ -413,8 +437,19 @@ class VisualManager {
         // Target Glow Check (re-apply if World reinitialized on room/map change)
         if (suppressTargetGlow) {
             try {
-                if (world.avtMCT != null && (world.avtMCT.redOffset != 0 || world.avtPCT.blueOffset != 0)) {
-                    applyTargetGlow();
+                if (world.avtMCT != null && world.avtPCT != null) {
+                    var suppressMonsters:Bool = true;
+                    var suppressPlayers:Bool = true;
+                    var nameplatesEnabled:Bool = ApiConfig.getBool("api_frame_nameplates_enabled", false);
+                    if (nameplatesEnabled && !ApiConfig.getBool("api_suppress_target_glow", false)) {
+                        suppressMonsters = ApiConfig.getBool("api_frame_nameplates_enemies", false) || ApiConfig.getBool("api_frame_nameplates_enemy_names", false);
+                        suppressPlayers = ApiConfig.getBool("api_frame_nameplates_players", false) || ApiConfig.getBool("api_frame_nameplates_player_names", false);
+                    }
+                    var expMonR:Float = suppressMonsters ? 0 : 30;
+                    var expPlyB:Float = suppressPlayers ? 0 : 70;
+                    if (world.avtMCT.redOffset != expMonR || world.avtPCT.blueOffset != expPlyB) {
+                        applyTargetGlow();
+                    }
                 }
             } catch (_:Dynamic) {}
         }

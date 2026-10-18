@@ -76,8 +76,6 @@ class ScriptBindings {
         registerLoggingAndSystem();
         registerVisualShortcuts();
         registerPartyShortcuts();
-        registerSocialShortcuts();
-        registerPvpShortcuts();
     }
 
     public static function registerAll(interp:ScriptInterp):Void {
@@ -272,20 +270,20 @@ class ScriptBindings {
         bind("stopAutoPotion", function():Void {
             if (Api.combat != null) Api.combat.stopAutoPotion();
         });
-        bind("enableTaunt", function(presetOrBoss:String, ?announceParty:Bool):Void {
-            if (Api.combat != null) Api.combat.enableTaunt(presetOrBoss, announceParty);
+        bind("enableTaunt", function(presetOrBoss:String):Void {
+            if (Api.combat != null) Api.combat.enableTaunt(presetOrBoss);
         });
         bind("disableTaunt", function():Void {
             if (Api.combat != null) Api.combat.disableTaunt();
         });
-        bind("tauntBoss", function(presetOrBoss:String, ?announceParty:Bool):Void {
-            if (Api.combat != null) Api.combat.enableTaunt(presetOrBoss, announceParty);
+        bind("tauntBoss", function(presetOrBoss:String):Void {
+            if (Api.combat != null) Api.combat.enableTaunt(presetOrBoss);
         });
-        bind("taunt", function(?presetOrBoss:Dynamic, ?announceParty:Bool):Void {
+        bind("taunt", function(?presetOrBoss:Dynamic):Void {
             if (presetOrBoss == null || Std.string(presetOrBoss) == "") {
                 if (Api.combat != null && Api.combat.taunt != null) Api.combat.taunt.fireTaunt();
             } else {
-                if (Api.combat != null) Api.combat.enableTaunt(Std.string(presetOrBoss), announceParty);
+                if (Api.combat != null) Api.combat.enableTaunt(Std.string(presetOrBoss));
             }
         });
         bind("attack", function(monster:Dynamic):Void {
@@ -1355,33 +1353,6 @@ class ScriptBindings {
         });
         bind("partyTarget", function(username:String):Bool {
             return (Api.party != null) ? Api.party.targetMember(username) : false;
-        });
-    }
-
-    private static function registerSocialShortcuts():Void {
-        bind("requestFriend", function(username:String):Bool {
-            return (Api.social != null) ? Api.social.requestFriend(username) : false;
-        });
-        bind("acceptFriend", function(username:String):Bool {
-            return (Api.social != null) ? Api.social.acceptFriend(username) : false;
-        });
-        bind("declineFriend", function(username:String):Bool {
-            return (Api.social != null) ? Api.social.declineFriend(username) : false;
-        });
-        bind("removeFriend", function(username:String):Bool {
-            return (Api.social != null) ? Api.social.removeFriend(username) : false;
-        });
-        bind("refreshFriends", function():Bool {
-            return (Api.social != null) ? Api.social.refreshFriends() : false;
-        });
-    }
-
-    private static function registerPvpShortcuts():Void {
-        bind("pvpQueue", function(queueName:String):Bool {
-            return (Api.pvp != null) ? Api.pvp.requestQueue(queueName) : false;
-        });
-        bind("pvpLeaveQueue", function():Bool {
-            return (Api.pvp != null) ? Api.pvp.leaveQueue() : false;
         });
     }
 

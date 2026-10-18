@@ -16,7 +16,6 @@ import com.aqwapi.utils.ApiLogger;
  * - Partner taunt hand-off (taunt when partner's Focus/Taunt aura on boss expires)
  * - Timed rotation loops (taunt every X milliseconds)
  * - Pre-configured presets for popular Ultra Bosses
- * - Optional Party Chat announcement for team sync
  */
 class TauntCoordinator {
     private var _game:Game;
@@ -27,8 +26,6 @@ class TauntCoordinator {
     public var triggerStacks:Int = 1;
     public var partnerTauntAura:String = "Focus";
     public var tauntIntervalMs:Float = 0;
-    public var announceParty:Bool = false;
-    public var announceMessage:String = "Taunted!";
 
     private var _lastTauntTime:Float = 0;
     private var _hadPartnerTaunt:Bool = false;
@@ -41,10 +38,9 @@ class TauntCoordinator {
     /**
      * Configures the coordinator using a built-in Ultra Boss preset.
      */
-    public function configurePreset(preset:String, ?customAnnounce:Bool):Void {
+    public function configurePreset(preset:String):Void {
         var p = (preset != null) ? preset.toLowerCase() : "";
         enabled = true;
-        announceParty = (customAnnounce != null) ? customAnnounce : false;
 
         switch (p) {
             case "warden", "ultra warden":
@@ -53,14 +49,12 @@ class TauntCoordinator {
                 triggerStacks = 1;
                 partnerTauntAura = "Focus";
                 tauntIntervalMs = 0;
-                announceMessage = "Taunted Ultra Warden!";
 
             case "tyndarius", "ultra tyndarius":
                 bossName = "Ultra Tyndarius";
                 triggerAura = null;
                 partnerTauntAura = "Focus";
                 tauntIntervalMs = 6000;
-                announceMessage = "Taunted Ultra Tyndarius!";
 
             case "dage", "champion dage":
                 bossName = "Champion Dage";
@@ -68,14 +62,12 @@ class TauntCoordinator {
                 triggerStacks = 1;
                 partnerTauntAura = "Focus";
                 tauntIntervalMs = 0;
-                announceMessage = "Taunted Champion Dage!";
 
             case "engineer", "ultra engineer":
                 bossName = "Defense Drone";
                 triggerAura = null;
                 partnerTauntAura = "Focus";
                 tauntIntervalMs = 6000;
-                announceMessage = "Taunted Drone!";
 
             case "speaker", "malgor", "ultra speaker":
                 bossName = "The Speaker";
@@ -83,21 +75,18 @@ class TauntCoordinator {
                 triggerStacks = 1;
                 partnerTauntAura = "Focus";
                 tauntIntervalMs = 5800;
-                announceMessage = "Taunted The Speaker!";
 
             case "loop", "rotation", "interval":
                 bossName = null;
                 triggerAura = null;
                 partnerTauntAura = "Focus";
                 tauntIntervalMs = 6000;
-                announceMessage = "Taunted!";
 
             default:
                 bossName = (preset != null && preset != "") ? preset : null;
                 triggerAura = null;
                 partnerTauntAura = "Focus";
                 tauntIntervalMs = 6000;
-                announceMessage = "Taunted " + (bossName != null ? bossName : "Boss") + "!";
         }
 
         prepareTauntItem();
@@ -107,17 +96,13 @@ class TauntCoordinator {
     /**
      * Custom configuration for any encounter.
      */
-    public function configureCustom(?targetBoss:String, ?triggerAuraName:String, stacks:Int = 1, intervalMs:Float = 0, ?partnerAura:String = "Focus", ?partyChatMsg:String):Void {
+    public function configureCustom(?targetBoss:String, ?triggerAuraName:String, stacks:Int = 1, intervalMs:Float = 0, ?partnerAura:String = "Focus"):Void {
         enabled = true;
         bossName = targetBoss;
         triggerAura = triggerAuraName;
         triggerStacks = stacks > 0 ? stacks : 1;
         tauntIntervalMs = intervalMs;
         partnerTauntAura = (partnerAura != null && partnerAura != "") ? partnerAura : "Focus";
-        if (partyChatMsg != null && partyChatMsg != "") {
-            announceParty = true;
-            announceMessage = partyChatMsg;
-        }
 
         prepareTauntItem();
         ApiLogger.info("Taunt", "Configured custom taunt (Boss: " + bossName + ", Trigger: " + triggerAura + ", Stacks: " + triggerStacks + ")");
@@ -219,18 +204,6 @@ class TauntCoordinator {
 
         ApiLogger.info("Taunt", "Fired Taunt" + (bossName != null ? (" on " + bossName) : "") + " (Success: " + castSuccess + ")");
 
-        // Optional Party Chat Announcement
-        if (announceParty && announceMessage != null && announceMessage != "") {
-            sendPartyChat(announceMessage);
-        }
-
         return castSuccess;
-    }
-
-    private function sendPartyChat(msg:String):Void {
-        if (_game == null || _game.sfc == null || msg == null || msg == "") return;
-        try {
-            _game.sfc.sendString("%xt%zm%message%1%" + msg + "%party%");
-        } catch (_:Dynamic) {}
     }
 }

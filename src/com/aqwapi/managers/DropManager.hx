@@ -77,7 +77,11 @@ class DropManager {
                                 if (BlacklistManager.instance.isBlacklisted(itemName)) continue;
 
                                 if (acceptAll || matchesTarget || (acceptACs && isAC)) {
-                                    sendGetDrop(item.ItemID);
+                                    if (!isAC && com.aqwapi.Api.inventory != null && com.aqwapi.Api.inventory.isFullFor(item)) {
+                                        addPendingDrop(item);
+                                    } else {
+                                        sendGetDrop(item.ItemID);
+                                    }
                                 } else if (rejectAll) {
                                     try {
                                         if (_game.cDropsUI != null && _game.cDropsUI.onBtNo != null) {
@@ -248,7 +252,9 @@ class DropManager {
                 if (matches) {
                     // Never pick up blacklisted items, even if explicitly requested
                     var pName:String = pending.sName != null ? Std.string(pending.sName) : "";
-                    if (!BlacklistManager.instance.isBlacklisted(pName)) {
+                    var isAC:Bool = (pending.bCoins == 1 || pending.bCoins == "1" || pending.bCoins == true);
+                    var fullNonAC:Bool = (!isAC && com.aqwapi.Api.inventory != null && com.aqwapi.Api.inventory.isFullFor(pending));
+                    if (!BlacklistManager.instance.isBlacklisted(pName) && !fullNonAC) {
                         sendGetDrop(pending.ItemID);
                         pendingDrops.splice(i, 1);
                         accepted++;

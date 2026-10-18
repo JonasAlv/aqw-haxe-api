@@ -25,6 +25,56 @@ class PlayerManager {
         return (g != null && g.world != null) ? g.world.myAvatar : null;
     }
 
+    private function _uoLeaf():Dynamic {
+        var g = _g();
+        if (g == null || g.world == null) return null;
+        var w:Dynamic = g.world;
+
+        // 1. world.myLeaf() method if available (built into native World.as)
+        try {
+            if (Reflect.isFunction(w.myLeaf)) {
+                var ml = w.myLeaf();
+                if (ml != null) return ml;
+            }
+        } catch (_:Dynamic) {}
+
+        // 2. world.uoTree dictionary lookup
+        if (w.uoTree != null) {
+            var a = _avatar();
+            if (a != null && a.pnm != null) {
+                var pnmStr:String = Std.string(a.pnm).toLowerCase();
+                try {
+                    var leaf = untyped w.uoTree[pnmStr];
+                    if (leaf != null) return leaf;
+                } catch (_:Dynamic) {}
+            }
+            if (g.sfc != null && g.sfc.myUserName != null) {
+                var unameStr:String = Std.string(g.sfc.myUserName).toLowerCase();
+                try {
+                    var leaf = untyped w.uoTree[unameStr];
+                    if (leaf != null) return leaf;
+                } catch (_:Dynamic) {}
+            }
+            if (a != null && a.objData != null && a.objData.strUsername != null) {
+                var unameStr:String = Std.string(a.objData.strUsername).toLowerCase();
+                try {
+                    var leaf = untyped w.uoTree[unameStr];
+                    if (leaf != null) return leaf;
+                } catch (_:Dynamic) {}
+            }
+        }
+
+        // 3. world.uoTreeLeaf(userName) method if available
+        try {
+            if (Reflect.isFunction(w.uoTreeLeaf) && g.sfc != null && g.sfc.myUserName != null) {
+                var leaf = w.uoTreeLeaf(Std.string(g.sfc.myUserName).toLowerCase());
+                if (leaf != null) return leaf;
+            }
+        } catch (_:Dynamic) {}
+
+        return null;
+    }
+
     private inline function _di(val:Dynamic, def:Int = 0):Int {
         return val != null ? Std.int(untyped val) : def;
     }
@@ -35,18 +85,39 @@ class PlayerManager {
 
     public var state(get, never):Int;
     @:getter(state)
-    public function get_state_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intState) : 0; }
-    public function get_state():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intState) : 0; }
+    public function get_state_prop():Int { return get_state(); }
+    public function get_state():Int {
+        var u = _uoLeaf();
+        if (u != null && u.intState != null) return _di(u.intState);
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intState != null) return _di(a.objData.intState);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intState != null) return _di(a.dataLeaf.intState);
+        return 0;
+    }
 
     public var hp(get, never):Int;
     @:getter(hp)
-    public function get_hp_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intHP) : 0; }
-    public function get_hp():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intHP) : 0; }
+    public function get_hp_prop():Int { return get_hp(); }
+    public function get_hp():Int {
+        var u = _uoLeaf();
+        if (u != null && u.intHP != null) return _di(u.intHP);
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intHP != null) return _di(a.objData.intHP);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intHP != null) return _di(a.dataLeaf.intHP);
+        return 0;
+    }
 
     public var maxHp(get, never):Int;
     @:getter(maxHp)
-    public function get_maxHp_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intHPMax) : 0; }
-    public function get_maxHp():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intHPMax) : 0; }
+    public function get_maxHp_prop():Int { return get_maxHp(); }
+    public function get_maxHp():Int {
+        var u = _uoLeaf();
+        if (u != null && u.intHPMax != null) return _di(u.intHPMax);
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intHPMax != null) return _di(a.objData.intHPMax);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intHPMax != null) return _di(a.dataLeaf.intHPMax);
+        return 0;
+    }
 
     public var hpPercent(get, never):Float;
     @:getter(hpPercent)
@@ -58,18 +129,97 @@ class PlayerManager {
 
     public var mp(get, never):Int;
     @:getter(mp)
-    public function get_mp_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intMP) : 0; }
-    public function get_mp():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intMP) : 0; }
+    public function get_mp_prop():Int { return get_mp(); }
+    public function get_mp():Int {
+        var u = _uoLeaf();
+        if (u != null && u.intMP != null) return _di(u.intMP);
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intMP != null) return _di(a.objData.intMP);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intMP != null) return _di(a.dataLeaf.intMP);
+        return 0;
+    }
 
     public var maxMp(get, never):Int;
     @:getter(maxMp)
-    public function get_maxMp_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intMPMax) : 0; }
-    public function get_maxMp():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intMPMax) : 0; }
+    public function get_maxMp_prop():Int { return get_maxMp(); }
+    public function get_maxMp():Int {
+        var u = _uoLeaf();
+        if (u != null && u.intMPMax != null) return _di(u.intMPMax);
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intMPMax != null) return _di(a.objData.intMPMax);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intMPMax != null) return _di(a.dataLeaf.intMPMax);
+        return 100;
+    }
+
+    public var shield(get, never):Int;
+    @:getter(shield)
+    public function get_shield_prop():Int { return get_shield(); }
+    public function get_shield():Int {
+        var u = _uoLeaf();
+        if (u != null && u.intSG != null) return _di(u.intSG);
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intSG != null) return _di(a.objData.intSG);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intSG != null) return _di(a.dataLeaf.intSG);
+        return 0;
+    }
+
+    public var sp(get, never):Int;
+    @:getter(sp)
+    public function get_sp_prop():Int { return get_sp(); }
+    public function get_sp():Int {
+        var u = _uoLeaf();
+        if (u != null && u.intSP != null) return _di(u.intSP);
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intSP != null) return _di(a.objData.intSP);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intSP != null) return _di(a.dataLeaf.intSP);
+        return 0;
+    }
+
+    public var maxSp(get, never):Int;
+    @:getter(maxSp)
+    public function get_maxSp_prop():Int { return get_maxSp(); }
+    public function get_maxSp():Int {
+        var u = _uoLeaf();
+        if (u != null && u.intSPMax != null) return _di(u.intSPMax);
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intSPMax != null) return _di(a.objData.intSPMax);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intSPMax != null) return _di(a.dataLeaf.intSPMax, 1000);
+        return 1000;
+    }
+
+    public var hasTonic(get, never):Bool;
+    @:getter(hasTonic)
+    public function get_hasTonic_prop():Bool { return get_hasTonic(); }
+    public function get_hasTonic():Bool {
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.Tonic != null) {
+            var s = _ds(a.objData.Tonic);
+            return s != "" && s != "null" && s != "0";
+        }
+        return false;
+    }
+
+    public var hasElixir(get, never):Bool;
+    @:getter(hasElixir)
+    public function get_hasElixir_prop():Bool { return get_hasElixir(); }
+    public function get_hasElixir():Bool {
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.Elixir != null) {
+            var s = _ds(a.objData.Elixir);
+            return s != "" && s != "null" && s != "0";
+        }
+        return false;
+    }
 
     public var gold(get, never):Int;
     @:getter(gold)
-    public function get_gold_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intGold) : 0; }
-    public function get_gold():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intGold) : 0; }
+    public function get_gold_prop():Int { return get_gold(); }
+    public function get_gold():Int {
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intGold != null) return _di(a.objData.intGold);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intGold != null) return _di(a.dataLeaf.intGold);
+        return 0;
+    }
 
     public var username(get, never):String;
     @:getter(username)
@@ -77,8 +227,9 @@ class PlayerManager {
     public function get_username():String {
         var a = _avatar();
         if (a != null) {
-            if (a.dataLeaf != null && a.dataLeaf.strUsername != null) return _ds(a.dataLeaf.strUsername);
+            if (a.pnm != null && Std.string(a.pnm) != "") return _ds(a.pnm);
             if (a.objData != null && a.objData.strUsername != null) return _ds(a.objData.strUsername);
+            if (a.dataLeaf != null && a.dataLeaf.strUsername != null) return _ds(a.dataLeaf.strUsername);
         }
         var g = _g();
         if (g != null && g.sfc != null && g.sfc.myUserName != null) return _ds(g.sfc.myUserName);
@@ -87,20 +238,24 @@ class PlayerManager {
 
     public var isAlive(get, never):Bool;
     @:getter(isAlive)
-    public function get_isAlive_prop():Bool { var a = _avatar(); return a != null && a.dataLeaf != null && _di(a.dataLeaf.intHP) > 0 && _di(a.dataLeaf.intState) > 0; }
-    public function get_isAlive():Bool { var a = _avatar(); return a != null && a.dataLeaf != null && _di(a.dataLeaf.intHP) > 0 && _di(a.dataLeaf.intState) > 0; }
+    public function get_isAlive_prop():Bool { return get_isAlive(); }
+    public function get_isAlive():Bool {
+        return hp > 0 && (state > 0 || state == -1);
+    }
 
     public var isInCombat(get, never):Bool;
     @:getter(isInCombat)
     public function get_isInCombat_prop():Bool { return get_isInCombat(); }
     public function get_isInCombat():Bool {
+        if (state >= 2) return true;
         var a = _avatar();
         if (a == null) return false;
+        var u = _uoLeaf();
+        if (u != null && _di(u.intState) >= 2) return true;
         if (a.dataLeaf != null && _di(a.dataLeaf.intState) >= 2) return true;
         try {
+            if (u != null && Reflect.field(u, "intCombatOn") == 1) return true;
             if (a.dataLeaf != null && Reflect.field(a.dataLeaf, "intCombatOn") == 1) return true;
-        } catch (_:Dynamic) {}
-        try {
             if (Reflect.field(a, "intCombatOn") == 1) return true;
         } catch (_:Dynamic) {}
         return false;
@@ -118,8 +273,15 @@ class PlayerManager {
 
     public var level(get, never):Int;
     @:getter(level)
-    public function get_level_prop():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intLevel) : 0; }
-    public function get_level():Int { var a = _avatar(); return (a != null && a.dataLeaf != null) ? _di(a.dataLeaf.intLevel) : 0; }
+    public function get_level_prop():Int { return get_level(); }
+    public function get_level():Int {
+        var u = _uoLeaf();
+        if (u != null && u.intLevel != null) return _di(u.intLevel);
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.intLevel != null) return _di(a.objData.intLevel);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.intLevel != null) return _di(a.dataLeaf.intLevel);
+        return 1;
+    }
 
     public var target(get, never):EntityDTO;
     @:getter(target)
@@ -434,8 +596,7 @@ class PlayerManager {
             }
         }
         if (idInt <= 0) return false;
-        var roomId = (g.world.curRoom != null) ? Std.string(g.world.curRoom) : "1";
-        g.sfc.sendString("%xt%zm%serverUseItem%" + roomId + "%+%" + idInt + "%");
+        g.sfc.sendString("%xt%zm%serverUseItem%-1%+%" + idInt + "%");
         return true;
     }
 
@@ -525,13 +686,14 @@ class PlayerManager {
             }
         }
 
-        // 2. Other players in world.avatars
+        // 2. Other players in world.avatars (Dictionary)
         if (world.avatars != null) {
             var raw:Dynamic = world.avatars;
             var myAv = world.myAvatar;
             try {
-                for (k in Reflect.fields(raw)) {
-                    var av:Dynamic = Reflect.field(raw, k);
+                var keys:Array<Dynamic> = untyped __keys__(raw);
+                for (k in keys) {
+                    var av:Dynamic = untyped raw[k];
                     if (av == null || av == myAv) continue;
                     var mc:Dynamic = null;
                     try { mc = Reflect.field(av, "pMC"); } catch (_:Dynamic) {}
@@ -558,8 +720,9 @@ class PlayerManager {
             var raw:Dynamic = world.avatars;
             var myAv = world.myAvatar;
             try {
-                for (k in Reflect.fields(raw)) {
-                    var av:Dynamic = Reflect.field(raw, k);
+                var keys:Array<Dynamic> = untyped __keys__(raw);
+                for (k in keys) {
+                    var av:Dynamic = untyped raw[k];
                     if (av == null || av == myAv) continue;
                     result.push(new EntityDTO(av));
                 }

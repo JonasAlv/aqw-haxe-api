@@ -229,25 +229,41 @@ class SkillRules {
     }
 
     public static function evaluatePartyHealth(rule:Dynamic, world:Dynamic, avatar:Dynamic):Bool {
-        if (world == null || world.players == null) return false;
+        if (world == null) return false;
         var threshold:Float = ApiUtils.parseFloat(rule.value, 0);
         var isPct:Bool = (rule.isPercentage == true || (rule.isPercentage == null && threshold <= 100));
         var comp:String = (rule.comparison != null) ? Std.string(rule.comparison) : "less";
         var myFrame:String = (world.strFrame != null) ? Std.string(world.strFrame) : "";
 
+        // 1. Check party members in same cell if in a party
         try {
-            var players:Array<Dynamic> = cast world.players;
-            for (p in players) {
-                if (p == null) continue;
-                var pFrame:String = (p.strFrame != null) ? Std.string(p.strFrame) : "";
-                if (pFrame != myFrame) continue;
-                var dl:Dynamic = p.dataLeaf;
-                if (dl == null || dl.intHP == null) continue;
-                var hp:Float = Std.int(dl.intHP);
-                var maxHp:Float = (dl.intHPMax != null && dl.intHPMax > 0) ? Std.int(dl.intHPMax) : 100;
-                if (hp <= 0) continue;
-                var val:Float = isPct ? (maxHp > 0 ? (hp / maxHp * 100) : 0) : hp;
-                if (compare(val, threshold, comp)) return true;
+            if (Api.party != null && Api.party.inParty) {
+                for (m in Api.party.allMembers) {
+                    if (m == null || !m.inCell || m.hp <= 0) continue;
+                    var val:Float = isPct ? (m.maxHp > 0 ? (m.hp / m.maxHp * 100.0) : 0.0) : m.hp;
+                    if (compare(val, threshold, comp)) return true;
+                }
+                return false;
+            }
+        } catch (_:Dynamic) {}
+
+        // 2. Fallback: check all friendly avatars in same cell via world.avatars Dictionary
+        try {
+            if (world.avatars != null) {
+                var keys:Array<Dynamic> = untyped __keys__(world.avatars);
+                for (k in keys) {
+                    var p:Dynamic = untyped world.avatars[k];
+                    if (p == null || p.dataLeaf == null) continue;
+                    var dl:Dynamic = p.dataLeaf;
+                    var pFrame:String = (dl.strFrame != null) ? Std.string(dl.strFrame) : "";
+                    if (pFrame != myFrame) continue;
+                    if (dl.intHP == null) continue;
+                    var hp:Float = Std.int(dl.intHP);
+                    var maxHp:Float = (dl.intHPMax != null && dl.intHPMax > 0) ? Std.int(dl.intHPMax) : 100;
+                    if (hp <= 0) continue;
+                    var val:Float = isPct ? (maxHp > 0 ? (hp / maxHp * 100.0) : 0.0) : hp;
+                    if (compare(val, threshold, comp)) return true;
+                }
             }
         } catch (_:Dynamic) {}
         return false;

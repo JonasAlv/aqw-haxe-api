@@ -11,6 +11,10 @@ class EntityDTO {
     public var hp:Int = 0;
     public var maxHp:Int = 0;
     public var mp:Int = 0;
+    public var maxMp:Int = 0;
+    public var shield:Int = 0;
+    public var sp:Int = 0;
+    public var maxSp:Int = 1000;
     public var state:Int = 0;
     public var mapId:String = "";
     public var monsterId:String = "";
@@ -23,6 +27,8 @@ class EntityDTO {
     public var guild:String = "";
     public var isAfk:Bool = false;
     public var level:Int = 1;
+    public var targetUserIds:Array<String> = [];
+    public var isTargetingMe:Bool = false;
 
     public var pMC(get, never):Dynamic;
     @:getter(pMC)
@@ -45,7 +51,9 @@ class EntityDTO {
             if (g != null && g.world != null && g.world.myAvatar != null) {
                 var tgt:Dynamic = g.world.myAvatar.target;
                 if (tgt == null) return false;
-                return (tgt == this.raw);
+                if (tgt == this.raw) return true;
+                if (this.pMC != null && (tgt == this.pMC || tgt.pMC == this.pMC)) return true;
+                if (this.raw != null && tgt.raw != null && tgt.raw == this.raw) return true;
             }
         } catch (_:Dynamic) {}
         return false;
@@ -80,54 +88,34 @@ class EntityDTO {
         } catch (_:Dynamic) {}
     }
 
+    /**
+     * Suppresses the native `pname` / `hpBar` without touching anything the game owns.
+     * AvatarMC.scale()/MonsterMC.scale() own `y`, and hideNameSetup/toggleName/toggleHPBar own `visible`.
+     * The game never writes `alpha` on either clip, so alpha is the only lossless hide/restore channel.
+     */
     public function hideNativeName():Void {
         var mc = this.pMC;
         if (mc == null) return;
         try {
-            var pn = _sf(mc, "pname");
-            if (pn != null) {
-                pn.visible = false;
-                pn.alpha = 0.0;
-                pn.x = -99999.0;
-                try { if (pn.ti != null) { pn.ti.visible = false; pn.ti.alpha = 0.0; } } catch (_:Dynamic) {}
-                try { if (pn.tg != null) { pn.tg.visible = false; pn.tg.alpha = 0.0; } } catch (_:Dynamic) {}
-                try { if (pn.typ != null) { pn.typ.visible = false; pn.typ.alpha = 0.0; } } catch (_:Dynamic) {}
-            }
+            var pn:Dynamic = _sf(mc, "pname");
+            if (pn != null && pn.alpha != 0.0) pn.alpha = 0.0;
         } catch (_:Dynamic) {}
         try {
-            var hb = _sf(mc, "hpBar");
-            if (hb != null) {
-                hb.visible = false;
-                hb.alpha = 0.0;
-                hb.y = -9999;
-            }
+            var hb:Dynamic = _sf(mc, "hpBar");
+            if (hb != null && hb.alpha != 0.0) hb.alpha = 0.0;
         } catch (_:Dynamic) {}
     }
 
     public function showNativeName():Void {
         var mc = this.pMC;
         if (mc == null) return;
-        var pn:Dynamic = null;
         try {
-            pn = _sf(mc, "pname");
-            if (pn != null) {
-                pn.alpha = 1.0;
-                pn.visible = true;
-                pn.x = 0.0;
-                try { if (pn.ti != null) { pn.ti.alpha = 1.0; pn.ti.visible = true; } } catch (_:Dynamic) {}
-                try { if (pn.tg != null) { pn.tg.alpha = 1.0; pn.tg.visible = (pn.tg.text != null && pn.tg.text != ""); } } catch (_:Dynamic) {}
-                try { if (pn.typ != null) { pn.typ.alpha = 1.0; pn.typ.visible = (pn.typ.text != null && pn.typ.text != ""); } } catch (_:Dynamic) {}
-            }
+            var pn:Dynamic = _sf(mc, "pname");
+            if (pn != null) pn.alpha = 1.0;
         } catch (_:Dynamic) {}
         try {
-            var hb = _sf(mc, "hpBar");
-            if (hb != null) {
-                hb.alpha = 1.0;
-                var g:Dynamic = Api.game;
-                var show:Bool = (g != null && g.world != null && g.world.showHPBar == true);
-                hb.visible = show;
-                if (pn != null && pn.y != 0) hb.y = pn.y - 3;
-            }
+            var hb:Dynamic = _sf(mc, "hpBar");
+            if (hb != null) hb.alpha = 1.0;
         } catch (_:Dynamic) {}
     }
 
@@ -148,15 +136,7 @@ class EntityDTO {
     public function get_alive_prop():Bool { return get_alive(); }
     public function get_alive():Bool {
         if (hp <= 0) return false;
-        if (state == 0 && raw != null) {
-            try {
-                var dl:Dynamic = _sf(raw, "dataLeaf");
-                if (dl != null) {
-                    var st:Dynamic = _sf(dl, "intState");
-                    if (st != null && _di(st) == 0) return false;
-                }
-            } catch (e:Dynamic) {}
-        }
+        if (state == 0) return false;
         return true;
     }
 
@@ -257,211 +237,67 @@ class EntityDTO {
             if (this.name != "" && this.name.toLowerCase() == myName) this.isMyAvatar = true;
         }
 
-        // HP & Max HP resolution
-        if (this.isMyAvatar && Api.player != null) {
-            this.hp = Api.player.hp;
-            this.maxHp = Api.player.maxHp;
-            this.mp = Api.player.mp;
-            this.state = Api.player.state;
-        } else {
-            var valHP:Dynamic = null;
-            var valMaxHP:Dynamic = null;
-            var valMP:Dynamic = null;
+        // 1. MapID / MonID / ID resolution
+        var monMapVal:Dynamic = null;
+        if (objData != null) monMapVal = _sf(objData, "MonMapID");
+        if (monMapVal == null && dataLeaf != null) monMapVal = _sf(dataLeaf, "MonMapID");
+        if (monMapVal == null && rawData != null) monMapVal = _sf(rawData, "MonMapID");
 
-            // 1. Live DataLeaf FIRST (for monsters, dataLeaf IS monTree[MonMapID]; for players, it is uoTree leaf)
-            if (dataLeaf != null) {
-                try { valHP = untyped dataLeaf.intHP; } catch (_:Dynamic) {}
-                if (valHP == null) valHP = _sf(dataLeaf, "intHP");
-                try { valMaxHP = untyped dataLeaf.intHPMax; } catch (_:Dynamic) {}
-                if (valMaxHP == null) valMaxHP = _sf(dataLeaf, "intHPMax");
-                try { valMP = untyped dataLeaf.intMP; } catch (_:Dynamic) {}
-                if (valMP == null) valMP = _sf(dataLeaf, "intMP");
-            }
-
-            // 2. Cross-check monTree if monster dataLeaf did not have intHP
-            if (valHP == null) {
-                var monMapId:Dynamic = null;
-                if (objData != null) monMapId = _sf(objData, "MonMapID");
-                if (monMapId == null && dataLeaf != null) monMapId = _sf(dataLeaf, "MonMapID");
-                if (monMapId == null) monMapId = _sf(rawData, "MonMapID");
-
-                if (monMapId != null && Api.game != null && Api.game.world != null && Api.game.world.monTree != null) {
-                    try {
-                        var strKey:String = Std.string(monMapId);
-                        var mLeaf:Dynamic = Reflect.field(Api.game.world.monTree, strKey);
-                        if (mLeaf == null) mLeaf = untyped Api.game.world.monTree[monMapId];
-                        if (mLeaf == null) mLeaf = untyped Api.game.world.monTree[strKey];
-                        if (mLeaf != null) {
-                            if (mLeaf.intHP != null) valHP = mLeaf.intHP;
-                            if (mLeaf.intHPMax != null) valMaxHP = mLeaf.intHPMax;
-                            if (mLeaf.intMP != null) valMP = mLeaf.intMP;
-                        }
-                    } catch (_:Dynamic) {}
-                }
-            }
-
-            // 3. Cross-check uoTree for other players
-            if (this.name != "" && Api.game != null && Api.game.world != null && Api.game.world.uoTree != null) {
-                try {
-                    var uName:String = this.name.toLowerCase();
-                    var uLeaf:Dynamic = Reflect.field(Api.game.world.uoTree, uName);
-                    if (uLeaf == null) uLeaf = untyped Api.game.world.uoTree[uName];
-                    if (uLeaf != null) {
-                        if (uLeaf.intHP != null) valHP = uLeaf.intHP;
-                        if (uLeaf.intHPMax != null) valMaxHP = uLeaf.intHPMax;
-                        if (uLeaf.intMP != null) valMP = uLeaf.intMP;
-                    }
-                } catch (_:Dynamic) {}
-            }
-
-            // 4. Fallback to objData ONLY for Max HP / MP, or if HP was never in dataLeaf/monTree
-            if (objData != null) {
-                if (valHP == null) {
-                    try { valHP = untyped objData.intHP; } catch (_:Dynamic) {}
-                    if (valHP == null) valHP = _sf(objData, "intHP");
-                }
-                if (valMaxHP == null) {
-                    try { valMaxHP = untyped objData.intHPMax; } catch (_:Dynamic) {}
-                    if (valMaxHP == null) valMaxHP = _sf(objData, "intHPMax");
-                }
-                if (valMP == null) {
-                    try { valMP = untyped objData.intMP; } catch (_:Dynamic) {}
-                    if (valMP == null) valMP = _sf(objData, "intMP");
-                }
-            }
-
-            // 5. Fallback to rawData
-            if (valHP == null) {
-                try { valHP = untyped rawData.intHP; } catch (_:Dynamic) {}
-                if (valHP == null) valHP = _sf(rawData, "intHP");
-            }
-            if (valMaxHP == null) {
-                try { valMaxHP = untyped rawData.intHPMax; } catch (_:Dynamic) {}
-                if (valMaxHP == null) valMaxHP = _sf(rawData, "intHPMax");
-            }
-            if (valMP == null) {
-                try { valMP = untyped rawData.intMP; } catch (_:Dynamic) {}
-                if (valMP == null) valMP = _sf(rawData, "intMP");
-            }
-
-            // State resolution
-            var valState:Dynamic = null;
-            if (dataLeaf != null) valState = _sf(dataLeaf, "intState");
-            if (valState == null && objData != null) valState = _sf(objData, "intState");
-            if (valState == null) valState = _sf(rawData, "intState");
-            if (valState != null) {
-                this.state = _di(valState);
-            } else {
-                this.state = 1;
-            }
-
-            if (valMaxHP != null) this.maxHp = _di(valMaxHP);
-            if (valHP != null) {
-                this.hp = _di(valHP);
-            } else if (this.maxHp > 0) {
-                this.hp = (this.state == 0) ? 0 : this.maxHp;
-            }
-
-            if (this.maxHp <= 0 && this.hp > 0) {
-                this.maxHp = this.hp;
-            }
-
-            if (valMP != null) this.mp = _di(valMP);
-
-            if (valState == null) {
-                this.state = (this.hp > 0) ? 1 : 0;
-            }
+        if (monMapVal != null) {
+            this.mapId = Std.string(monMapVal);
+            this.id = this.mapId;
         }
 
-        // Cell resolution
-        if (pMC != null) {
-            var cl = _sf(pMC, "currentLabel");
-            if (cl != null && Std.string(cl) != "") this.cell = Std.string(cl);
-        }
-        if (this.cell == "" && dataLeaf != null) {
-            var sf = _sf(dataLeaf, "strFrame");
-            if (sf != null && Std.string(sf) != "") this.cell = Std.string(sf);
-        }
-        if (this.cell == "" && objData != null) {
-            var sf = _sf(objData, "strFrame");
-            if (sf != null && Std.string(sf) != "") this.cell = Std.string(sf);
-        }
-        if (this.cell == "") {
-            var sf = _sf(rawData, "strFrame");
-            if (sf != null && Std.string(sf) != "") this.cell = Std.string(sf);
-        }
-
-        // MapID / MonID / ID resolution
-        if (dataLeaf != null) {
-            var mmid = _sf(dataLeaf, "MonMapID");
-            var entID = _sf(dataLeaf, "entID");
-            var mid = _sf(dataLeaf, "MonID");
-            if (mmid != null) { this.id = Std.string(mmid); this.mapId = this.id; }
-            else if (entID != null) this.id = Std.string(entID);
-            if (mid != null) this.monsterId = Std.string(mid);
-        } else if (objData != null) {
-            var mmid = _sf(objData, "MonMapID");
-            if (mmid != null) this.id = Std.string(mmid);
-        }
-
-        if (this.mapId == "" && objData != null) {
-            var mmid = _sf(objData, "MonMapID");
-            if (mmid != null) this.mapId = Std.string(mmid);
-        }
-        if (this.mapId == "") {
-            var mmid = _sf(rawData, "MonMapID");
-            if (mmid != null) this.mapId = Std.string(mmid);
-        }
-
-        if (this.monsterId == "" && objData != null) {
-            var mid = _sf(objData, "MonID");
-            if (mid != null) this.monsterId = Std.string(mid);
-        }
-        if (this.monsterId == "") {
-            var mid = _sf(rawData, "MonID");
-            if (mid != null) this.monsterId = Std.string(mid);
-        }
+        var monIdVal:Dynamic = null;
+        if (objData != null) monIdVal = _sf(objData, "MonID");
+        if (monIdVal == null && dataLeaf != null) monIdVal = _sf(dataLeaf, "MonID");
+        if (monIdVal == null && rawData != null) monIdVal = _sf(rawData, "MonID");
+        if (monIdVal != null) this.monsterId = Std.string(monIdVal);
 
         if (this.id == "") {
-            if (this.mapId != "") this.id = this.mapId;
-            else {
-                var entID = _sf(rawData, "entID");
-                if (entID != null) this.id = Std.string(entID);
-            }
+            var entID:Dynamic = null;
+            if (dataLeaf != null) entID = _sf(dataLeaf, "entID");
+            if (entID == null && objData != null) entID = _sf(objData, "entID");
+            if (entID == null && rawData != null) entID = _sf(rawData, "entID");
+            if (entID != null) this.id = Std.string(entID);
         }
 
-        // 1. Classification (safe reflection, never using direct property access)
+        // 2. Classification (isMonster / isPlayer)
         var monCheck:Bool = false;
-        if (pMC != null) {
-            try {
-                if (Reflect.hasField(pMC, "isMonster") && Reflect.field(pMC, "isMonster") == true) monCheck = true;
-            } catch (_:Dynamic) {}
+        var npcTyp:Dynamic = _sf(rawData, "npcType");
+        if (npcTyp != null) {
+            if (Std.string(npcTyp).toLowerCase() == "monster") monCheck = true;
+            else if (Std.string(npcTyp).toLowerCase() == "player") monCheck = false;
         }
-        if (!monCheck && rawData != null) {
-            try {
-                if (Reflect.hasField(rawData, "isMonster") && Reflect.field(rawData, "isMonster") == true) monCheck = true;
-            } catch (_:Dynamic) {}
+        if (!monCheck) {
+            if (pMC != null) {
+                try {
+                    if (Reflect.hasField(pMC, "isMonster") && Reflect.field(pMC, "isMonster") == true) monCheck = true;
+                } catch (_:Dynamic) {}
+            }
+            if (!monCheck && rawData != null) {
+                try {
+                    if (Reflect.hasField(rawData, "isMonster") && Reflect.field(rawData, "isMonster") == true) monCheck = true;
+                } catch (_:Dynamic) {}
+            }
+            if (!monCheck && (this.mapId != "" || this.monsterId != "")) {
+                monCheck = true;
+            }
+            if (!monCheck && objData != null && (_sf(objData, "MonMapID") != null || _sf(objData, "strMonName") != null)) {
+                monCheck = true;
+            }
         }
-        if (!monCheck && (this.mapId != "" || this.monsterId != "")) {
-            monCheck = true;
-        }
-        if (!monCheck && objData != null && _sf(objData, "MonMapID") != null) {
-            monCheck = true;
+        if (this.isMyAvatar) {
+            monCheck = false;
         }
         this.isMonster = monCheck;
         this.isPlayer = !monCheck;
-
-        // 2. Local avatar check
-        if (rawData != null) {
-            try {
-                if (Reflect.hasField(rawData, "isMyAvatar") && Reflect.field(rawData, "isMyAvatar") == true) this.isMyAvatar = true;
-            } catch (_:Dynamic) {}
-        }
 
         // 3. Level
         var lvlVal:Dynamic = null;
         if (dataLeaf != null) lvlVal = _sf(dataLeaf, "intLevel");
         if (lvlVal == null && objData != null) lvlVal = _sf(objData, "intLevel");
+        if (lvlVal == null) lvlVal = _sf(rawData, "intLevel");
         if (lvlVal != null) this.level = _di(lvlVal, 1);
 
         // 4. Monster Race
@@ -490,7 +326,48 @@ class EntityDTO {
             }
         }
 
-        // 5. Player Guild & AFK
+        // 5. Monster targets resolution (dataLeaf.targets map in World.as:9300)
+        if (dataLeaf != null && dataLeaf.targets != null) {
+            try {
+                var tgts:Dynamic = dataLeaf.targets;
+                var myUname = (Api.player != null && Api.player.username != null) ? Api.player.username.toLowerCase() : "";
+                var myUid:String = "";
+                if (Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null && Api.game.world.myAvatar.uid != null) {
+                    myUid = Std.string(Api.game.world.myAvatar.uid);
+                }
+                var keys:Array<Dynamic> = untyped __keys__(tgts);
+                for (k in keys) {
+                    if (k == null) continue;
+                    var ks = Std.string(k);
+                    if (ks != "" && this.targetUserIds.indexOf(ks) == -1) {
+                        this.targetUserIds.push(ks);
+                    }
+                    if ((myUname != "" && ks.toLowerCase() == myUname) || (myUid != "" && ks == myUid)) {
+                        this.isTargetingMe = true;
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        // 6. Cell resolution
+        if (pMC != null) {
+            var cl = _sf(pMC, "currentLabel");
+            if (cl != null && Std.string(cl) != "") this.cell = Std.string(cl);
+        }
+        if (this.cell == "" && dataLeaf != null) {
+            var sf = _sf(dataLeaf, "strFrame");
+            if (sf != null && Std.string(sf) != "") this.cell = Std.string(sf);
+        }
+        if (this.cell == "" && objData != null) {
+            var sf = _sf(objData, "strFrame");
+            if (sf != null && Std.string(sf) != "") this.cell = Std.string(sf);
+        }
+        if (this.cell == "") {
+            var sf = _sf(rawData, "strFrame");
+            if (sf != null && Std.string(sf) != "") this.cell = Std.string(sf);
+        }
+
+        // 7. Player Guild & AFK
         if (this.isPlayer) {
             var gObj:Dynamic = null;
             if (objData != null) gObj = _sf(objData, "guild");
@@ -523,6 +400,218 @@ class EntityDTO {
                     if (uo != null && uo.afk == true) this.isAfk = true;
                 }
             } catch (_:Dynamic) {}
+        }
+
+        // 8. Stats Resolution (HP, Max HP, MP, Max MP, Shield, SP, State)
+        if (this.isMyAvatar && Api.player != null) {
+            this.hp = Api.player.hp;
+            this.maxHp = Api.player.maxHp;
+            this.mp = Api.player.mp;
+            this.maxMp = Api.player.maxMp;
+            this.shield = Api.player.shield;
+            this.sp = Api.player.sp;
+            this.maxSp = Api.player.maxSp;
+            this.state = Api.player.state;
+        } else if (this.isMonster) {
+            var valHP:Dynamic = null;
+            var valMaxHP:Dynamic = null;
+            var valMP:Dynamic = null;
+            var valMaxMP:Dynamic = null;
+            var valSG:Dynamic = null;
+            var valSP:Dynamic = null;
+            var valMaxSP:Dynamic = null;
+            var valState:Dynamic = null;
+
+            // 1. Live lookup in world.monTree (updated on combat packets)
+            var monMapId:Dynamic = (this.mapId != "") ? this.mapId : ((objData != null) ? _sf(objData, "MonMapID") : null);
+            if (monMapId == null && dataLeaf != null) monMapId = _sf(dataLeaf, "MonMapID");
+            if (monMapId == null && rawData != null) monMapId = _sf(rawData, "MonMapID");
+
+            if (monMapId != null && Api.game != null && Api.game.world != null && Api.game.world.monTree != null) {
+                try {
+                    var mTree:Dynamic = Api.game.world.monTree;
+                    var strKey:String = Std.string(monMapId);
+                    var intKey:Int = Std.parseInt(strKey);
+                    var mLeaf:Dynamic = untyped mTree[intKey];
+                    if (mLeaf == null) mLeaf = untyped mTree[strKey];
+                    if (mLeaf == null) mLeaf = untyped mTree[monMapId];
+                    if (mLeaf == null) mLeaf = Reflect.field(mTree, strKey);
+                    if (mLeaf != null) {
+                        if (valHP == null && mLeaf.intHP != null) valHP = mLeaf.intHP;
+                        if (valMaxHP == null && mLeaf.intHPMax != null) valMaxHP = mLeaf.intHPMax;
+                        if (valMP == null && mLeaf.intMP != null) valMP = mLeaf.intMP;
+                        if (valMaxMP == null && mLeaf.intMPMax != null) valMaxMP = mLeaf.intMPMax;
+                        if (valSG == null && mLeaf.intSG != null) valSG = mLeaf.intSG;
+                        if (valSP == null && mLeaf.intSP != null) valSP = mLeaf.intSP;
+                        if (valMaxSP == null && mLeaf.intSPMax != null) valMaxSP = mLeaf.intSPMax;
+                        if (valState == null && mLeaf.intState != null) valState = mLeaf.intState;
+                    }
+                } catch (_:Dynamic) {}
+            }
+
+            // 3. Fallback to objData (updated via Game.as:5377 on monster damage)
+            if (objData != null) {
+                if (valHP == null && objData.intHP != null) valHP = objData.intHP;
+                if (valMaxHP == null && objData.intHPMax != null) valMaxHP = objData.intHPMax;
+                if (valMP == null && objData.intMP != null) valMP = objData.intMP;
+                if (valMaxMP == null && objData.intMPMax != null) valMaxMP = objData.intMPMax;
+                if (valSG == null && objData.intSG != null) valSG = objData.intSG;
+                if (valState == null && objData.intState != null) valState = objData.intState;
+            }
+
+            // 4. Fallback to dataLeaf (m.dataLeaf in World.as:8197 points directly to monTree)
+            if (dataLeaf != null) {
+                if (valHP == null && dataLeaf.intHP != null) valHP = dataLeaf.intHP;
+                if (valMaxHP == null && dataLeaf.intHPMax != null) valMaxHP = dataLeaf.intHPMax;
+                if (valMP == null && dataLeaf.intMP != null) valMP = dataLeaf.intMP;
+                if (valMaxMP == null && dataLeaf.intMPMax != null) valMaxMP = dataLeaf.intMPMax;
+                if (valSG == null && dataLeaf.intSG != null) valSG = dataLeaf.intSG;
+                if (valSP == null && dataLeaf.intSP != null) valSP = dataLeaf.intSP;
+                if (valMaxSP == null && dataLeaf.intSPMax != null) valMaxSP = dataLeaf.intSPMax;
+                if (valState == null && dataLeaf.intState != null) valState = dataLeaf.intState;
+            }
+
+            // 4. Fallback to rawData
+            if (valHP == null) valHP = _sf(rawData, "intHP");
+            if (valMaxHP == null) valMaxHP = _sf(rawData, "intHPMax");
+            if (valMP == null) valMP = _sf(rawData, "intMP");
+            if (valMaxMP == null) valMaxMP = _sf(rawData, "intMPMax");
+            if (valState == null) valState = _sf(rawData, "intState");
+
+            if (valState != null) {
+                this.state = _di(valState);
+            } else {
+                this.state = 1;
+            }
+
+            if (valMaxHP != null) this.maxHp = _di(valMaxHP);
+            if (valHP != null) {
+                this.hp = _di(valHP);
+            } else if (this.maxHp > 0) {
+                this.hp = (this.state == 0) ? 0 : this.maxHp;
+            }
+
+            if (this.state == 0) {
+                this.hp = 0;
+            } else if (this.hp <= 0 && this.state > 0) {
+                this.state = 0;
+            }
+
+            if (this.maxHp <= 0 && this.hp > 0) {
+                this.maxHp = this.hp;
+            }
+            if (this.maxHp <= 0) {
+                this.maxHp = 100;
+            }
+
+            if (valMP != null) this.mp = _di(valMP);
+            if (valMaxMP != null) this.maxMp = _di(valMaxMP);
+            if (valSG != null) this.shield = _di(valSG);
+            if (valSP != null) this.sp = _di(valSP);
+            if (valMaxSP != null) this.maxSp = _di(valMaxSP, 1000);
+        } else {
+            // Other players
+            var valHP:Dynamic = null;
+            var valMaxHP:Dynamic = null;
+            var valMP:Dynamic = null;
+            var valMaxMP:Dynamic = null;
+            var valSG:Dynamic = null;
+            var valSP:Dynamic = null;
+            var valMaxSP:Dynamic = null;
+            var valState:Dynamic = null;
+
+            // 1. Live lookup in world.uoTree (highest priority - updated on combat packets)
+            var uName:String = (this.name != "") ? this.name : _ds(_sf(rawData, "pnm"));
+            if (uName == "" && objData != null) uName = _ds(_sf(objData, "strUsername"));
+            if (uName != "" && Api.game != null && Api.game.world != null) {
+                var w:Dynamic = Api.game.world;
+                var uLeaf:Dynamic = null;
+                var lower:String = uName.toLowerCase();
+                try {
+                    if (Reflect.isFunction(w.uoTreeLeaf)) {
+                        uLeaf = w.uoTreeLeaf(lower);
+                    }
+                } catch (_:Dynamic) {}
+                if (uLeaf == null && w.uoTree != null) {
+                    try {
+                        uLeaf = untyped w.uoTree[lower];
+                        if (uLeaf == null) uLeaf = untyped w.uoTree[uName];
+                        if (uLeaf == null) uLeaf = Reflect.field(w.uoTree, lower);
+                        if (uLeaf == null) uLeaf = Reflect.field(w.uoTree, uName);
+                    } catch (_:Dynamic) {}
+                }
+                if (uLeaf != null) {
+                    if (uLeaf.intHP != null) valHP = uLeaf.intHP;
+                    if (uLeaf.intHPMax != null) valMaxHP = uLeaf.intHPMax;
+                    if (uLeaf.intMP != null) valMP = uLeaf.intMP;
+                    if (uLeaf.intMPMax != null) valMaxMP = uLeaf.intMPMax;
+                    if (uLeaf.intSG != null) valSG = uLeaf.intSG;
+                    if (uLeaf.intSP != null) valSP = uLeaf.intSP;
+                    if (uLeaf.intSPMax != null) valMaxSP = uLeaf.intSPMax;
+                    if (uLeaf.intState != null) valState = uLeaf.intState;
+                }
+            }
+
+            // 2. Fallback to objData (updated via uoTreeLeafSet on player damage)
+            if (objData != null) {
+                if (valHP == null && objData.intHP != null) valHP = objData.intHP;
+                if (valMaxHP == null && objData.intHPMax != null) valMaxHP = objData.intHPMax;
+                if (valMP == null && objData.intMP != null) valMP = objData.intMP;
+                if (valMaxMP == null && objData.intMPMax != null) valMaxMP = objData.intMPMax;
+                if (valSG == null && objData.intSG != null) valSG = objData.intSG;
+                if (valState == null && objData.intState != null) valState = objData.intState;
+            }
+
+            // 3. Fallback to dataLeaf
+            if (dataLeaf != null) {
+                if (valHP == null && dataLeaf.intHP != null) valHP = dataLeaf.intHP;
+                if (valMaxHP == null && dataLeaf.intHPMax != null) valMaxHP = dataLeaf.intHPMax;
+                if (valMP == null && dataLeaf.intMP != null) valMP = dataLeaf.intMP;
+                if (valMaxMP == null && dataLeaf.intMPMax != null) valMaxMP = dataLeaf.intMPMax;
+                if (valSG == null && dataLeaf.intSG != null) valSG = dataLeaf.intSG;
+                if (valSP == null && dataLeaf.intSP != null) valSP = dataLeaf.intSP;
+                if (valMaxSP == null && dataLeaf.intSPMax != null) valMaxSP = dataLeaf.intSPMax;
+                if (valState == null && dataLeaf.intState != null) valState = dataLeaf.intState;
+            }
+
+            // 4. Fallback to rawData
+            if (valHP == null) valHP = _sf(rawData, "intHP");
+            if (valMaxHP == null) valMaxHP = _sf(rawData, "intHPMax");
+            if (valMP == null) valMP = _sf(rawData, "intMP");
+            if (valMaxMP == null) valMaxMP = _sf(rawData, "intMPMax");
+            if (valState == null) valState = _sf(rawData, "intState");
+
+            if (valState != null) {
+                this.state = _di(valState);
+            } else {
+                this.state = 1;
+            }
+
+            if (valMaxHP != null) this.maxHp = _di(valMaxHP);
+            if (valHP != null) {
+                this.hp = _di(valHP);
+            } else if (this.maxHp > 0) {
+                this.hp = (this.state == 0) ? 0 : this.maxHp;
+            }
+
+            if (this.state == 0) {
+                this.hp = 0;
+            } else if (this.hp <= 0 && this.state > 0) {
+                this.state = 0;
+            }
+
+            if (this.maxHp <= 0 && this.hp > 0) {
+                this.maxHp = this.hp;
+            }
+            if (this.maxHp <= 0) {
+                this.maxHp = 100;
+            }
+
+            if (valMP != null) this.mp = _di(valMP);
+            if (valMaxMP != null) this.maxMp = _di(valMaxMP);
+            if (valSG != null) this.shield = _di(valSG);
+            if (valSP != null) this.sp = _di(valSP);
+            if (valMaxSP != null) this.maxSp = _di(valMaxSP, 1000);
         }
     }
 

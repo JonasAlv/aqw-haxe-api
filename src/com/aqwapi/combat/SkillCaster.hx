@@ -10,15 +10,19 @@ class SkillCaster {
     public static inline var SR_RESOURCE:Int = 2;  // ResourceBlocked: not enough MP/HP, dead, or skill not found
 
     /**
-     * Checks if the game's native GCD is active.
+     * Checks if the game's native GCD is active (`World.actionTimeCheck` in World.as:9340).
      */
     public static function isGcdActive(world:Dynamic):Bool {
         if (world == null) return false;
         try {
-            if (world.GCD != null && world.GCD.running) return true;
-        } catch (_:Dynamic) {}
-        try {
-            if (world.gcdTimer != null && world.gcdTimer.running) return true;
+            var gcdTs:Float = (world.GCDTS != null) ? ApiUtils.parseFloat(world.GCDTS, 0) : 0;
+            var gcdMs:Float = (world.GCD != null) ? ApiUtils.parseFloat(world.GCD, 1500) : 1500;
+            if (gcdTs > 0) {
+                var nowMs:Float = (world.dateObj != null && world.dateObj.getTime != null)
+                    ? ApiUtils.parseFloat(world.dateObj.getTime(), ApiTime.epochMs())
+                    : ApiTime.epochMs();
+                if ((nowMs - gcdTs) < gcdMs) return true;
+            }
         } catch (_:Dynamic) {}
         return false;
     }
@@ -159,7 +163,7 @@ class SkillCaster {
     }
 
     /**
-     * Checks if skill `idx` can currently fire (not resource blocked or on CD).
+     * Checks if skill `idx` can currently fire (not resource blocked, locked, or on CD).
      * Non-mutating check without executing world.testAction.
      */
     public static function canFireSkill(idx:Int):Bool {
@@ -169,13 +173,22 @@ class SkillCaster {
 
         var actObj:Dynamic = getSkillAction(idx);
         if (actObj == null || actObj.isOK == false) return false;
+        if (actObj.skillLock == true || actObj.lock == true) return false;
 
         var dl:Dynamic = (avatar != null) ? avatar.dataLeaf : null;
         if (dl != null && dl.intState == 0) return false;
 
+        if (idx == 5 && world.potionAckActID != null && Std.int(world.potionAckActID) != -1) return false;
+
         var timingReady:Bool = false;
         try { timingReady = (world.actionTimeCheck(actObj, true) == true); } catch (_:Dynamic) {}
         if (!timingReady) return false;
+
+        if (actObj.sp != null && ApiUtils.parseInt(actObj.sp, 0) > 0 && world.checkSP != null) {
+            try {
+                if (world.checkSP(actObj) == false) return false;
+            } catch (_:Dynamic) {}
+        }
 
         var rawMp:Int = actObj.mp != null ? ApiUtils.parseInt(actObj.mp, 0) : 0;
         if (rawMp > 0 && dl != null) {
@@ -236,13 +249,19 @@ class SkillCaster {
      * Executes skill `idx` against the current target, applying all safety and resource guards.
      */
     public static function fireSkill(world:Dynamic, avatar:Dynamic, idx:Int):Int {
-        // 1. Resolve action object
+        // 1. Resolve action object & check skillLock / lock (World.as:10472)
         var actObj:Dynamic = getSkillAction(idx);
         if (actObj == null || actObj.isOK == false) return SR_RESOURCE;
+        if (actObj.skillLock == true || actObj.lock == true) return SR_TIMING;
 
         // 2. Player must be alive
         var dl:Dynamic = (avatar != null) ? avatar.dataLeaf : null;
         if (dl != null && dl.intState == 0) return SR_RESOURCE;
+
+        // 2b. Consumable slot 5 pending acknowledgement check (World.as:9944)
+        if (idx == 5 && world != null && world.potionAckActID != null && Std.int(world.potionAckActID) != -1) {
+            return SR_TIMING;
+        }
 
         // 3. Timing guard — GCD + per-skill CD
         var timingReady:Bool = false;
@@ -262,7 +281,12 @@ class SkillCaster {
             } catch (_:Dynamic) {}
         }
 
-        // 5. Resource guard (MP cost scaled by class multiplier sta.$cmc)
+        // 5. Resource guard (SP & MP cost scaled by class multiplier sta.$cmc)
+        if (actObj.sp != null && ApiUtils.parseInt(actObj.sp, 0) > 0 && world != null && world.checkSP != null) {
+            try {
+                if (world.checkSP(actObj) == false) return SR_RESOURCE;
+            } catch (_:Dynamic) {}
+        }
         var rawMp:Int = actObj.mp != null ? ApiUtils.parseInt(actObj.mp, 0) : 0;
         if (rawMp > 0) {
             var curDl:Dynamic = (dl != null) ? dl : ((world != null && world.rootClass != null && world.rootClass.sfc != null && world.uoTreeLeaf != null) ? world.uoTreeLeaf(world.rootClass.sfc.myUserName) : null);
