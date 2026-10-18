@@ -380,6 +380,23 @@ class PlayerManager {
         return "";
     }
 
+    public var classRank(get, never):Int;
+    @:getter(classRank)
+    public function get_classRank_prop():Int { return get_classRank(); }
+    public function get_classRank():Int {
+        var a = _avatar();
+        if (a != null && a.objData != null && a.objData.iRank != null) return _di(a.objData.iRank, 1);
+        if (a != null && a.dataLeaf != null && a.dataLeaf.iRank != null) return _di(a.dataLeaf.iRank, 1);
+        var u = _uoLeaf();
+        if (u != null && u.objData != null && u.objData.iRank != null) return _di(u.objData.iRank, 1);
+        return 1;
+    }
+
+    public var rank(get, never):Int;
+    @:getter(rank)
+    public function get_rank_prop():Int { return get_classRank(); }
+    public inline function get_rank():Int { return get_classRank(); }
+
     public var coins(get, never):Int;
     @:getter(coins)
     public function get_coins_prop():Int { return get_coins(); }

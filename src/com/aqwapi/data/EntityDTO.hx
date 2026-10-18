@@ -29,6 +29,10 @@ class EntityDTO {
     public var level:Int = 1;
     public var targetUserIds:Array<String> = [];
     public var isTargetingMe:Bool = false;
+    public var className:String = "";
+    public var classRank:Int = 1;
+    public var isBoss:Bool = false;
+    public var stars:Int = 1;
 
     public var pMC(get, never):Dynamic;
     @:getter(pMC)
@@ -400,6 +404,33 @@ class EntityDTO {
                     if (uo != null && uo.afk == true) this.isAfk = true;
                 }
             } catch (_:Dynamic) {}
+
+            // Class & Rank resolution
+            if (this.isMyAvatar && Api.player != null) {
+                this.className = Api.player.className;
+                this.classRank = Api.player.classRank;
+            } else {
+                if (objData != null && objData.strClassName != null && _ds(objData.strClassName) != "") {
+                    this.className = _ds(objData.strClassName);
+                }
+                if (this.className == "" && dataLeaf != null && dataLeaf.strClassName != null && _ds(dataLeaf.strClassName) != "") {
+                    this.className = _ds(dataLeaf.strClassName);
+                }
+                if (this.className == "" && Api.game != null && Api.game.world != null && Api.game.world.uoTree != null && this.name != "") {
+                    try {
+                        var uo = Reflect.field(Api.game.world.uoTree, this.name.toLowerCase());
+                        if (uo != null) {
+                            if (uo.strClassName != null && _ds(uo.strClassName) != "") this.className = _ds(uo.strClassName);
+                            else if (uo.objData != null && uo.objData.strClassName != null && _ds(uo.objData.strClassName) != "") this.className = _ds(uo.objData.strClassName);
+                            if (uo.objData != null && uo.objData.iRank != null) this.classRank = _di(uo.objData.iRank, 1);
+                        }
+                    } catch (_:Dynamic) {}
+                }
+                if (this.classRank <= 1) {
+                    if (objData != null && objData.iRank != null) this.classRank = _di(objData.iRank, 1);
+                    else if (dataLeaf != null && dataLeaf.iRank != null) this.classRank = _di(dataLeaf.iRank, 1);
+                }
+            }
         }
 
         // 8. Stats Resolution (HP, Max HP, MP, Max MP, Shield, SP, State)
@@ -509,6 +540,17 @@ class EntityDTO {
             if (valSG != null) this.shield = _di(valSG);
             if (valSP != null) this.sp = _di(valSP);
             if (valMaxSP != null) this.maxSp = _di(valMaxSP, 1000);
+
+            // Difficulty stars and Boss detection
+            var s = Math.round(Math.pow(this.level * 1.3, 0.5) / 2.0);
+            this.stars = (s < 1) ? 1 : ((s > 5) ? 5 : s);
+
+            if (objData != null) {
+                if (objData.bBoss == 1 || objData.bBoss == "1" || objData.bBoss == true || _ds(objData.sDesc) == "Boss") this.isBoss = true;
+            }
+            if (!this.isBoss && dataLeaf != null) {
+                if (dataLeaf.bBoss == 1 || dataLeaf.bBoss == "1" || dataLeaf.bBoss == true || _ds(dataLeaf.sDesc) == "Boss") this.isBoss = true;
+            }
         } else {
             // Other players
             var valHP:Dynamic = null;
