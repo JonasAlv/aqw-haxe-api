@@ -154,7 +154,13 @@ class AuraManager {
         if (Std.isOfType(auras, Array)) {
             for (a in (cast auras : Array<Dynamic>)) processAura(a);
         } else {
-            for (k in Reflect.fields(auras)) processAura(Reflect.field(auras, k));
+            for (k in Reflect.fields(auras)) {
+                var a:Dynamic = Reflect.field(auras, k);
+                if (a != null) {
+                    if (a.nam == null) a.nam = k;
+                    processAura(a);
+                }
+            }
         }
         return maxVal;
     }
@@ -201,7 +207,13 @@ class AuraManager {
         if (Std.isOfType(auras, Array)) {
             for (a in (cast auras : Array<Dynamic>)) processAura(a);
         } else {
-            for (k in Reflect.fields(auras)) processAura(Reflect.field(auras, k));
+            for (k in Reflect.fields(auras)) {
+                var a:Dynamic = Reflect.field(auras, k);
+                if (a != null) {
+                    if (a.nam == null) a.nam = k;
+                    processAura(a);
+                }
+            }
         }
         return maxRemaining > 0 ? maxRemaining : 0.0;
     }
@@ -397,9 +409,20 @@ class AuraManager {
                 ? ((targetObj != null) ? targetObj : ((w.myAvatar != null) ? w.myAvatar.target : null))
                 : ((avatar != null) ? avatar : w.myAvatar);
             if (ent != null && ent.dataLeaf != null && ent.dataLeaf.hudAuras != null) {
-                var arr:Array<Dynamic> = cast ent.dataLeaf.hudAuras;
-                for (raw in arr) {
-                    if (raw != null) result.push(buildSnapshot(raw, w));
+                var hudAuras:Dynamic = ent.dataLeaf.hudAuras;
+                if (Std.isOfType(hudAuras, Array)) {
+                    var arr:Array<Dynamic> = cast hudAuras;
+                    for (raw in arr) {
+                        if (raw != null) result.push(buildSnapshot(raw, w));
+                    }
+                } else {
+                    for (k in Reflect.fields(hudAuras)) {
+                        var raw:Dynamic = Reflect.field(hudAuras, k);
+                        if (raw != null) {
+                            if (raw.nam == null) raw.nam = k;
+                            result.push(buildSnapshot(raw, w));
+                        }
+                    }
                 }
                 if (result.length > 0) return result;
             }

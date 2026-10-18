@@ -271,8 +271,13 @@ class PartyManager {
 
         // Check cell status
         var inSameCell:Bool = false;
-        if (av != null && av.pMC != null && av.dataLeaf != null && w.myAvatar != null && w.myAvatar.dataLeaf != null) {
-            inSameCell = (av.dataLeaf.strFrame == w.myAvatar.dataLeaf.strFrame);
+        var myFrame:String = (w.myAvatar != null && w.myAvatar.dataLeaf != null && w.myAvatar.dataLeaf.strFrame != null)
+            ? Std.string(w.myAvatar.dataLeaf.strFrame)
+            : ((w.strFrame != null) ? Std.string(w.strFrame) : "");
+        if (av != null && av.pMC != null && av.dataLeaf != null && av.dataLeaf.strFrame != null) {
+            inSameCell = (Std.string(av.dataLeaf.strFrame) == myFrame);
+        } else if (uoLeaf != null && uoLeaf.strFrame != null && myFrame != "") {
+            inSameCell = (Std.string(uoLeaf.strFrame) == myFrame);
         } else if (av != null) {
             inSameCell = true;
         }
@@ -344,14 +349,36 @@ class PartyManager {
         if (username == null || username == "") return false;
         var w = _world();
         if (w == null) return false;
+        var lower = username.toLowerCase();
         try {
+            if (lower == currentUsername.toLowerCase()) {
+                if (w.myAvatar != null) {
+                    w.setTarget(w.myAvatar);
+                    return true;
+                }
+            }
+            var av:Dynamic = null;
             if (Reflect.isFunction(w.getAvatarByUserName)) {
-                var av:Dynamic = w.getAvatarByUserName(username.toLowerCase());
-                if (av != null && av.pMC != null && av.dataLeaf != null && w.myAvatar != null && w.myAvatar.dataLeaf != null) {
-                    if (av.dataLeaf.strFrame == w.myAvatar.dataLeaf.strFrame) {
-                        w.setTarget(av);
-                        return true;
+                av = w.getAvatarByUserName(lower);
+            }
+            if (av == null && w.avatars != null) {
+                var keys:Array<Dynamic> = untyped __keys__(w.avatars);
+                for (k in keys) {
+                    var a:Dynamic = untyped w.avatars[k];
+                    if (a != null && a.pnm != null && Std.string(a.pnm).toLowerCase() == lower) {
+                        av = a;
+                        break;
                     }
+                }
+            }
+            if (av != null && av.pMC != null) {
+                var myFrame:String = (w.myAvatar != null && w.myAvatar.dataLeaf != null && w.myAvatar.dataLeaf.strFrame != null)
+                    ? Std.string(w.myAvatar.dataLeaf.strFrame)
+                    : ((w.strFrame != null) ? Std.string(w.strFrame) : "");
+                var avFrame:String = (av.dataLeaf != null && av.dataLeaf.strFrame != null) ? Std.string(av.dataLeaf.strFrame) : "";
+                if (myFrame == "" || avFrame == "" || avFrame == myFrame) {
+                    w.setTarget(av);
+                    return true;
                 }
             }
         } catch (_:Dynamic) {}
