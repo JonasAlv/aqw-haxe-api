@@ -1011,6 +1011,18 @@ class QuestManager {
         return isInProgress(questId);
     }
 
+    public function getActiveQuests():Array<QuestDTO> {
+        var list:Array<QuestDTO> = [];
+        if (_game == null || _game.world == null || _game.world.questTree == null) return list;
+        for (key in Reflect.fields(_game.world.questTree)) {
+            var qData:Dynamic = Reflect.field(_game.world.questTree, key);
+            if (qData != null && qData.status != null && qData.status != "" && qData.status != "null") {
+                list.push(new QuestDTO(qData));
+            }
+        }
+        return list;
+    }
+
     public inline function canAccept(questId:Dynamic):Bool {
         return isAvailable(questId);
     }
