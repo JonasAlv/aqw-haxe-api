@@ -26,7 +26,6 @@ class Api {
     public static var presets(default, null):PresetManager = PresetManager.instance;
     public static var blacklist(default, null):BlacklistManager = BlacklistManager.instance;
     public static var script(default, null):com.aqwapi.modules.ScriptManager = com.aqwapi.modules.ScriptManager.SINGLETON;
-    public static var visual(default, null):VisualManager = new VisualManager(null);
     public static var party(default, null):PartyManager = new PartyManager(null);
     /** Freshness/availability metadata for game-backed state reads. */
     public static var stateHealth(default, null):com.aqwapi.managers.StateHealth = com.aqwapi.managers.StateHealth.instance();
@@ -56,143 +55,6 @@ class Api {
     @:getter(enhancements)
     public static function get_enhancements_prop():EnhancementManager { return enhancement; }
     public static function get_enhancements():EnhancementManager { return enhancement; }
-
-    public static var lagKiller(get, set):Bool;
-    @:getter(lagKiller)
-    public static function get_lagKiller_prop():Bool { return visual != null ? visual.lagKiller : false; }
-    public static function get_lagKiller():Bool { return visual != null ? visual.lagKiller : false; }
-    @:setter(lagKiller)
-    public static function set_lagKiller_prop(v:Bool):Void { if (visual != null) visual.lagKiller = v; }
-    public static function set_lagKiller(v:Bool):Bool { if (visual != null) visual.lagKiller = v; return v; }
-
-    public static var hidePlayers(get, set):Bool;
-    @:getter(hidePlayers)
-    public static function get_hidePlayers_prop():Bool { return visual != null ? visual.hidePlayers : false; }
-    public static function get_hidePlayers():Bool { return visual != null ? visual.hidePlayers : false; }
-    @:setter(hidePlayers)
-    public static function set_hidePlayers_prop(v:Bool):Void { if (visual != null) visual.hidePlayers = v; }
-    public static function set_hidePlayers(v:Bool):Bool { if (visual != null) visual.hidePlayers = v; return v; }
-
-    public static var disableSkillAnims(get, set):Bool;
-    @:getter(disableSkillAnims)
-    public static function get_disableSkillAnims_prop():Bool { return visual != null ? visual.disableSkillAnims : false; }
-    public static function get_disableSkillAnims():Bool { return visual != null ? visual.disableSkillAnims : false; }
-    @:setter(disableSkillAnims)
-    public static function set_disableSkillAnims_prop(v:Bool):Void { if (visual != null) visual.disableSkillAnims = v; }
-    public static function set_disableSkillAnims(v:Bool):Bool { if (visual != null) visual.disableSkillAnims = v; return v; }
-
-    public static var skillAnimMode(get, set):Int;
-    @:getter(skillAnimMode)
-    public static function get_skillAnimMode_prop():Int { return visual != null ? visual.skillAnimMode : 0; }
-    public static function get_skillAnimMode():Int { return visual != null ? visual.skillAnimMode : 0; }
-    @:setter(skillAnimMode)
-    public static function set_skillAnimMode_prop(v:Int):Void { if (visual != null) visual.skillAnimMode = v; }
-    public static function set_skillAnimMode(v:Int):Int { if (visual != null) visual.skillAnimMode = v; return v; }
-
-    public static var optimizeSpellFX(get, set):Bool;
-    @:getter(optimizeSpellFX)
-    public static function get_optimizeSpellFX_prop():Bool { return visual != null ? visual.optimizeSpellFX : true; }
-    public static function get_optimizeSpellFX():Bool { return visual != null ? visual.optimizeSpellFX : true; }
-    @:setter(optimizeSpellFX)
-    public static function set_optimizeSpellFX_prop(v:Bool):Void { if (visual != null) visual.optimizeSpellFX = v; }
-    public static function set_optimizeSpellFX(v:Bool):Bool { if (visual != null) visual.optimizeSpellFX = v; return v; }
-
-    public static var disableSpellFilters(get, set):Bool;
-    @:getter(disableSpellFilters)
-    public static function get_disableSpellFilters_prop():Bool { return visual != null ? visual.disableSpellFilters : false; }
-    public static function get_disableSpellFilters():Bool { return visual != null ? visual.disableSpellFilters : false; }
-    @:setter(disableSpellFilters)
-    public static function set_disableSpellFilters_prop(v:Bool):Void { if (visual != null) visual.disableSpellFilters = v; }
-    public static function set_disableSpellFilters(v:Bool):Bool { if (visual != null) visual.disableSpellFilters = v; return v; }
-
-    public static var friendlySelfOnlyFX(get, set):Bool;
-    @:getter(friendlySelfOnlyFX)
-    public static function get_friendlySelfOnlyFX_prop():Bool { return visual != null ? visual.friendlySelfOnlyFX : false; }
-    public static function get_friendlySelfOnlyFX():Bool { return visual != null ? visual.friendlySelfOnlyFX : false; }
-    @:setter(friendlySelfOnlyFX)
-    public static function set_friendlySelfOnlyFX_prop(v:Bool):Void { if (visual != null) visual.friendlySelfOnlyFX = v; }
-    public static function set_friendlySelfOnlyFX(v:Bool):Bool { if (visual != null) visual.friendlySelfOnlyFX = v; return v; }
-
-    public static var hostilePrimaryOnlyFX(get, set):Bool;
-    @:getter(hostilePrimaryOnlyFX)
-    public static function get_hostilePrimaryOnlyFX_prop():Bool { return visual != null ? visual.hostilePrimaryOnlyFX : false; }
-    public static function get_hostilePrimaryOnlyFX():Bool { return visual != null ? visual.hostilePrimaryOnlyFX : false; }
-    @:setter(hostilePrimaryOnlyFX)
-    public static function set_hostilePrimaryOnlyFX_prop(v:Bool):Void { if (visual != null) visual.hostilePrimaryOnlyFX = v; }
-    public static function set_hostilePrimaryOnlyFX(v:Bool):Bool { if (visual != null) visual.hostilePrimaryOnlyFX = v; return v; }
-
-    public static var maxConcurrentSpells(get, set):Int;
-    @:getter(maxConcurrentSpells)
-    public static function get_maxConcurrentSpells_prop():Int { return visual != null ? visual.maxConcurrentSpells : 6; }
-    public static function get_maxConcurrentSpells():Int { return visual != null ? visual.maxConcurrentSpells : 6; }
-    @:setter(maxConcurrentSpells)
-    public static function set_maxConcurrentSpells_prop(v:Int):Void { if (visual != null) visual.maxConcurrentSpells = v; }
-    public static function set_maxConcurrentSpells(v:Int):Int { if (visual != null) visual.maxConcurrentSpells = v; return v; }
-
-    public static var disableMonsterAnims(get, set):Bool;
-    @:getter(disableMonsterAnims)
-    public static function get_disableMonsterAnims_prop():Bool { return visual != null ? visual.disableMonsterAnims : false; }
-    public static function get_disableMonsterAnims():Bool { return visual != null ? visual.disableMonsterAnims : false; }
-    @:setter(disableMonsterAnims)
-    public static function set_disableMonsterAnims_prop(v:Bool):Void { if (visual != null) visual.disableMonsterAnims = v; }
-    public static function set_disableMonsterAnims(v:Bool):Bool { if (visual != null) visual.disableMonsterAnims = v; return v; }
-
-    public static var cleanArena(get, set):Bool;
-    @:getter(cleanArena)
-    public static function get_cleanArena_prop():Bool { return visual != null ? visual.cleanArena : false; }
-    public static function get_cleanArena():Bool { return visual != null ? visual.cleanArena : false; }
-    @:setter(cleanArena)
-    public static function set_cleanArena_prop(v:Bool):Void { if (visual != null) visual.cleanArena = v; }
-    public static function set_cleanArena(v:Bool):Bool { if (visual != null) visual.cleanArena = v; return v; }
-
-    public static var hideMonsters(get, set):Bool;
-    @:getter(hideMonsters)
-    public static function get_hideMonsters_prop():Bool { return visual != null ? visual.hideMonsters : false; }
-    public static function get_hideMonsters():Bool { return visual != null ? visual.hideMonsters : false; }
-    @:setter(hideMonsters)
-    public static function set_hideMonsters_prop(v:Bool):Void { if (visual != null) visual.hideMonsters = v; }
-    public static function set_hideMonsters(v:Bool):Bool { if (visual != null) visual.hideMonsters = v; return v; }
-
-    public static var cachePlayers(get, set):Bool;
-    @:getter(cachePlayers)
-    public static function get_cachePlayers_prop():Bool { return visual != null ? visual.cachePlayers : false; }
-    public static function get_cachePlayers():Bool { return visual != null ? visual.cachePlayers : false; }
-    @:setter(cachePlayers)
-    public static function set_cachePlayers_prop(v:Bool):Void { if (visual != null) visual.cachePlayers = v; }
-    public static function set_cachePlayers(v:Bool):Bool { if (visual != null) visual.cachePlayers = v; return v; }
-
-    public static var cacheMonsters(get, set):Bool;
-    @:getter(cacheMonsters)
-    public static function get_cacheMonsters_prop():Bool { return visual != null ? visual.cacheMonsters : false; }
-    public static function get_cacheMonsters():Bool { return visual != null ? visual.cacheMonsters : false; }
-    @:setter(cacheMonsters)
-    public static function set_cacheMonsters_prop(v:Bool):Void { if (visual != null) visual.cacheMonsters = v; }
-    public static function set_cacheMonsters(v:Bool):Bool { if (visual != null) visual.cacheMonsters = v; return v; }
-
-    public static var suppressTargetGlow(get, set):Bool;
-    @:getter(suppressTargetGlow)
-    public static function get_suppressTargetGlow_prop():Bool { return visual != null ? visual.suppressTargetGlow : false; }
-    public static function get_suppressTargetGlow():Bool { return visual != null ? visual.suppressTargetGlow : false; }
-    @:setter(suppressTargetGlow)
-    public static function set_suppressTargetGlow_prop(v:Bool):Void { if (visual != null) visual.suppressTargetGlow = v; }
-    public static function set_suppressTargetGlow(v:Bool):Bool { if (visual != null) visual.suppressTargetGlow = v; return v; }
-
-
-    public static var freezeAllAnimations(get, set):Bool;
-    @:getter(freezeAllAnimations)
-    public static function get_freezeAllAnimations_prop():Bool { return visual != null ? visual.freezeAllAnimations : false; }
-    public static function get_freezeAllAnimations():Bool { return visual != null ? visual.freezeAllAnimations : false; }
-    @:setter(freezeAllAnimations)
-    public static function set_freezeAllAnimations_prop(v:Bool):Void { if (visual != null) visual.freezeAllAnimations = v; }
-    public static function set_freezeAllAnimations(v:Bool):Bool { if (visual != null) visual.freezeAllAnimations = v; return v; }
-
-    public static inline function toggleLagKiller():Bool {
-        if (visual != null) {
-            visual.lagKiller = !visual.lagKiller;
-            return visual.lagKiller;
-        }
-        return false;
-    }
 
     // Direct script helpers and forwarders on bot / api
     public static var cell(get, never):String;
@@ -485,13 +347,6 @@ class Api {
         enhancement = new EnhancementManager(game);
         party = new PartyManager(game);
         hscript = HScriptEngine.SINGLETON;
-
-        if (visual != null) {
-            visual.setGame(game);
-        } else {
-            visual = new VisualManager(game);
-        }
-        visual.apply();
 
         if (transport != null) transport.start();
         if (drop != null) drop.start();
