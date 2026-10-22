@@ -7,7 +7,7 @@ import com.aqwapi.data.ActionResult;
 /** Shared polling helper for backward-compatible, result-bearing action methods. */
 class ActionWaiter {
     public static function run(operation:String, action:Void->Void, confirmed:Void->Bool,
-        callback:ActionResult->Void, timeoutMs:Int = 10000, pollMs:Int = 100):Void {
+        callback:ActionResult->Void, timeoutMs:Int = Std.int(ApiTimings.ACTION_RESULT_TIMEOUT_MS), pollMs:Int = Std.int(ApiTimings.ACTION_RESULT_POLL_MS)):Void {
         var started = ApiTime.now();
         var timer:Timer = null;
         var done = false;
@@ -29,7 +29,7 @@ class ActionWaiter {
         try { action(); } catch (e:Dynamic) { finish("failed", Std.string(e)); return; }
         poll(null);
         if (!done) {
-            timer = new Timer(Std.int(Math.max(25, pollMs)));
+            timer = new Timer(Std.int(Math.max(ApiTimings.MIN_POLL_INTERVAL_MS, pollMs)));
             timer.addEventListener(TimerEvent.TIMER, poll, false, 0, true);
             timer.start();
         }

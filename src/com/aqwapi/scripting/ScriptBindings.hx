@@ -7,6 +7,7 @@ import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.ApiJson;
 import com.aqwapi.utils.ApiStorage;
+import com.aqwapi.utils.ApiTimings;
 import com.aqwapi.managers.PresetManager;
 
 /**
@@ -263,7 +264,7 @@ class ScriptBindings {
         bind("usePotion", function(name:String):Bool {
             return Api.combat != null ? Api.combat.usePotion(name) : false;
         });
-        bind("autoPotion", function(name:String, intervalMs:Float = 15000, hpThreshold:Float = 0):Void {
+        bind("autoPotion", function(name:String, intervalMs:Float = ApiTimings.AUTO_POTION_DEFAULT_INTERVAL_MS, hpThreshold:Float = 0):Void {
             if (Api.combat != null) Api.combat.autoPotion(name, intervalMs, hpThreshold);
         });
         bind("stopAutoPotion", function():Void {
@@ -986,7 +987,7 @@ class ScriptBindings {
 
         // Bulk purchasing. buyItem() drops calls made within 1s of each other, so buying several
         // different items in one tick would silently lose all but the first; buyItems() queues them.
-        bind("buyItems", function(items:Array<Dynamic>, gapMs:Int = 1000):Int {
+        bind("buyItems", function(items:Array<Dynamic>, gapMs:Int = Std.int(ApiTimings.SHOP_BUY_MS)):Int {
             return Api.shop != null ? Api.shop.buyItems(items, gapMs) : 0;
         });
         bind("getPendingBuyCount", function():Int {
@@ -1105,7 +1106,7 @@ class ScriptBindings {
         });
         bind("autoCleanAuras", function(enabled:Bool = true):Void {
             if (Api.aura != null) {
-                if (enabled) Api.aura.startAutoClean(5000);
+                if (enabled) Api.aura.startAutoClean(Std.int(ApiTimings.AURA_CLEAN_INTERVAL_MS));
                 else Api.aura.stopAutoClean();
             }
         });

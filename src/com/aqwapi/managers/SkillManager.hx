@@ -8,6 +8,7 @@ import com.aqwapi.utils.ApiStorage;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.SkillDslParser;
+import com.aqwapi.utils.ApiTimings;
 
 class SkillManager {
     private var _game:Game;
@@ -57,7 +58,7 @@ class SkillManager {
 
     public static function getCurrentClassName():String {
         var now = ApiTime.now();
-        if (_cachedCurrentClassName != "" && (now - _lastCurrentClassCheck < 1000)) {
+        if (_cachedCurrentClassName != "" && (now - _lastCurrentClassCheck < ApiTimings.CLASS_CACHE_MS)) {
             return _cachedCurrentClassName;
         }
         _lastCurrentClassCheck = now;
@@ -325,7 +326,7 @@ class SkillManager {
         if (isUseIfAvail) {
             return (rawTimeout > 0) ? rawTimeout : 0;
         } else {
-            return (rawTimeout >= 1500) ? rawTimeout : 1500;
+            return (rawTimeout >= ApiTimings.SKILL_STEP_TIMEOUT_MS) ? rawTimeout : Std.int(ApiTimings.SKILL_STEP_TIMEOUT_MS);
         }
     }
 

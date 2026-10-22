@@ -11,6 +11,7 @@ class Api {
     public static var dispatcher(default, null):EventDispatcher = new EventDispatcher();
     public static var logger:Class<ApiLogger> = ApiLogger;
     public static var game(default, null):Game;
+    private static var _attachedGame:Game = null;
 
     public static var map(default, null):MapManager = new MapManager(null);
     public static var player(default, null):PlayerManager = new PlayerManager(null);
@@ -327,9 +328,13 @@ class Api {
     }
 
     public static function init(gameReference:Game):Void {
+        if (gameReference == null) return;
+        if (_attachedGame == gameReference && game != null) return;
+        if (_attachedGame != null && _attachedGame != gameReference) detach();
         ensureMathShims();
-        preloadAssets();
         game = cast gameReference;
+        _attachedGame = game;
+        preloadAssets();
         // Passive packet listener for `[counter]`. Installed here rather than only on the combat tick
         // so it is live even before combat starts; the tick re-checks it in case the socket changed.
         com.aqwapi.modules.ActionFeed.install();
@@ -350,7 +355,7 @@ class Api {
 
         if (transport != null) transport.start();
         if (drop != null) drop.start();
-        if (aura != null) aura.startAutoClean(5000);
+        if (aura != null) aura.startAutoClean(Std.int(com.aqwapi.utils.ApiTimings.AURA_CLEAN_INTERVAL_MS));
 
         var curUser:String = (player != null) ? player.username : "";
         if (curUser == "" && game != null && game.sfc != null && game.sfc.myUserName != null) {
@@ -359,6 +364,39 @@ class Api {
         if (curUser != "") {
             com.aqwapi.utils.ApiStorage.setAccount(curUser);
         }
+    }
+
+    /** Stop runtime-owned work before the game SWF or socket is replaced. */
+    public static function detach():Void {
+        try { if (script != null) script.stop(); } catch (_:Dynamic) {}
+        try { if (combat != null) combat.stop(); } catch (_:Dynamic) {}
+        try { if (transport != null) transport.stop(); } catch (_:Dynamic) {}
+        try { if (drop != null) drop.stop(); } catch (_:Dynamic) {}
+        try { if (aura != null) aura.stopAutoClean(); } catch (_:Dynamic) {}
+        try { if (quest != null) quest.stopAuto(); } catch (_:Dynamic) {}
+        try { if (inventory != null) inventory.clearBankQueue(); } catch (_:Dynamic) {}
+        try { if (shop != null) shop.clearBuyQueue(); } catch (_:Dynamic) {}
+        try { if (map != null) map.stopJumpCorrection(); } catch (_:Dynamic) {}
+        try { if (enhancement != null) enhancement.cancel(); } catch (_:Dynamic) {}
+        com.aqwapi.modules.ActionFeed.uninstall();
+        game = null;
+        _attachedGame = null;
+        transport = null;
+        hscript = null;
+        // Do not leave public managers holding the detached Game/SFC graph. Fresh null-backed
+        // managers make calls during reconnect harmless until the next successful init().
+        map = new MapManager(null);
+        quest = new QuestManager(null);
+        combat = new CombatManager(null);
+        aura = new AuraManager(null);
+        skills = new SkillManager(null);
+        inventory = new InventoryManager(null);
+        player = new PlayerManager(null);
+        drop = new DropManager(null);
+        shop = new ShopManager(null);
+        monster = new MonsterManager(null);
+        enhancement = new EnhancementManager(null);
+        party = new PartyManager(null);
     }
 
 
@@ -383,6 +421,22 @@ class Api {
     @:getter(isReady)
     public static function get_isReady_prop():Bool { return get_isReady(); }
     public static function get_isReady():Bool {
-        return game != null && game.world != null;
+        return get_isLoggedIn();
+    }
+
+    public static var isAttached(get, never):Bool;
+    public static function get_isAttached():Bool { return game != null; }
+
+    public static var isConnected(get, never):Bool;
+    public static function get_isConnected():Bool { return game != null && game.sfc != null; }
+
+    public static var isLoggedIn(get, never):Bool;
+    public static function get_isLoggedIn():Bool {
+        return game != null && game.world != null && game.world.myAvatar != null;
+    }
+
+    public static var isMapReady(get, never):Bool;
+    public static function get_isMapReady():Bool {
+        return isLoggedIn && map != null && map.isLoaded;
     }
 }

@@ -114,7 +114,7 @@ class MapManager {
                 if (inCombat) {
                     if (Api.combat != null) Api.combat.dropCombat();
                     else reload();
-                    _pauseScriptIfRunning(600);
+                    _pauseScriptIfRunning(ApiTimings.MAP_ACTION_PAUSE_MS);
                     return false;
                 }
                 join(mapName, cell, pad);
@@ -144,7 +144,7 @@ class MapManager {
         var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
         if (inCombat) {
             if (Api.combat != null) Api.combat.dropCombat();
-            _pauseScriptIfRunning(600);
+            _pauseScriptIfRunning(ApiTimings.MAP_ACTION_PAUSE_MS);
             return false;
         }
 
@@ -182,13 +182,13 @@ class MapManager {
             return;
         }
 
-        // If in combat or combat recently ended (< 2000ms), drop combat and safely wait for server combat cooldown
+        // If in combat or combat recently ended, drop combat and safely wait for the native settle window.
         var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
         var timeSinceCombat:Float = (Api.combat != null && Api.combat.lastCombatExitTime > 0) ? (ApiTime.now() - Api.combat.lastCombatExitTime) : 999999.0;
-        if (inCombat || timeSinceCombat < 2000) {
+        if (inCombat || timeSinceCombat < ApiTimings.COMBAT_EXIT_SETTLE_MS) {
             if (Api.combat != null) Api.combat.dropCombat();
             else reload();
-            var remainingMs:Int = inCombat ? 2000 : Std.int(Math.max(200, 2000 - timeSinceCombat));
+            var remainingMs:Int = inCombat ? Std.int(ApiTimings.COMBAT_EXIT_SETTLE_MS) : Std.int(Math.max(ApiTimings.COMBAT_EXIT_MIN_DELAY_MS, ApiTimings.COMBAT_EXIT_SETTLE_MS - timeSinceCombat));
             var now2 = ApiTime.now();
             if (now2 - _lastCombatCooldownLogTime >= ApiTimings.COMBAT_COOLDOWN_LOG_MS) {
                 _lastCombatCooldownLogTime = now2;
@@ -203,7 +203,7 @@ class MapManager {
         var now = ApiTime.now();
         if (now - _lastJoinTime < ApiTimings.MAP_JOIN_MS) return;
         _lastJoinTime = now;
-        _pauseScriptIfRunning(2000);
+        _pauseScriptIfRunning(ApiTimings.MAP_TRANSFER_SCRIPT_PAUSE_MS);
         var avatar:Dynamic = g.world.myAvatar;
         var username:String = "";
         if (avatar != null) {
@@ -240,11 +240,11 @@ class MapManager {
     }
 
     /** Join and report once the requested map/cell is reflected by live client state. */
-    public function joinWithResult(mapName:String, cell:String, pad:String, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = 30000):Void {
+    public function joinWithResult(mapName:String, cell:String, pad:String, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = Std.int(ApiTimings.MAP_JOIN_RESULT_TIMEOUT_MS)):Void {
         var targetCell = (cell == null || cell == "") ? "Enter" : cell;
         com.aqwapi.utils.ActionWaiter.run("join", function() join(mapName, cell, pad), function() {
             return isLoaded && isMap(mapName) && (targetCell == "Enter" || isCell(targetCell));
-        }, callback, timeoutMs, 150);
+        }, callback, timeoutMs, Std.int(ApiTimings.MAP_JOIN_RESULT_POLL_MS));
     }
 
     public function joinHouse(username:String = ""):Void {
@@ -252,12 +252,12 @@ class MapManager {
         if (g == null || g.world == null) return;
         stopJumpCorrection();
 
-        // If in combat or combat recently ended (< 2000ms), drop combat and safely wait for server combat cooldown
+        // If in combat or combat recently ended, drop combat and safely wait for the native settle window.
         var inCombat = (Api.player != null && Api.player.isInCombat) || (Api.combat != null && Api.combat.isRunning());
         var timeSinceCombat:Float = (Api.combat != null && Api.combat.lastCombatExitTime > 0) ? (ApiTime.now() - Api.combat.lastCombatExitTime) : 999999.0;
-        if (inCombat || timeSinceCombat < 2000) {
+        if (inCombat || timeSinceCombat < ApiTimings.COMBAT_EXIT_SETTLE_MS) {
             if (Api.combat != null) Api.combat.dropCombat();
-            var remainingMs:Int = inCombat ? 2000 : Std.int(Math.max(200, 2000 - timeSinceCombat));
+            var remainingMs:Int = inCombat ? Std.int(ApiTimings.COMBAT_EXIT_SETTLE_MS) : Std.int(Math.max(ApiTimings.COMBAT_EXIT_MIN_DELAY_MS, ApiTimings.COMBAT_EXIT_SETTLE_MS - timeSinceCombat));
             var now2 = ApiTime.now();
             if (now2 - _lastCombatCooldownLogTime >= ApiTimings.COMBAT_COOLDOWN_LOG_MS) {
                 _lastCombatCooldownLogTime = now2;
@@ -278,7 +278,7 @@ class MapManager {
         var now = ApiTime.now();
         if (now - _lastJoinTime < ApiTimings.MAP_JOIN_MS) return;
         _lastJoinTime = now;
-        _pauseScriptIfRunning(2000);
+        _pauseScriptIfRunning(ApiTimings.MAP_TRANSFER_SCRIPT_PAUSE_MS);
 
         if (g.world.gotoHouse != null) {
             try { g.world.gotoHouse(un); return; } catch (e:Dynamic) {}
@@ -342,7 +342,7 @@ class MapManager {
         if (inCombat) {
             if (Api.combat != null) Api.combat.dropCombat();
             else reload();
-            _pauseScriptIfRunning(600);
+            _pauseScriptIfRunning(ApiTimings.MAP_ACTION_PAUSE_MS);
             return false;
         }
 
@@ -385,7 +385,7 @@ class MapManager {
             var now = ApiTime.now();
             if (now - _lastJoinTime >= ApiTimings.MAP_JOIN_MS) {
                 _lastJoinTime = now;
-                _pauseScriptIfRunning(2000);
+                _pauseScriptIfRunning(ApiTimings.MAP_TRANSFER_SCRIPT_PAUSE_MS);
                 try {
                     g.world.gotoTown(targetMap, targetCell, targetPad);
                 } catch (e:Dynamic) {}
@@ -485,7 +485,7 @@ class MapManager {
     }
 
     /** Move to a cell and report only after the live location matches. */
-    public function jumpWithResult(cell:String, pad:String, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = 8000):Void {
+    public function jumpWithResult(cell:String, pad:String, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = Std.int(ApiTimings.MAP_JUMP_TIMEOUT_MS)):Void {
         if (cell == null || StringTools.trim(cell) == "") {
             if (callback != null) callback(new com.aqwapi.data.ActionResult("move", "failed", "Cell is required.", 0));
             return;
@@ -494,7 +494,7 @@ class MapManager {
         com.aqwapi.utils.ActionWaiter.run("move", function() jump(cell, pad), function() {
             if (!isLoaded || !isCell(cell)) return false;
             return expectedPad == null || expectedPad == "" || Api.player == null || Api.player.pad == null || Api.player.pad.toLowerCase() == expectedPad.toLowerCase();
-        }, callback, timeoutMs, 100);
+        }, callback, timeoutMs, Std.int(ApiTimings.MAP_JUMP_POLL_MS));
     }
 
     public function jump(cell:String, pad:String = null, force:Bool = false, autoCorrect:Bool = true, clientOnly:Bool = false):Void {
@@ -515,7 +515,7 @@ class MapManager {
             var now = ApiTime.now();
             if (!force && !isSameCell && (now - _lastJumpTime < ApiTimings.CELL_JUMP_MS)) return;
             _lastJumpTime = now;
-            _pauseScriptIfRunning(500);
+            _pauseScriptIfRunning(ApiTimings.CELL_JUMP_PAUSE_MS);
             try {
                 g.world.moveToCell(cell, p, clientOnly);
             } catch (_:Dynamic) {
@@ -544,7 +544,7 @@ class MapManager {
         var targetCell:String = StringTools.trim(cell);
         var targetPad:String = StringTools.trim(p);
 
-        var timer = new Timer(50, 40);
+        var timer = new Timer(ApiTimings.MAP_CORRECTION_POLL_MS, ApiTimings.MAP_CORRECTION_ATTEMPTS);
         _jumpCorrectionTimer = timer;
 
         var handler:Dynamic = null;
@@ -692,7 +692,7 @@ class MapManager {
                 } catch (e:Dynamic) {}
             };
             restoreCoords();
-            ApiTime.delay(50, restoreCoords);
+            ApiTime.delay(ApiTimings.MAP_COORDINATE_RESTORE_MS, restoreCoords);
         }
     }
 
@@ -703,7 +703,7 @@ class MapManager {
         if (now - _lastMapItemTime < ApiTimings.MAP_ITEM_MS) return false;
         _lastMapItemTime = now;
         var count:Int = qty > 1 ? qty : 1;
-        _pauseScriptIfRunning(2000);
+        _pauseScriptIfRunning(ApiTimings.MAP_TRANSFER_SCRIPT_PAUSE_MS);
         try {
             var roomId:Dynamic = (g.world.curRoom != null) ? g.world.curRoom : (g.sfc.activeRoomId != null ? g.sfc.activeRoomId : 1);
             for (i in 0...count) {

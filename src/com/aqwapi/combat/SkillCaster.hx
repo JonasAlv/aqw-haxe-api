@@ -3,6 +3,7 @@ package com.aqwapi.combat;
 import com.aqwapi.Api;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.utils.ApiTimings;
 
 class SkillCaster {
     public static inline var SR_FIRED:Int    = 0;  // Fired successfully
@@ -16,7 +17,7 @@ class SkillCaster {
         if (world == null) return false;
         try {
             var gcdTs:Float = (world.GCDTS != null) ? ApiUtils.parseFloat(world.GCDTS, 0) : 0;
-            var gcdMs:Float = (world.GCD != null) ? ApiUtils.parseFloat(world.GCD, 1500) : 1500;
+            var gcdMs:Float = (world.GCD != null) ? ApiUtils.parseFloat(world.GCD, ApiTimings.NATIVE_GCD_MS) : ApiTimings.NATIVE_GCD_MS;
             if (gcdTs > 0) {
                 var nowMs:Float = (world.dateObj != null && world.dateObj.getTime != null)
                     ? ApiUtils.parseFloat(world.dateObj.getTime(), ApiTime.epochMs())

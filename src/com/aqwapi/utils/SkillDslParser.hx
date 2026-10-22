@@ -1,5 +1,7 @@
 package com.aqwapi.utils;
 
+import com.aqwapi.utils.ApiTimings;
+
 class SkillDslParser {
     /** Diagnostics from the most recent full parse or sequence parse. */
     public static var lastErrors:Array<String> = [];
@@ -64,7 +66,7 @@ class SkillDslParser {
                     }
                     currentData = {
                         skillUseMode: "WaitForCooldown",
-                        skillTimeout: 1500,
+                        skillTimeout: ApiTimings.SKILL_STEP_TIMEOUT_MS,
                         skills: [],
                         branches: [],
                         combo: ""
@@ -103,17 +105,17 @@ class SkillDslParser {
                     var lowerVal:String = val.toLowerCase();
                     if (lowerVal == "useifavailable" || lowerVal == "priority" || lowerVal == "avail") {
                         currentData.skillUseMode = "UseIfAvailable";
-                        if (currentData.skillTimeout == 1500) currentData.skillTimeout = 0;
+                        if (currentData.skillTimeout == ApiTimings.SKILL_STEP_TIMEOUT_MS) currentData.skillTimeout = 0;
                     } else {
                         currentData.skillUseMode = "WaitForCooldown";
-                        if (currentData.skillTimeout < 1500) currentData.skillTimeout = 1500;
+                        if (currentData.skillTimeout < ApiTimings.SKILL_STEP_TIMEOUT_MS) currentData.skillTimeout = ApiTimings.SKILL_STEP_TIMEOUT_MS;
                     }
 
                 case "timeout", "skilltimeout":
                     var pTo:Null<Int> = Std.parseInt(val);
                     var rawTo:Int = (pTo != null) ? pTo : 0;
                     var isUseIfAvail:Bool = (currentData.skillUseMode != null && currentData.skillUseMode.toLowerCase() == "useifavailable");
-                    currentData.skillTimeout = isUseIfAvail ? ((rawTo > 0) ? rawTo : 0) : ((rawTo >= 1500) ? rawTo : 1500);
+                    currentData.skillTimeout = isUseIfAvail ? ((rawTo > 0) ? rawTo : 0) : ((rawTo >= ApiTimings.SKILL_STEP_TIMEOUT_MS) ? rawTo : ApiTimings.SKILL_STEP_TIMEOUT_MS);
 
                 case "stopontargetauras", "stop_on_target_auras", "stopauras":
                     currentData.stopOnTargetAuras = val;

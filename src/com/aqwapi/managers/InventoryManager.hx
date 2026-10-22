@@ -530,7 +530,7 @@ class InventoryManager {
 
         ApiLogger.info("Inventory", "Equipping restored item: " + next.name + " (" + next.sES + ")");
         equip(next.id).then(function(_) {
-            var delayTimer = new Timer(350, 1);
+            var delayTimer = new Timer(ApiTimings.INVENTORY_RESTORE_SETTLE_MS, 1);
             delayTimer.addEventListener(TimerEvent.TIMER, function(_) {
                 delayTimer.stop();
                 _processRestoreStep();
@@ -706,7 +706,7 @@ class InventoryManager {
         var elapsed:Int = 0;
         _housePollTimer = new Timer(ApiTimings.HOUSE_POLL_MS);
         _housePollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
-            elapsed += 500;
+            elapsed += Std.int(ApiTimings.HOUSE_POLL_MS);
             var inHouseNow:Bool = (Api.map != null && Api.map.isHouse() && Api.map.isLoaded);
             if (inHouseNow) {
                 if (_housePollTimer != null) {
@@ -722,7 +722,7 @@ class InventoryManager {
                 return;
             }
 
-            if (elapsed >= 15000) {
+            if (elapsed >= ApiTimings.HOUSE_JOIN_TIMEOUT_MS) {
                 if (_housePollTimer != null) {
                     _housePollTimer.stop();
                     _housePollTimer = null;
@@ -766,8 +766,8 @@ class InventoryManager {
         var pollElapsed:Int = 0;
         _bankLoadPollTimer = new Timer(ApiTimings.BANK_LOAD_POLL_MS);
         _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
-            pollElapsed += 300;
-            if (isBankLoaded || pollElapsed >= 8000) {
+            pollElapsed += Std.int(ApiTimings.BANK_LOAD_POLL_MS);
+            if (isBankLoaded || pollElapsed >= ApiTimings.BANK_LOAD_TIMEOUT_MS) {
                 onLoadedCallback();
             }
         });
@@ -993,8 +993,8 @@ class InventoryManager {
             var pollElapsed:Int = 0;
             _bankLoadPollTimer = new Timer(ApiTimings.BANK_LOAD_POLL_MS);
             _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
-                pollElapsed += 300;
-                if (isBankLoaded || pollElapsed >= 8000) {
+                pollElapsed += Std.int(ApiTimings.BANK_LOAD_POLL_MS);
+                if (isBankLoaded || pollElapsed >= ApiTimings.BANK_LOAD_TIMEOUT_MS) {
                     onLoadedCallback();
                 }
             });
@@ -1062,8 +1062,8 @@ class InventoryManager {
         var pollElapsed:Int = 0;
         _bankLoadPollTimer = new Timer(ApiTimings.BANK_LOAD_POLL_MS);
         _bankLoadPollTimer.addEventListener(TimerEvent.TIMER, function(e:TimerEvent) {
-            pollElapsed += 300;
-            if (isBankLoaded || pollElapsed >= 8000) {
+            pollElapsed += Std.int(ApiTimings.BANK_LOAD_POLL_MS);
+            if (isBankLoaded || pollElapsed >= ApiTimings.BANK_LOAD_TIMEOUT_MS) {
                 onLoadedCallback();
             }
         });

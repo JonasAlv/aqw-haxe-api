@@ -4,6 +4,7 @@ import com.aqwapi.modules.CombatEngine;
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiConfig;
+import com.aqwapi.utils.ApiTimings;
 import com.aqwapi.Api;
 import com.aqwapi.Game;
 
@@ -18,7 +19,7 @@ class CombatManager {
     // Potion / Consumable Auto-Use
     public var autoPotionEnabled:Bool = false;
     public var autoPotionName:String = null;
-    public var autoPotionIntervalMs:Float = 15000;
+    public var autoPotionIntervalMs:Float = ApiTimings.AUTO_POTION_DEFAULT_INTERVAL_MS;
     public var autoPotionHpThreshold:Float = 0;
     /** Opt in to high-frequency `ct` response events; raw packets remain available through `onPacket`. */
     public var emitCombatTickEvents:Bool = false;
@@ -113,7 +114,7 @@ class CombatManager {
     public function usePotion(potionName:String):Bool {
         if (potionName == null || potionName == "") return false;
         var now = com.aqwapi.utils.ApiTime.now();
-        if (now - _lastPotionUseTime < 1500) return false;
+        if (now - _lastPotionUseTime < ApiTimings.CONSUMABLE_ACTION_GAP_MS) return false;
 
         if (Api.inventory != null) {
             if (!Api.inventory.hasItem(potionName)) {
@@ -135,10 +136,10 @@ class CombatManager {
         return success;
     }
 
-    public function autoPotion(potionName:String, intervalMs:Float = 15000, hpThreshold:Float = 0):Void {
+    public function autoPotion(potionName:String, intervalMs:Float = ApiTimings.AUTO_POTION_DEFAULT_INTERVAL_MS, hpThreshold:Float = 0):Void {
         autoPotionEnabled = true;
         autoPotionName = potionName;
-        autoPotionIntervalMs = intervalMs > 2000 ? intervalMs : 15000;
+        autoPotionIntervalMs = intervalMs > ApiTimings.AUTO_POTION_MIN_INTERVAL_MS ? intervalMs : ApiTimings.AUTO_POTION_DEFAULT_INTERVAL_MS;
         autoPotionHpThreshold = hpThreshold;
         if (potionName != null && potionName != "" && Api.inventory != null) {
             Api.inventory.equipUsable(potionName);
@@ -154,7 +155,7 @@ class CombatManager {
 
     public function checkAutoPotion(now:Float):Bool {
         if (!autoPotionEnabled || autoPotionName == null || autoPotionName == "") return false;
-        if (now - _lastPotionUseTime < 2500) return false;
+        if (now - _lastPotionUseTime < ApiTimings.AUTO_POTION_ACTION_GAP_MS) return false;
 
         var shouldFire = false;
         if (autoPotionHpThreshold > 0) {
@@ -176,7 +177,7 @@ class CombatManager {
 
     public function checkAutoProvoke(now:Float):Void {
         if (!autoProvoke) return;
-        if (now - _lastProvokeTime < 800) return;
+        if (now - _lastProvokeTime < ApiTimings.AUTO_PROVOKE_REFRESH_MS) return;
         _lastProvokeTime = now;
         aggroMonsters("*");
         magnetizeAll("*");
@@ -352,7 +353,7 @@ class CombatManager {
         if (needsEquip && Api.inventory != null) {
             com.aqwapi.utils.ApiLogger.info("Combat", "Equipping '" + confClass + "' before starting Smart Combat...");
             Api.inventory.equipWait(confClass, function() {
-                com.aqwapi.utils.ApiTime.delay(600, function() {
+                com.aqwapi.utils.ApiTime.delay(com.aqwapi.utils.ApiTimings.MAP_ACTION_PAUSE_MS, function() {
                     startSmart();
                 });
             });

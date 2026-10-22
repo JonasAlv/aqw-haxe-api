@@ -62,17 +62,17 @@ class ScriptManager {
         return ApiStorage.deleteUserScript(name);
     }
 
-    public function loadScript(scriptText:String):Void {
+    public function loadScript(scriptText:String):Bool {
         if ((Api.game == null || Api.game.world == null) && Api.game != null) {
             Api.init(Api.game);
         }
-        HScriptEngine.SINGLETON.loadScript(scriptText);
+        return HScriptEngine.SINGLETON.loadScript(scriptText);
     }
 
     public function startScriptByName(name:String):Bool {
         var content = getScriptContent(name);
         if (content == null || StringTools.trim(content) == "") return false;
-        loadScript(content);
+        if (!loadScript(content)) return false;
         start();
         activeScriptName = name;
         return true;

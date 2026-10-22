@@ -4,6 +4,7 @@ import com.aqwapi.Api;
 import com.aqwapi.Game;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiLogger;
+import com.aqwapi.utils.ApiTimings;
 
 /**
  * Ultra Boss Taunt Coordinator.
@@ -29,7 +30,7 @@ class TauntCoordinator {
 
     private var _lastTauntTime:Float = 0;
     private var _hadPartnerTaunt:Bool = false;
-    private var _minTauntCooldownMs:Float = 5500; // Scroll of Enrage / Taunt cooldown margin
+    private var _minTauntCooldownMs:Float = ApiTimings.TAUNT_COOLDOWN_MS; // Scroll of Enrage / Taunt cooldown margin
 
     public function new(gameRef:Game) {
         _game = gameRef;
@@ -54,7 +55,7 @@ class TauntCoordinator {
                 bossName = "Ultra Tyndarius";
                 triggerAura = null;
                 partnerTauntAura = "Focus";
-                tauntIntervalMs = 6000;
+                tauntIntervalMs = ApiTimings.TAUNT_DEFAULT_INTERVAL_MS;
 
             case "dage", "champion dage":
                 bossName = "Champion Dage";
@@ -67,26 +68,26 @@ class TauntCoordinator {
                 bossName = "Defense Drone";
                 triggerAura = null;
                 partnerTauntAura = "Focus";
-                tauntIntervalMs = 6000;
+                tauntIntervalMs = ApiTimings.TAUNT_DEFAULT_INTERVAL_MS;
 
             case "speaker", "malgor", "ultra speaker":
                 bossName = "The Speaker";
                 triggerAura = "The Truth";
                 triggerStacks = 1;
                 partnerTauntAura = "Focus";
-                tauntIntervalMs = 5800;
+                tauntIntervalMs = ApiTimings.TAUNT_SPEAKER_INTERVAL_MS;
 
             case "loop", "rotation", "interval":
                 bossName = null;
                 triggerAura = null;
                 partnerTauntAura = "Focus";
-                tauntIntervalMs = 6000;
+                tauntIntervalMs = ApiTimings.TAUNT_DEFAULT_INTERVAL_MS;
 
             default:
                 bossName = (preset != null && preset != "") ? preset : null;
                 triggerAura = null;
                 partnerTauntAura = "Focus";
-                tauntIntervalMs = 6000;
+                tauntIntervalMs = ApiTimings.TAUNT_DEFAULT_INTERVAL_MS;
         }
 
         prepareTauntItem();
@@ -161,9 +162,9 @@ class TauntCoordinator {
         // Trigger condition 2: Partner's taunt / focus aura on target just expired (Hand-off)
         if (partnerTauntAura != null && partnerTauntAura != "" && Api.aura != null) {
             var partnerRem = Api.aura.getRemaining(partnerTauntAura, "target");
-            if (partnerRem > 0.3) {
+            if (partnerRem > (ApiTimings.AURA_HANDOFF_GRACE_MS / 1000.0)) {
                 _hadPartnerTaunt = true;
-            } else if (_hadPartnerTaunt && partnerRem <= 0.3) {
+            } else if (_hadPartnerTaunt && partnerRem <= (ApiTimings.AURA_HANDOFF_GRACE_MS / 1000.0)) {
                 _hadPartnerTaunt = false;
                 ApiLogger.debug("Taunt", "Partner taunt aura expired (" + partnerTauntAura + "). Executing hand-off!");
                 return fireTaunt(now);

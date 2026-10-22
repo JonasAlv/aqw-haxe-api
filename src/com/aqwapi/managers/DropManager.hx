@@ -2,6 +2,7 @@ package com.aqwapi.managers;
 
 import com.aqwapi.utils.ApiUtils;
 import com.aqwapi.utils.ApiTime;
+import com.aqwapi.utils.ApiTimings;
 import com.aqwapi.Game;
 
 class DropManager {
@@ -47,7 +48,7 @@ class DropManager {
         if (_game == null || _game.sfc == null || itemId == null) return;
         var idStr:String = Std.string(itemId);
         var now:Float = ApiTime.now();
-        if (requestedDrops.exists(idStr) && (now - requestedDrops.get(idStr)) < 1500) {
+        if (requestedDrops.exists(idStr) && (now - requestedDrops.get(idStr)) < ApiTimings.DROP_REQUEST_DEDUPE_MS) {
             return;
         }
         requestedDrops.set(idStr, now);

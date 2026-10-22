@@ -1,5 +1,5 @@
 -cp src
--D air
+-D ruffle
 -swf-version 40
 -lib hscript
 -resource assets/skills.json@default_skills

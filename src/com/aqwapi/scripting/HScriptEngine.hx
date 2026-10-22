@@ -23,7 +23,8 @@ class HScriptEngine {
     public var isRunning:Bool = false;
     public var waitTimer:Float = 0;
     public var statusText:String = "Stopped";
-    public var tickInterval:Int = 100;
+    /** Script callbacks are deliberately slower than combat; combat has its own packet wakeups. */
+    public var tickInterval:Int = Std.int(com.aqwapi.utils.ApiTimings.COMBAT_WATCHDOG_MS);
 
     public function sleep(ms:Float):Void {
         waitTimer = ApiTime.now() + ms;
@@ -37,6 +38,9 @@ class HScriptEngine {
     private var _hasOnQuestUpdated:Bool = false;
     private var _hasOnInventoryChanged:Bool = false;
     private var _hasOnCombatUpdated:Bool = false;
+    private var _pendingZoneData:Dynamic = null;
+    private var _zoneWaitStartedAt:Float = 0;
+    private var _zoneWaitQueued:Bool = false;
 
     private static var _instance:HScriptEngine;
     public static var SINGLETON(get, never):HScriptEngine;
@@ -117,15 +121,29 @@ class HScriptEngine {
             Api.init(Api.game);
         }
 
+        // Loading is transactional: a malformed/new script must never leave the previous program
+        // executable. reset() stops the old program, but intentionally preserves its parsed AST for
+        // a normal restart, so clear the loaded program explicitly for this replacement operation.
         reset();
+        _program = null;
+        _hasOnStart = false;
+        _hasOnTick = false;
+        _hasOnStop = false;
+        _hasOnPacket = false;
+        _hasOnZoneEntered = false;
+        _hasOnQuestUpdated = false;
+        _hasOnInventoryChanged = false;
+        _hasOnCombatUpdated = false;
+        statusText = "Loading HScript...";
 
         // Strip //hscript or #hscript header line if present
         var cleanCode = scriptCode;
         if (cleanCode.indexOf("//hscript") == 0) cleanCode = cleanCode.substring(9);
         else if (cleanCode.indexOf("#hscript") == 0) cleanCode = cleanCode.substring(8);
 
+        var parsedProgram:Expr = null;
         try {
-            _program = _parser.parseString(cleanCode);
+            parsedProgram = _parser.parseString(cleanCode);
         } catch (e:hscript.Expr.Error) {
             var msg = "Parse error at line " + _parser.line + ": " + Printer.errorToString(e);
             ApiLogger.error("HScript", msg);
@@ -143,7 +161,7 @@ class HScriptEngine {
         _resetSandbox();
 
         try {
-            _interp.execute(_program);
+            _interp.execute(parsedProgram);
         } catch (e:Dynamic) {
             var msg = "Execution error on load: " + Std.string(e);
             ApiLogger.error("HScript", msg);
@@ -151,6 +169,8 @@ class HScriptEngine {
             Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, msg));
             return false;
         }
+
+        _program = parsedProgram;
 
         _hasOnStart = _interp.variables.exists("onStart") && Reflect.isFunction(_interp.variables.get("onStart"));
         _hasOnTick = _interp.variables.exists("onTick") && Reflect.isFunction(_interp.variables.get("onTick"));
@@ -321,9 +341,44 @@ class HScriptEngine {
             Api.map.checkSkipCutscenes();
             if (Api.map.disableCollisions) Api.map.applyCollisionState();
         }
-        if (isRunning && _hasOnZoneEntered) {
-            try { _interp.variables.get("onZoneEntered")(e.data); } catch(err:Dynamic) { _handleScriptError("onZoneEntered: " + err, err); }
+        if (!isRunning || !_hasOnZoneEntered) return;
+        if (Api.map == null || Api.map.isLoaded) {
+            emitZoneEntered(e.data);
+        } else {
+            _pendingZoneData = e.data;
+            if (!_zoneWaitQueued) {
+                _zoneWaitQueued = true;
+                _zoneWaitStartedAt = ApiTime.now();
+                waitForZoneReady();
+            }
         }
+    }
+
+    private function waitForZoneReady():Void {
+        if (!_zoneWaitQueued) return;
+        if (!isRunning) {
+            _zoneWaitQueued = false;
+            _pendingZoneData = null;
+            return;
+        }
+        if (Api.map != null && Api.map.isLoaded) {
+            var data = _pendingZoneData;
+            _zoneWaitQueued = false;
+            _pendingZoneData = null;
+            emitZoneEntered(data);
+            return;
+        }
+        if (ApiTime.now() - _zoneWaitStartedAt >= com.aqwapi.utils.ApiTimings.ZONE_READY_TIMEOUT_MS) {
+            _zoneWaitQueued = false;
+            _pendingZoneData = null;
+            ApiLogger.warn("HScript", "Discarded zone callback because the map did not become ready in time.");
+            return;
+        }
+        haxe.Timer.delay(waitForZoneReady, Std.int(com.aqwapi.utils.ApiTimings.ZONE_READY_POLL_MS));
+    }
+
+    private function emitZoneEntered(data:Dynamic):Void {
+        try { _interp.variables.get("onZoneEntered")(data); } catch(err:Dynamic) { _handleScriptError("onZoneEntered: " + err, err); }
     }
 
     private function onGameQuestUpdated(e:GameEvent):Void {

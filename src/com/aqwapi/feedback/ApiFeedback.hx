@@ -3,6 +3,7 @@ package com.aqwapi.feedback;
 import com.aqwapi.Api;
 import com.aqwapi.events.ApiEvent;
 import com.aqwapi.utils.ApiLogger;
+import com.aqwapi.utils.ApiTimings;
 
 /**
  * Backend policy for user-facing feedback. No Flash, no rendering - this decides *what* should be
@@ -36,7 +37,7 @@ class ApiFeedback {
     public static inline var MAX_VISIBLE:Int = 6;
 
     /** Repeated identical notifications within this window fold into one card. */
-    public static inline var REPEAT_WINDOW_MS:Float = 2000;
+    public static inline var REPEAT_WINDOW_MS:Float = ApiTimings.LOG_DEDUPE_MS;
 
     // -------------------------------------------------------------------------
     // State

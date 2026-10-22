@@ -1,5 +1,7 @@
 package com.aqwapi.modules;
 
+import com.aqwapi.utils.ApiTimings;
+
 import com.aqwapi.Api;
 import com.aqwapi.utils.ApiLogger;
 import com.aqwapi.utils.ApiTime;
@@ -86,7 +88,7 @@ class ActionFeed {
     private static var _ticks:Bool = false;
     private static var _ticksWithResults:Int = 0;
     private static var _tickResults:Int = 0;
-    private static var _lastSummaryAt:Float = -10000;
+    private static var _lastSummaryAt:Float = ApiTimings.UNSET_TIMESTAMP_MS;
 
     private static inline function countCmd(cmd:String):Void {
         _cmdCounts.set(cmd, (_cmdCounts.exists(cmd) ? _cmdCounts.get(cmd) : 0) + 1);
@@ -121,7 +123,7 @@ class ActionFeed {
             _tickResults += n;
         }
         var now:Float = ApiTime.now();
-        if (now - _lastSummaryAt < 15000) return;
+        if (now - _lastSummaryAt < ApiTimings.ACTION_FEED_SUMMARY_MS) return;
         _lastSummaryAt = now;
         ApiLogger.diag("ActionFeed", "Stats: packets=" + packetsSeen + " hitsOnUs=" + resultsSeen + " ticks=" + _ticksWithResults + " totalHits=" + _tickResults + " buffer=" + _records.length + " resets=" + resets + " lockOpen=" + hasAnyForTarget(-1e30) + " consumed=" + _consumedSeq + "/" + _seq + " cmds=" + cmdSummary());
     }
@@ -144,10 +146,16 @@ class ActionFeed {
         try {
             var sfc:Dynamic = (Api.game != null) ? Api.game.sfc : null;
             if (sfc == null) {
+                if (_installedOn != null && _handler != null) {
+                    try { _installedOn.removeEventListener("onExtensionResponse", _handler); } catch (_:Dynamic) {}
+                }
                 _installedOn = null;
                 return;
             }
             if (_installedOn == sfc) return;
+            if (_installedOn != null && _handler != null) {
+                try { _installedOn.removeEventListener("onExtensionResponse", _handler); } catch (_:Dynamic) {}
+            }
             _installedOn = sfc;
             if (_handler == null) _handler = function(e:Dynamic) handlePacket(e);
             // (type, listener, useCapture, priority, useWeak) - priority 100 beats the game's own 0.
@@ -157,6 +165,13 @@ class ActionFeed {
             _installedOn = null;
             ApiLogger.warn("ActionFeed", "Hook failed: " + Std.string(err));
         }
+    }
+
+    public static function uninstall():Void {
+        if (_installedOn != null && _handler != null) {
+            try { _installedOn.removeEventListener("onExtensionResponse", _handler); } catch (_:Dynamic) {}
+        }
+        _installedOn = null;
     }
 
     // -------------------------------------------------------------------------

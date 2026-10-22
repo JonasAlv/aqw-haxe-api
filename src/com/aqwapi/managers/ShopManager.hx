@@ -16,6 +16,7 @@ class ShopManager {
     /** Pending bulk purchases, oldest first. */
     private var _buyQueue:Array<Dynamic> = [];
     private var _buyTimer:Timer = null;
+    private var _buyGapMs:Int = Std.int(ApiTimings.SHOP_BUY_MS);
 
     public function new(gameReference:Game) {
         _game = gameReference;
@@ -56,9 +57,9 @@ class ShopManager {
      *
      * Returns how many entries were accepted; entries naming an empty item are rejected.
      */
-    public function buyItems(items:Array<Dynamic>, gapMs:Int = 1000):Int {
+    public function buyItems(items:Array<Dynamic>, gapMs:Int = Std.int(ApiTimings.SHOP_BUY_MS)):Int {
         if (items == null || items.length == 0) return 0;
-        if (gapMs < 250) gapMs = 250;
+        if (gapMs < Std.int(ApiTimings.SHOP_QUEUE_MIN_OVERRIDE_MS)) gapMs = Std.int(ApiTimings.SHOP_QUEUE_MIN_OVERRIDE_MS);
         var accepted:Int = 0;
         for (raw in items) {
             var entry:Dynamic = com.aqwapi.utils.BuyRequestParser.parse(raw);
@@ -76,22 +77,25 @@ class ShopManager {
 
     public function clearBuyQueue():Void {
         _buyQueue = [];
+        if (_buyTimer != null) _buyTimer.stop();
     }
 
     private function startQueue(gapMs:Int):Void {
+        if (gapMs < Std.int(ApiTimings.SHOP_BUY_MS)) gapMs = Std.int(ApiTimings.SHOP_BUY_MS);
+        _buyGapMs = (_buyGapMs > gapMs) ? _buyGapMs : gapMs;
         if (_buyTimer != null && _buyTimer.running) {
-            // Keep the tighter of the two intervals if a caller asks for a faster drain.
-            if (_buyTimer.delay < gapMs) _buyTimer.delay = gapMs;
+            // Never let a caller shorten the AE buyItem cooldown.
+            if (_buyTimer.delay < _buyGapMs) _buyTimer.delay = _buyGapMs;
             return;
         }
         if (_buyTimer == null) {
-            _buyTimer = new Timer(gapMs, 0);
+            _buyTimer = new Timer(_buyGapMs, 0);
             _buyTimer.addEventListener(TimerEvent.TIMER, onBuyQueueTick);
         } else {
-            _buyTimer.delay = gapMs;
+            _buyTimer.delay = _buyGapMs;
         }
         _buyTimer.start();
-        // Fire the first entry promptly instead of making the caller wait a full interval.
+        // Fire immediately only when the previous purchase is outside the native cooldown.
         drainOne();
     }
 
@@ -104,8 +108,10 @@ class ShopManager {
             if (_buyTimer != null) _buyTimer.stop();
             return;
         }
+        var now = com.aqwapi.utils.ApiTime.now();
+        if (now - _lastBuyTime < _buyGapMs) return;
         var entry:Dynamic = _buyQueue.shift();
-        _lastBuyTime = com.aqwapi.utils.ApiTime.now();
+        _lastBuyTime = now;
         sendBuy(entry.item, Std.int(entry.quantity));
         if (_buyQueue.length == 0 && _buyTimer != null) _buyTimer.stop();
     }

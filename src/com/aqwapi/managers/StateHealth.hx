@@ -3,6 +3,7 @@ package com.aqwapi.managers;
 import com.aqwapi.Api;
 import com.aqwapi.events.GameEvent;
 import com.aqwapi.utils.ApiTime;
+import com.aqwapi.utils.ApiTimings;
 
 /** Reports whether a live data source exists and how recently it emitted an update. */
 class StateHealth {
@@ -32,7 +33,7 @@ class StateHealth {
      * the first update event, otherwise `fresh` or `stale` based on staleAfterMs.
      * Age is milliseconds since the last observed update, not proof of server truth.
      */
-    public function get(domain:String, staleAfterMs:Float = 30000):Dynamic {
+    public function get(domain:String, staleAfterMs:Float = ApiTimings.STATE_STALE_TIMEOUT_MS):Dynamic {
         var key = (domain == null) ? "" : StringTools.trim(domain).toLowerCase();
         var available = switch (key) {
             case "player": Api.game != null && Api.game.world != null && Api.game.world.myAvatar != null;

@@ -122,7 +122,7 @@ class ApiStorage {
 
     public static function getAccountDirectory(accountName:String = null):Dynamic {
         var acc = (accountName != null && accountName != "") ? StringTools.trim(accountName.toLowerCase()) : getActiveAccount();
-        if (acc == null || acc == "") return null;
+        if (!isSafeAccountName(acc)) return null;
         var dir = getDataDirectory();
         if (dir == null) return null;
         try {
@@ -135,7 +135,11 @@ class ApiStorage {
 
     public static function setAccount(accountName:String):Void {
         var acc = (accountName != null) ? StringTools.trim(accountName.toLowerCase()) : "";
-        if (acc == "" || acc == currentAccount) return;
+        if (!isSafeAccountName(acc)) {
+            ApiLogger.warn("Storage", "Rejected unsafe account name.");
+            return;
+        }
+        if (acc == currentAccount) return;
         currentAccount = acc;
         ApiLogger.info("Storage", "Active account set to: " + acc);
 
@@ -215,9 +219,18 @@ class ApiStorage {
     public static inline function cleanFileName(name:String):String {
         if (name == null) return "";
         var n = StringTools.replace(name, "\\", "/");
-        if (n.indexOf("assets/") == 0) return n.substring(7);
-        if (n.indexOf("/") == 0) return n.substring(1);
+        if (n.indexOf("assets/") == 0) n = n.substring(7);
+        if (n.indexOf("/") == 0) n = n.substring(1);
+        if (n.indexOf(":") != -1) return "";
+        for (part in n.split("/")) {
+            if (part == "." || part == "..") return "";
+        }
         return n;
+    }
+
+    private static function isSafeAccountName(name:String):Bool {
+        return name != null && name != "" && name.indexOf("/") == -1 && name.indexOf("\\") == -1
+            && name.indexOf(":") == -1 && name.indexOf("..") == -1;
     }
 
     public static function isAndroid():Bool {
@@ -248,6 +261,9 @@ class ApiStorage {
     }
 
     public static function getFileClass():Dynamic {
+        #if ruffle
+        return null;
+        #end
         var cls:Dynamic = null;
         #if flash
         try { cls = untyped __global__["flash.filesystem.File"]; } catch (_:Dynamic) {}
@@ -267,6 +283,9 @@ class ApiStorage {
     }
 
     public static function getFileStreamClass():Dynamic {
+        #if ruffle
+        return null;
+        #end
         var cls:Dynamic = null;
         #if flash
         try { cls = untyped __global__["flash.filesystem.FileStream"]; } catch (_:Dynamic) {}
@@ -382,6 +401,7 @@ class ApiStorage {
             if (isAccountBoundFile(clean) && acc != null && acc != "") {
                 var accFile = dir.resolvePath("accounts/" + acc + "/" + clean);
                 if (accFile.exists) return accFile;
+                return accFile;
             }
             return dir.resolvePath(clean);
         } catch (_:Dynamic) {}
@@ -554,15 +574,17 @@ class ApiStorage {
                 }
             }
 
-            // 2. Try reading from root user storage (applicationStorageDirectory)
-            try {
-                var f = dir.resolvePath(clean);
-                var txt = readFileStream(f);
-                if (txt != null && StringTools.trim(txt).length > 0) {
-                    return txt;
+            // Account-bound files must not fall back to another account's root copy.
+            if (!isAccountBoundFile(clean) || acc == null || acc == "") {
+                try {
+                    var f = dir.resolvePath(clean);
+                    var txt = readFileStream(f);
+                    if (txt != null && StringTools.trim(txt).length > 0) {
+                        return txt;
+                    }
+                } catch (e:Dynamic) {
+                    ApiLogger.warn("Storage", "Error reading " + clean + " from storage: " + e);
                 }
-            } catch (e:Dynamic) {
-                ApiLogger.warn("Storage", "Error reading " + clean + " from storage: " + e);
             }
         }
 
@@ -602,7 +624,7 @@ class ApiStorage {
                     if (val != null && Std.string(val).length > 0) return Std.string(val);
                 }
             }
-            if (Reflect.hasField(so.data, clean)) {
+            if ((!isAccountBoundFile(clean) || acc == null || acc == "") && Reflect.hasField(so.data, clean)) {
                 var val = Reflect.field(so.data, clean);
                 if (val != null && Std.string(val).length > 0) return Std.string(val);
             }

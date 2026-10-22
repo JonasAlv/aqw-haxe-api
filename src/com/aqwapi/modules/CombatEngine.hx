@@ -16,6 +16,7 @@ import com.aqwapi.utils.SkillDslParser;
 
 class CombatEngine {
     private static var _timer:Timer;
+    private static var _wakeQueued:Bool = false;
     public static var IS_ON:Bool = false;
     public static var isSmart:Bool = true;
     public static var skillMode:String = "Auto";
@@ -45,7 +46,7 @@ class CombatEngine {
     public static var aggroAll:Bool = false;
     public static var pullAll:Bool = false;
     public static var aggroTargets:Array<String> = [];
-    private static var _lastAggroTime:Float = -10000;
+    private static var _lastAggroTime:Float = ApiTimings.UNSET_TIMESTAMP_MS;
     // Internal execution state
     public static var customRotation(get, never):Array<Int>;
     public static inline function get_customRotation():Array<Int> { return _customRotation; }
@@ -55,8 +56,8 @@ class CombatEngine {
     private static var _skillIndex:Int = 0;
     private static var _skillWaitStart:Float = 0;
     private static var _stepFirstFailTime:Float = -1;
-    private static var _lastTimeoutSkipLogTime:Float = -10000;
-    private static var _lastHardLockLogTime:Float = -10000;
+    private static var _lastTimeoutSkipLogTime:Float = ApiTimings.UNSET_TIMESTAMP_MS;
+    private static var _lastHardLockLogTime:Float = ApiTimings.UNSET_TIMESTAMP_MS;
     private static var _activeBranch:Int = -1;
     private static var _branchSkillIndex:Int = 0;
     private static var _branchWaitStart:Float = 0;
@@ -96,9 +97,22 @@ class CombatEngine {
     public static function init():Void {
         SkillManager.ensureLoaded(true);
         if (_timer == null) {
-            _timer = new Timer(ApiTimings.COMBAT_TICK_MS);
+            _timer = new Timer(ApiTimings.COMBAT_WATCHDOG_MS);
             _timer.addEventListener(TimerEvent.TIMER, onTick);
         }
+    }
+
+    /**
+     * Re-evaluate combat after the game has applied a meaningful state or combat response.
+     * The watchdog remains as a fallback, but actions are no longer limited to its interval.
+     */
+    public static function wake():Void {
+        if (!IS_ON || _wakeQueued) return;
+        _wakeQueued = true;
+        haxe.Timer.delay(function() {
+            _wakeQueued = false;
+            if (IS_ON) onTick(null);
+        }, Std.int(ApiTimings.IMMEDIATE_WAKE_MS));
     }
     
     public static function start(smart:Bool, silent:Bool = false):Void {
@@ -133,8 +147,8 @@ class CombatEngine {
         _targetChanged = false;
         _pausedByTargetAura = false;
         pausedAuraName = null;
-        _lastCastAt = -10000;
-        _lastSkillAt = -10000;
+        _lastCastAt = ApiTimings.UNSET_TIMESTAMP_MS;
+        _lastSkillAt = ApiTimings.UNSET_TIMESTAMP_MS;
         _avatarBusyAnim = false;
         ActionFeed.reset();
         _waitUntil = {};
@@ -169,6 +183,7 @@ class CombatEngine {
         if (_timer != null && _timer.running) {
             _timer.stop();
         }
+        _wakeQueued = false;
         if (Api.game != null && Api.game.world != null) {
             var world:Dynamic = Api.game.world;
             clearNativeAutoAttack(world);
@@ -259,8 +274,8 @@ class CombatEngine {
         return false;
     }
     
-    private static var _lastCastAt:Float = -10000;
-    private static var _lastSkillAt:Float = -10000;
+    private static var _lastCastAt:Float = ApiTimings.UNSET_TIMESTAMP_MS;
+    private static var _lastSkillAt:Float = ApiTimings.UNSET_TIMESTAMP_MS;
     private static var _avatarBusyAnim:Bool = false;
 
     /**
@@ -366,7 +381,7 @@ class CombatEngine {
      * skill does not immediately spend the riposte. Tunable via `ApiTimings.COUNTER_ARM_DELAY_MS`.
      */
     public static function counterArmCutoff():Float {
-        if (_lastCastAt < -1000) return -1e30;   // nothing cast yet: accept everything
+        if (_lastCastAt <= ApiTimings.UNSET_TIMESTAMP_MS) return -1e30;   // nothing cast yet: accept everything
         return _lastCastAt + ApiTimings.COUNTER_ARM_DELAY_MS;
     }
 
@@ -807,7 +822,7 @@ class CombatEngine {
                     Api.monster.magnetizeAll((aggroTargets != null && aggroTargets.length > 0) ? aggroTargets : "*");
                 }
             }
-            if ((aggroAll || (aggroTargets != null && aggroTargets.length > 0)) && (now - _lastAggroTime >= 1200)) {
+            if ((aggroAll || (aggroTargets != null && aggroTargets.length > 0)) && (now - _lastAggroTime >= ApiTimings.AGGRO_REFRESH_MS)) {
                 _lastAggroTime = now;
                 if (Api.monster != null) {
                     Api.monster.aggroMonsters((aggroTargets != null && aggroTargets.length > 0) ? aggroTargets : "*");
@@ -901,7 +916,7 @@ class CombatEngine {
         var skillUseMode:String = (modeConfig.mode != null) ? modeConfig.mode : ((modeConfig.skillUseMode != null) ? modeConfig.skillUseMode : "WaitForCooldown");
         var rawTimeout:Float = (modeConfig.timeout != null) ? ApiUtils.parseFloat(modeConfig.timeout, 0) : ((modeConfig.skillTimeout != null) ? ApiUtils.parseFloat(modeConfig.skillTimeout, 0) : 0);
         var isUseIfAvail:Bool = (skillUseMode.toLowerCase() == "useifavailable");
-        var skillTimeout:Float = isUseIfAvail ? ((rawTimeout > 0) ? rawTimeout : 0) : ((rawTimeout >= 1500) ? rawTimeout : 1500);
+        var skillTimeout:Float = isUseIfAvail ? ((rawTimeout > 0) ? rawTimeout : 0) : ((rawTimeout >= ApiTimings.SKILL_STEP_TIMEOUT_MS) ? rawTimeout : ApiTimings.SKILL_STEP_TIMEOUT_MS);
 
         var branches:Array<Array<Dynamic>> = (modeConfig.branches != null && Std.isOfType(modeConfig.branches, Array)) ? cast modeConfig.branches : [];
         if (branches.length == 0 && modeConfig.combo != null && Std.string(modeConfig.combo) != "") {
@@ -1192,7 +1207,7 @@ class CombatEngine {
                     }
                     return;
                 }
-                if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
+                if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= ApiTimings.COMBAT_RESOURCE_WAIT_TIMEOUT_MS) {
                     _branchSkillIndex++;
                     _branchWaitStart = now;
                     _branchStepFirstFailTime = -1;
@@ -1309,7 +1324,7 @@ class CombatEngine {
                 _stepFirstFailTime = -1;
                 return;
             }
-            if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= 10000) {
+            if (fireResult == SkillCaster.SR_RESOURCE && elapsedWait >= ApiTimings.COMBAT_RESOURCE_WAIT_TIMEOUT_MS) {
                 _skillIndex = (_skillIndex + 1) % skills.length;
                 _skillWaitStart = now;
                 _stepFirstFailTime = -1;
@@ -1433,7 +1448,7 @@ class CombatEngine {
                     return;
                 } else {
                     var now:Float = ApiTime.now();
-                    if ((now - _sequenceStepStartTime) > 8000) {
+                    if ((now - _sequenceStepStartTime) > ApiTimings.COMBAT_SEQUENCE_STEP_TIMEOUT_MS) {
                         _rotationIndex = (_rotationIndex + 1) % _customRotation.length;
                         _sequenceStepStartTime = now;
                     }

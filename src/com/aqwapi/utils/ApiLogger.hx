@@ -11,8 +11,13 @@ class ApiLogger {
 
     public static var level:Int = LEVEL_INFO;
     public static var printToConsole:Bool = true;
+    #if ruffle
+    public static var printToFile:Bool = false;
+    public static var printToChat:Bool = false;
+    #else
     public static var printToFile:Bool = true;
     public static var printToChat:Bool = true;
+    #end
     public static var chatMinLevel:Int = LEVEL_INFO;
 
     public static var onLog:String->Int->String->Void = null;
@@ -79,25 +84,16 @@ class ApiLogger {
 
     private static var _logFile:Dynamic = null;
     private static var _logFileInitialized:Bool = false;
-    private static var _chatSettingChecked:Bool = false;
+    private static var _memoryLines:Array<String> = [];
+    private static inline var MEMORY_MAX_LINES:Int = 2000;
 
     public static function syncChatSetting():Void {
-        try {
-            var hsCls:Dynamic = Type.resolveClass("util.HelperSetting");
-            if (hsCls != null && Reflect.field(hsCls, "getBool") != null) {
-                printToChat = hsCls.getBool("api_chat_logging", true);
-            }
-        } catch (_:Dynamic) {}
+        // Ruffle has no AIR/HelperSetting dependency. Keep this method as a compatibility no-op for
+        // callers from the UI, while the API's in-memory logger remains the source of truth.
     }
 
     public static function setChatLogging(enabled:Bool):Void {
         printToChat = enabled;
-        try {
-            var hsCls:Dynamic = Type.resolveClass("util.HelperSetting");
-            if (hsCls != null && Reflect.field(hsCls, "setBool") != null) {
-                hsCls.setBool("api_chat_logging", enabled);
-            }
-        } catch (_:Dynamic) {}
     }
 
     private static function _resolveLogFile():Dynamic {
@@ -219,7 +215,7 @@ class ApiLogger {
     private static var _dedupeLevel:Int = 0;
     private static var _dedupeMessage:String = null;
     private static var _dedupeCount:Int = 0;
-    private static var _dedupeLastAt:Float = -10000;
+    private static var _dedupeLastAt:Float = ApiTimings.UNSET_TIMESTAMP_MS;
 
     #if flash
     private static var _dedupeTimer:flash.utils.Timer = null;
@@ -306,6 +302,9 @@ class ApiLogger {
         var timeStamp:String = getTimestamp(true);
         var formatted:String = "[" + timeStamp + "] [Api:" + tag + ":" + levelStr + "] " + message;
 
+        _memoryLines.push(formatted);
+        if (_memoryLines.length > MEMORY_MAX_LINES) _memoryLines.shift();
+
         if (printToConsole) {
             try {
                 #if flash
@@ -351,6 +350,10 @@ class ApiLogger {
     }
 
     public static function clearLog():Void {
+        _memoryLines = [];
+        #if ruffle
+        return;
+        #end
         try {
             var f = _resolveLogFile();
             if (f != null) {
@@ -370,6 +373,11 @@ class ApiLogger {
     }
 
     public static function readLog(maxBytes:Int = 500000):String {
+        #if ruffle
+        var memory:String = _memoryLines.join("\n");
+        if (memory.length > maxBytes) memory = memory.substring(memory.length - maxBytes);
+        return memory;
+        #end
         try {
             var f = _resolveLogFile();
             if (f != null) {

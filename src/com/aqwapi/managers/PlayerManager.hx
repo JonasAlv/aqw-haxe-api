@@ -1,5 +1,7 @@
 package com.aqwapi.managers;
 
+import com.aqwapi.utils.ApiTimings;
+
 import com.aqwapi.Api;
 import com.aqwapi.data.EntityDTO;
 import com.aqwapi.data.ItemDTO;
@@ -675,7 +677,7 @@ class PlayerManager {
         }
         if (_autoBoostGold || _autoBoostCp || _autoBoostRep || _autoBoostXp) {
             if (_boostTimer == null) {
-                _boostTimer = new Timer(15000);
+                _boostTimer = new Timer(ApiTimings.BOOST_REFRESH_MS);
                 _boostTimer.addEventListener(TimerEvent.TIMER, function(_) checkAutoBoosts());
                 _boostTimer.start();
             }

@@ -354,7 +354,7 @@ class QuestManager {
         if (now - _lastGlobalLoadTime < ApiTimings.QUEST_DATA_LOAD_MS) {
             return;
         }
-        if (_lastLoadRequests.exists(qid) && (now - _lastLoadRequests.get(qid)) < 1500) {
+        if (_lastLoadRequests.exists(qid) && (now - _lastLoadRequests.get(qid)) < ApiTimings.QUEST_LOAD_DEDUPE_MS) {
             return;
         }
         _lastGlobalLoadTime = now;
@@ -380,7 +380,7 @@ class QuestManager {
         for (item in rawList) {
             var qid:Int = resolveQuestId(item);
             if (qid > 0 && !isLoaded(qid)) {
-                if (!_lastLoadRequests.exists(qid) || (now - _lastLoadRequests.get(qid)) >= 1500) {
+                if (!_lastLoadRequests.exists(qid) || (now - _lastLoadRequests.get(qid)) >= ApiTimings.QUEST_LOAD_DEDUPE_MS) {
                     _lastLoadRequests.set(qid, now);
                     toLoad.push(qid);
                 }
@@ -471,13 +471,13 @@ class QuestManager {
     }
 
     /** Accept and report only after live quest state shows the quest active. */
-    public function acceptWithResult(questId:Dynamic, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = 15000):Void {
+    public function acceptWithResult(questId:Dynamic, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = Std.int(ApiTimings.QUEST_RESULT_TIMEOUT_MS)):Void {
         var qid = resolveQuestId(questId);
         if (qid <= 0) {
             if (callback != null) callback(new com.aqwapi.data.ActionResult("acceptQuest", "failed", "Invalid quest id.", 0));
             return;
         }
-        com.aqwapi.utils.ActionWaiter.run("acceptQuest", function() { accept(qid); }, function() { return isInProgress(qid); }, callback, timeoutMs, 150);
+        com.aqwapi.utils.ActionWaiter.run("acceptQuest", function() { accept(qid); }, function() { return isInProgress(qid); }, callback, timeoutMs, Std.int(ApiTimings.ACTION_RESULT_POLL_MS));
     }
 
     public function acceptMultiple(questIds:Dynamic):Void {
@@ -525,18 +525,18 @@ class QuestManager {
         }
 
         _actionQueue.push({type: "complete", questId: qid, itemId: resolvedItemId, qty: qty});
-        _pauseScriptIfRunning();
+        _pauseScriptIfRunning(ApiTimings.QUEST_COMPLETE_ACTION_MS);
         processQueue();
     }
 
     /** Turn in and report only after the quest completion value is visible in client state. */
-    public function completeWithResult(questId:Dynamic, itemId:Dynamic, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = 15000):Void {
+    public function completeWithResult(questId:Dynamic, itemId:Dynamic, callback:com.aqwapi.data.ActionResult->Void, timeoutMs:Int = Std.int(ApiTimings.QUEST_RESULT_TIMEOUT_MS)):Void {
         var qid = resolveQuestId(questId);
         if (qid <= 0) {
             if (callback != null) callback(new com.aqwapi.data.ActionResult("completeQuest", "failed", "Invalid quest id.", 0));
             return;
         }
-        com.aqwapi.utils.ActionWaiter.run("completeQuest", function() { complete(qid, itemId); }, function() { return isCompleted(qid); }, callback, timeoutMs, 150);
+        com.aqwapi.utils.ActionWaiter.run("completeQuest", function() { complete(qid, itemId); }, function() { return isCompleted(qid); }, callback, timeoutMs, Std.int(ApiTimings.ACTION_RESULT_POLL_MS));
     }
 
     public function ensureComplete(questId:Dynamic, itemIdOrCallback:Dynamic = -1, ?callback:Dynamic):Bool {
@@ -617,6 +617,10 @@ class QuestManager {
         }
     }
 
+    private inline function actionGapFor(type:String):Float {
+        return type == "complete" ? ApiTimings.QUEST_COMPLETE_ACTION_MS : ApiTimings.QUEST_ACTION_MS;
+    }
+
     /** True while an accept request is awaiting server-confirmed quest state. */
     public function isAcceptPending(questId:Dynamic):Bool {
         var qid:Int = resolveQuestId(questId);
@@ -664,11 +668,11 @@ class QuestManager {
         poll();
     }
 
-    private function _pauseScriptIfRunning():Void {
+    private function _pauseScriptIfRunning(gapMs:Float = ApiTimings.QUEST_ACTION_MS):Void {
         try {
             var engine = com.aqwapi.scripting.HScriptEngine.SINGLETON;
             if (engine != null && engine.isRunning) {
-                engine.sleep(ApiTimings.QUEST_ACTION_MS);
+                engine.sleep(gapMs);
             }
         } catch (_:Dynamic) {}
     }
@@ -684,10 +688,12 @@ class QuestManager {
         }
 
         var now = ApiTime.now();
+        var nextTask = _actionQueue[0];
+        var actionGap = (nextTask != null) ? actionGapFor(nextTask.type) : ApiTimings.QUEST_ACTION_MS;
         var elapsed = now - _lastActionTime;
-        if (elapsed < ApiTimings.QUEST_ACTION_MS) {
-            var waitMs = Std.int(ApiTimings.QUEST_ACTION_MS - elapsed);
-            if (waitMs < 20) waitMs = 20;
+        if (elapsed < actionGap) {
+            var waitMs = Std.int(actionGap - elapsed);
+            if (waitMs < Std.int(ApiTimings.QUEUE_MIN_DELAY_MS)) waitMs = Std.int(ApiTimings.QUEUE_MIN_DELAY_MS);
             scheduleQueueCheck(waitMs);
             return;
         }
@@ -704,7 +710,7 @@ class QuestManager {
         }
 
         if (_actionQueue.length > 0) {
-            scheduleQueueCheck(ApiTimings.QUEST_ACTION_MS);
+            scheduleQueueCheck(actionGapFor(_actionQueue[0].type));
         }
     }
 
@@ -798,7 +804,7 @@ class QuestManager {
 
         var now = ApiTime.now();
         var lastQTurnIn:Float = Reflect.hasField(_lastTurnIns, Std.string(questId)) ? Reflect.field(_lastTurnIns, Std.string(questId)) : 0.0;
-        if (now - lastQTurnIn < ApiTimings.QUEST_ACTION_MS) return;
+        if (now - lastQTurnIn < ApiTimings.QUEST_COMPLETE_ACTION_MS) return;
         Reflect.setField(_lastTurnIns, Std.string(questId), now);
 
         _lastCompleteTime = now;

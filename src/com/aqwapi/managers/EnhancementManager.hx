@@ -28,15 +28,20 @@ class EnhancementManager {
     private var _queue:Array<EnhanceTask> = [];
     private var _onCompleteCallback:Void->Void = null;
     private var _stepTimer:Float = 0;
-    private var _shopWaitCount:Int = 0;
+    private var _shopWaitStartedAt:Float = 0;
+    private var _nextShopRequestAt:Float = 0;
     private var _originMap:String = null;
     private var _originCell:String = null;
     private var _originPad:String = null;
     private var _originIsHouse:Bool = false;
     private var _returnJoinSent:Bool = false;
-    private var _returnWaitCount:Int = 0;
-    private var _mapJoinWaitCount:Int = 0;
+    private var _returnLoadStartedAt:Float = 0;
+    private var _mapLoadStartedAt:Float = 0;
     private var _cachedDb:Dynamic = null;
+    private var _pendingTask:EnhanceTask = null;
+    private var _pendingTaskStartedAt:Float = 0;
+    private var _skippedTasks:Int = 0;
+    private var _failedTasks:Int = 0;
 
     public var isBusy(default, null):Bool = false;
     public var lastStatus(default, null):String = "Idle";
@@ -399,14 +404,21 @@ class EnhancementManager {
         var currentEqClass = (Api.player != null) ? Api.player.className : "";
         if (currentEqClass.toLowerCase() != targetClass.toLowerCase()) {
             if (Api.inventory != null && Api.inventory.hasItem(targetClass)) {
-                Api.inventory.equip(targetClass);
-                // Allow class equip to settle on server before reading equipped slots
                 var rec = getRecommendation(targetClass);
-                ApiTime.delay(800, function() {
+                Api.inventory.equip(targetClass).then(function(result:Dynamic) {
+                    if (result == null || !Api.inventory.isEquipped(targetClass)) {
+                        ApiLogger.warn("Enhancement", "Could not confirm class equip for '" + targetClass + "'.");
+                        if (cb != null) cb();
+                        return;
+                    }
                     enhanceEquipped(rec.type, rec.cape, rec.helm, rec.weapon, cb);
                 });
                 return;
             }
+
+            ApiLogger.warn("Enhancement", "Cannot smart-enhance '" + targetClass + "': class is not in inventory.");
+            if (cb != null) cb();
+            return;
         }
 
         // 3. Resolve recommended enhancements
@@ -435,46 +447,55 @@ class EnhancementManager {
         else if (Reflect.isFunction(baseType)) cb = baseType;
 
         var slots = getEquippedSlots();
-        var tasks:Array<EnhanceTask> = [];
+        // Keep all base-shop work together. Special/Awe weapon work and Forge work are deferred
+        // until the end so the queue never leaves the normal shop and then has to come back to it.
+        var normalTasks:Array<EnhanceTask> = [];
+        var finalTasks:Array<EnhanceTask> = [];
 
         // 1. Class (Armor slot in AQW terminology)
         var classTarget = (slots.classItem != null) ? slots.classItem : slots.armor;
         if (classTarget != null) {
             if (!isAlreadyEnhanced(classTarget, t, "None")) {
                 var aShopId = getBaseShopId(t);
-                tasks.push({ item: classTarget, baseType: t, special: "None", shopId: aShopId, targetMap: null });
+                normalTasks.push({ item: classTarget, baseType: t, special: "None", shopId: aShopId, targetMap: null });
             }
         }
 
-        // 2. Weapon
-        if (slots.weapon != null) {
-            var w = (wSpec != "" && wSpec != "None") ? wSpec : "None";
-            if (!isAlreadyEnhanced(slots.weapon, t, w)) {
-                var wShopId = getWeaponShopId(t, w);
-                var wMap = (wShopId == 2142) ? "forge" : null;
-                tasks.push({ item: slots.weapon, baseType: t, special: w, shopId: wShopId, targetMap: wMap });
-            }
-        }
-
-        // 3. Helm
+        // 2. Helm: normal enhancements stay with the base-shop phase; Forge enhancements are final.
         if (slots.helm != null) {
             var h = (hSpec != "" && hSpec != "None") ? hSpec : "None";
             if (!isAlreadyEnhanced(slots.helm, t, h)) {
                 var hShopId = (h != "None") ? 2164 : getBaseShopId(t);
                 var hMap = (hShopId == 2164) ? "forge" : null;
-                tasks.push({ item: slots.helm, baseType: t, special: h, shopId: hShopId, targetMap: hMap });
+                var hTask:EnhanceTask = { item: slots.helm, baseType: t, special: h, shopId: hShopId, targetMap: hMap };
+                if (hMap != null) finalTasks.push(hTask); else normalTasks.push(hTask);
             }
         }
 
-        // 4. Cape
+        // 3. Cape: normal enhancements stay with the base-shop phase; Forge enhancements are final.
         if (slots.cape != null) {
             var c = (cSpec != "" && cSpec != "None") ? cSpec : "None";
             if (!isAlreadyEnhanced(slots.cape, t, c)) {
                 var cShopId = (c != "None") ? 2143 : getBaseShopId(t);
                 var cMap = (cShopId == 2143) ? "forge" : null;
-                tasks.push({ item: slots.cape, baseType: t, special: c, shopId: cShopId, targetMap: cMap });
+                var cTask:EnhanceTask = { item: slots.cape, baseType: t, special: c, shopId: cShopId, targetMap: cMap };
+                if (cMap != null) finalTasks.push(cTask); else normalTasks.push(cTask);
             }
         }
+
+        // 4. Weapon: keep normal weapon work last within the base-shop phase. Any special/Awe
+        // weapon is deferred to the final phase because it uses a different weapon shop.
+        if (slots.weapon != null) {
+            var w = (wSpec != "" && wSpec != "None") ? wSpec : "None";
+            if (!isAlreadyEnhanced(slots.weapon, t, w)) {
+                var wShopId = getWeaponShopId(t, w);
+                var wMap = (wShopId == 2142) ? "forge" : null;
+                var wTask:EnhanceTask = { item: slots.weapon, baseType: t, special: w, shopId: wShopId, targetMap: wMap };
+                if (w != "None" || wMap != null) finalTasks.push(wTask); else normalTasks.push(wTask);
+            }
+        }
+
+        var tasks:Array<EnhanceTask> = normalTasks.concat(finalTasks);
 
         if (tasks.length == 0) {
             ApiLogger.info("Enhancement", "All equipped items already have optimal enhancements at current level!");
@@ -555,10 +576,15 @@ class EnhancementManager {
         _queue = tasks;
         _onCompleteCallback = onComplete;
         _stepTimer = 0;
-        _shopWaitCount = 0;
+        _shopWaitStartedAt = 0;
+        _nextShopRequestAt = 0;
         _returnJoinSent = false;
-        _returnWaitCount = 0;
-        _mapJoinWaitCount = 0;
+        _returnLoadStartedAt = 0;
+        _mapLoadStartedAt = 0;
+        _pendingTask = null;
+        _pendingTaskStartedAt = 0;
+        _skippedTasks = 0;
+        _failedTasks = 0;
         isBusy = true;
         lastStatus = "Starting...";
 
@@ -586,19 +612,42 @@ class EnhancementManager {
         var now = ApiTime.now();
         if (now < _stepTimer) return;
 
+        // AE mutates the live inventory item only after the enhanceItemShop response arrives. Do not
+        // advance the queue merely because the request packet was sent.
+        if (_pendingTask != null) {
+            var liveItem = findLiveItem(_pendingTask.item.itemId);
+            if (liveItem != null && isAlreadyEnhanced(liveItem, _pendingTask.baseType, _pendingTask.special)) {
+                ApiLogger.info("Enhancement", "Confirmed enhancement for [" + _pendingTask.item.name + "].");
+                _pendingTask = null;
+                _pendingTaskStartedAt = 0;
+                _queue.shift();
+                _stepTimer = now + ApiTimings.ENHANCEMENT_ACTION_GAP_MS;
+                return;
+            }
+            if (now - _pendingTaskStartedAt >= ApiTimings.ENHANCEMENT_ACK_TIMEOUT_MS) {
+                ApiLogger.warn("Enhancement", "No server confirmation for [" + _pendingTask.item.name + "]; skipping it.");
+                _failedTasks++;
+                _pendingTask = null;
+                _pendingTaskStartedAt = 0;
+                _queue.shift();
+                _stepTimer = now + ApiTimings.ENHANCEMENT_ACTION_GAP_MS;
+            }
+            return;
+        }
+
         // When all enhancement tasks are done, handle returning to origin map/house if needed
         if (_queue.length == 0) {
             var inForge = (Api.map != null && Api.map.isMap("forge"));
 
             if (inForge && (_originMap != null || _originIsHouse)) {
                 var timeSinceJoin = (Api.map != null) ? Api.map.timeSinceLastJoin : 999999.0;
-                var minCooldown:Float = 5200; // AQW 5000ms server map transfer cooldown + 200ms latency buffer
+                var minCooldown:Float = ApiTimings.ENHANCEMENT_MAP_JOIN_COOLDOWN_MS;
 
                 if (!_returnJoinSent) {
                     if (timeSinceJoin < minCooldown) {
                         var remainingSec = Math.ceil((minCooldown - timeSinceJoin) / 1000.0);
                         lastStatus = "Waiting map cooldown (" + remainingSec + "s)...";
-                        _stepTimer = now + 400;
+                        _stepTimer = now + ApiTimings.ENHANCEMENT_MAP_COOLDOWN_RETRY_MS;
                         return;
                     }
 
@@ -616,8 +665,8 @@ class EnhancementManager {
                     }
 
                     _returnJoinSent = true;
-                    _returnWaitCount = 0;
-                    _stepTimer = now + 1500;
+                    _returnLoadStartedAt = now;
+                    _stepTimer = now + ApiTimings.ENHANCEMENT_MAP_JOIN_SETTLE_MS;
                     return;
                 }
 
@@ -635,8 +684,8 @@ class EnhancementManager {
                     return;
                 }
 
-                _returnWaitCount++;
-                if (_returnWaitCount > 50) { // 7.5s timeout
+                if (_returnLoadStartedAt <= 0) _returnLoadStartedAt = now;
+                if (now - _returnLoadStartedAt >= ApiTimings.ENHANCEMENT_MAP_LOAD_TIMEOUT_MS) {
                     var destName = _originIsHouse ? "House" : _originMap;
                     ApiLogger.warn("Enhancement", "Timed out waiting for " + destName + " to load. Completing queue.");
                     finishQueue();
@@ -645,7 +694,7 @@ class EnhancementManager {
 
                 var destName = _originIsHouse ? "House" : _originMap;
                 lastStatus = "Loading " + destName + "...";
-                _stepTimer = now + 300;
+                _stepTimer = now + ApiTimings.ENHANCEMENT_MAP_LOAD_POLL_MS;
                 return;
             }
 
@@ -661,11 +710,11 @@ class EnhancementManager {
 
             if (!isAtTarget) {
                 var timeSinceJoin = (Api.map != null) ? Api.map.timeSinceLastJoin : 999999.0;
-                var minCooldown:Float = 5200;
+                var minCooldown:Float = ApiTimings.ENHANCEMENT_MAP_JOIN_COOLDOWN_MS;
                 if (timeSinceJoin < minCooldown) {
                     var remainingSec = Math.ceil((minCooldown - timeSinceJoin) / 1000.0);
                     lastStatus = "Waiting map cooldown (" + remainingSec + "s)...";
-                    _stepTimer = now + 400;
+                    _stepTimer = now + ApiTimings.ENHANCEMENT_MAP_COOLDOWN_RETRY_MS;
                     return;
                 }
 
@@ -673,41 +722,49 @@ class EnhancementManager {
                 if (Api.map != null) {
                     Api.map.join(currentTask.targetMap + "-100000", "Enter", "Spawn");
                 }
-                _mapJoinWaitCount = 0;
-                _stepTimer = now + 1500;
+                _mapLoadStartedAt = now;
+                _stepTimer = now + ApiTimings.ENHANCEMENT_MAP_JOIN_SETTLE_MS;
                 return;
             }
 
             // In target map, wait until map is loaded
             if (Api.map == null || !Api.map.isLoaded) {
-                _mapJoinWaitCount++;
-                if (_mapJoinWaitCount > 50) { // 7.5s timeout
-                    ApiLogger.warn("Enhancement", "Map " + currentTask.targetMap + " loading timed out. Proceeding.");
+                if (_mapLoadStartedAt <= 0) _mapLoadStartedAt = now;
+                if (now - _mapLoadStartedAt >= ApiTimings.ENHANCEMENT_MAP_LOAD_TIMEOUT_MS) {
+                    ApiLogger.warn("Enhancement", "Map " + currentTask.targetMap + " loading timed out. Aborting enhancement queue.");
+                    finishQueue(false);
+                    return;
                 } else {
                     lastStatus = "Waiting for " + currentTask.targetMap + " to load...";
-                    _stepTimer = now + 300;
+                    _stepTimer = now + ApiTimings.ENHANCEMENT_MAP_LOAD_POLL_MS;
                     return;
                 }
+            } else {
+                _mapLoadStartedAt = 0;
             }
         }
 
         // 2. Check Shop loaded
         if (!Api.shop.isShopLoaded || Api.shop.loadedShopId != currentTask.shopId) {
             lastStatus = "Loading shop " + currentTask.shopId + "...";
-            if (_shopWaitCount == 0 || _shopWaitCount % 10 == 0) {
+            if (_shopWaitStartedAt <= 0) _shopWaitStartedAt = now;
+            if (now >= _nextShopRequestAt) {
                 Api.shop.loadShop(currentTask.shopId);
+                _nextShopRequestAt = now + ApiTimings.ENHANCEMENT_SHOP_REQUEST_RETRY_MS;
             }
-            _shopWaitCount++;
-            if (_shopWaitCount > 40) {
+            if (now - _shopWaitStartedAt >= ApiTimings.ENHANCEMENT_SHOP_LOAD_TIMEOUT_MS) {
                 ApiLogger.warn("Enhancement", "Shop " + currentTask.shopId + " failed to load in time. Skipping task.");
+                _skippedTasks++;
                 _queue.shift();
-                _shopWaitCount = 0;
-                _stepTimer = now + 500;
+                _shopWaitStartedAt = 0;
+                _nextShopRequestAt = 0;
+                _stepTimer = now + ApiTimings.ENHANCEMENT_SHOP_SKIP_DELAY_MS;
             }
             return;
         }
 
-        _shopWaitCount = 0;
+        _shopWaitStartedAt = 0;
+        _nextShopRequestAt = 0;
 
         // 3. Find Best Enhancement Item in Shop
         var shopItems = getLoadedShopItems();
@@ -772,26 +829,50 @@ class EnhancementManager {
 
         // 4. Send Packet
         var roomId:Dynamic = (_game != null && _game.world != null && _game.world.curRoom != null) ? _game.world.curRoom : 1;
-        if (_game != null && _game.sfc != null) {
-            _game.sfc.sendString("%xt%zm%enhanceItemShop%" + roomId + "%" + currentTask.item.itemId + "%" + bestEnh.ItemID + "%" + currentTask.shopId + "%");
-            ApiLogger.info("Enhancement", "Enhanced [" + currentTask.item.name + "] with [" + bestEnh.sName + "] (Lvl " + bestEnh.iLvl + ")");
+        if (_game == null || _game.sfc == null) {
+            ApiLogger.warn("Enhancement", "Cannot send enhancement request: transport is unavailable.");
+            _failedTasks++;
+            _queue.shift();
+            _stepTimer = now + ApiTimings.ENHANCEMENT_ACTION_GAP_MS;
+            return;
         }
-
-        _queue.shift();
-        _stepTimer = now + 800; // 800ms safe cooldown between item enhancements
+        try {
+            _game.sfc.sendString("%xt%zm%enhanceItemShop%" + roomId + "%" + currentTask.item.itemId + "%" + bestEnh.ItemID + "%" + currentTask.shopId + "%");
+            _pendingTask = currentTask;
+            _pendingTaskStartedAt = now;
+            _stepTimer = now + ApiTimings.ENHANCE_POLL_MS;
+            ApiLogger.info("Enhancement", "Enhancement request sent for [" + currentTask.item.name + "] with [" + bestEnh.sName + "] (Lvl " + bestEnh.iLvl + "); waiting for AE confirmation.");
+        } catch (e:Dynamic) {
+            ApiLogger.warn("Enhancement", "Enhancement request failed: " + Std.string(e));
+            _failedTasks++;
+            _queue.shift();
+            _stepTimer = now + ApiTimings.ENHANCEMENT_ACTION_GAP_MS;
+        }
     }
 
-    private function finishQueue():Void {
+    private function finishQueue(success:Bool = true):Void {
         isBusy = false;
         _timer.stop();
-        lastStatus = "Done";
+        _pendingTask = null;
+        _pendingTaskStartedAt = 0;
+        if (!success || _failedTasks > 0) {
+            lastStatus = "Failed";
+        } else if (_skippedTasks > 0) {
+            lastStatus = "Done with skipped tasks";
+        } else {
+            lastStatus = "Done";
+        }
         _originMap = null;
         _originIsHouse = false;
         _returnJoinSent = false;
-        _returnWaitCount = 0;
-        _mapJoinWaitCount = 0;
+        _returnLoadStartedAt = 0;
+        _mapLoadStartedAt = 0;
+        _shopWaitStartedAt = 0;
+        _nextShopRequestAt = 0;
 
-        ApiLogger.info("Enhancement", "Enhancement queue completed successfully!");
+        var summary = "Enhancement queue finished: skipped=" + _skippedTasks + ", failed=" + _failedTasks + ".";
+        if (success && _skippedTasks == 0 && _failedTasks == 0) ApiLogger.info("Enhancement", summary);
+        else ApiLogger.warn("Enhancement", summary);
         if (_onCompleteCallback != null) {
             var cb = _onCompleteCallback;
             _onCompleteCallback = null;
@@ -807,11 +888,25 @@ class EnhancementManager {
         _originMap = null;
         _originIsHouse = false;
         _returnJoinSent = false;
-        _returnWaitCount = 0;
-        _mapJoinWaitCount = 0;
+        _returnLoadStartedAt = 0;
+        _mapLoadStartedAt = 0;
+        _shopWaitStartedAt = 0;
+        _nextShopRequestAt = 0;
+        _pendingTask = null;
+        _pendingTaskStartedAt = 0;
         _onCompleteCallback = null;
         lastStatus = "Cancelled";
         ApiLogger.info("Enhancement", "Enhancement queue cancelled.");
+    }
+
+    private function findLiveItem(itemId:Int):ItemDTO {
+        if (Api.inventory == null || itemId <= 0) return null;
+        try {
+            for (item in Api.inventory.getItems()) {
+                if (item != null && item.itemId == itemId) return item;
+            }
+        } catch (_:Dynamic) {}
+        return null;
     }
 
     private function getLoadedShopItems():Array<Dynamic> {

@@ -189,31 +189,6 @@ class ApiConfig {
             return val;
         }
 
-        // Fallback to HelperSetting (Flash SharedObject) for seamless backward migration
-        try {
-            var hsCls:Dynamic = Type.resolveClass("util.HelperSetting");
-            if (hsCls != null) {
-                var val:Dynamic = null;
-                if (Std.isOfType(defaultValue, Bool)) {
-                    val = Reflect.callMethod(hsCls, Reflect.field(hsCls, "getBool"), [key, defaultValue]);
-                } else if (Std.isOfType(defaultValue, Int)) {
-                    val = Reflect.callMethod(hsCls, Reflect.field(hsCls, "getInt"), [key, defaultValue]);
-                } else if (Std.isOfType(defaultValue, String)) {
-                    val = Reflect.callMethod(hsCls, Reflect.field(hsCls, "getString"), [key, defaultValue]);
-                }
-                if (val != null && val != defaultValue) {
-                    if (isGlob) {
-                        _globalCache.set(key, val);
-                        saveGlobal();
-                    } else {
-                        _accountCache.set(key, val);
-                        saveAccount();
-                    }
-                    return val;
-                }
-            }
-        } catch (_:Dynamic) {}
-
         return defaultValue;
     }
 
@@ -229,19 +204,6 @@ class ApiConfig {
             saveAccount();
         }
 
-        // Optional bridge to HelperSetting so legacy Flash code gets updates
-        try {
-            var hsCls:Dynamic = Type.resolveClass("util.HelperSetting");
-            if (hsCls != null) {
-                if (Std.isOfType(value, Bool)) {
-                    Reflect.callMethod(hsCls, Reflect.field(hsCls, "setBool"), [key, value]);
-                } else if (Std.isOfType(value, Int)) {
-                    Reflect.callMethod(hsCls, Reflect.field(hsCls, "setInt"), [key, value]);
-                } else if (Std.isOfType(value, String)) {
-                    Reflect.callMethod(hsCls, Reflect.field(hsCls, "setString"), [key, value]);
-                }
-            }
-        } catch (_:Dynamic) {}
     }
 
     public static function getString(key:String, defaultValue:String = ""):String {

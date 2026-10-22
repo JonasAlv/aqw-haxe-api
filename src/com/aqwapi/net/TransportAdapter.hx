@@ -65,10 +65,20 @@ class TransportAdapter {
         ApiLogger.debug("Transport", "Sent namespace=" + namespaceId + " command=" + command + " argCount=" + safeArgs.length);
     }
 
-    public function sendXt(extName:String, command:String, args:Array<Dynamic>, type:String = "str", roomId:Int = 1):Void {
+    public function sendXt(extName:String, command:String, args:Array<Dynamic>, type:String = "str", roomId:Int = -1):Void {
         ensureListening();
         if (_game == null || _game.sfc == null) return;
         var safeArgs:Array<Dynamic> = (args != null) ? args : [];
+        if (roomId < 0) {
+            try {
+                if (_game.sfc.activeRoomId != null) roomId = Std.int(_game.sfc.activeRoomId);
+                else if (_game.world != null && _game.world.curRoom != null) roomId = Std.int(_game.world.curRoom);
+            } catch (_:Dynamic) {}
+        }
+        if (roomId < 0) {
+            ApiLogger.warn("Transport", "Skipped " + command + " without an active room");
+            return;
+        }
         try {
             if (_game.sfc.sendXtMessage != null) {
                 _game.sfc.sendXtMessage(extName, command, safeArgs, type, roomId);
@@ -131,11 +141,13 @@ class TransportAdapter {
                         payload: dataObj
                     }));
                 }
+                com.aqwapi.modules.CombatEngine.wake();
             case "cb", "sar", "sars", "showAuraResult", "anim", "sAct", "stu", "event", "initMonData":
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.COMBAT_UPDATED, {
                     command: cmd,
                     payload: dataObj
                 }));
+                com.aqwapi.modules.CombatEngine.wake();
             case "moveToArea":
                 var curUser:String = (Api.player != null) ? Api.player.username : "";
                 if (curUser == "" && _game != null && _game.sfc != null && _game.sfc.myUserName != null) {
@@ -153,7 +165,7 @@ class TransportAdapter {
                     Api.quest.onCompleteQuestResult(dataObj);
                 }
                 Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.QUEST_UPDATED, dataObj));
-            case "initInventory", "loadInventoryBig", "balance", "addGoldExp", "equipItem", "unequipItem", "buyItem", "sellItem", "dropItem", "getDrop", "bankFromInv", "bankToInv", "bankSwapInv", "loadBank", "forceAddItem", "monsterDrops":
+            case "initInventory", "loadInventoryBig", "balance", "addGoldExp", "equipItem", "unequipItem", "buyItem", "sellItem", "enhanceItemShop", "enhanceItemLocal", "dropItem", "getDrop", "bankFromInv", "bankToInv", "bankSwapInv", "loadBank", "forceAddItem", "monsterDrops":
                 if (cmd == "loadBank" && Api.inventory != null) {
                     Api.inventory.onBankLoaded();
                 }

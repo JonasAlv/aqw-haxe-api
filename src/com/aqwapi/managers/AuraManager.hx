@@ -4,6 +4,7 @@ import com.aqwapi.Api;
 import com.aqwapi.Game;
 import com.aqwapi.utils.ApiTime;
 import com.aqwapi.utils.ApiUtils;
+import com.aqwapi.utils.ApiTimings;
 
 class AuraManager {
     private var _game:Game;
@@ -365,7 +366,7 @@ class AuraManager {
         return removed;
     }
 
-    public function startAutoClean(intervalMs:Int = 5000):Void {
+    public function startAutoClean(intervalMs:Int = Std.int(ApiTimings.AURA_CLEAN_INTERVAL_MS)):Void {
         stopAutoClean();
         _autoClean = true;
         _cleanTimer = new flash.utils.Timer(intervalMs);
