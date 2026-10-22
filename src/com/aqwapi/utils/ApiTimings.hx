@@ -109,6 +109,21 @@ class ApiTimings {
     /** Compatibility alias for older callers. */
     public static inline var COMBAT_TICK_MS:Float = COMBAT_WATCHDOG_MS;
 
+    /** HScript scheduler watchdog. Script callbacks are event-driven; this is only a safety net. */
+    public static inline var SCRIPT_TICK_MS:Float = 100;
+
+    /** Maximum number of queued script callbacks processed in one scheduler turn. */
+    public static inline var SCRIPT_MAX_CALLBACKS_PER_TICK:Int = 16;
+
+    /** Maximum number of deferred callbacks retained for the active script run. */
+    public static inline var SCRIPT_CALLBACK_QUEUE_CAPACITY:Int = 256;
+
+    /** Callback duration that is considered slow enough to diagnose. */
+    public static inline var SCRIPT_CALLBACK_WARN_MS:Float = 50;
+
+    /** Minimum interval between repeated slow-callback diagnostics. */
+    public static inline var SCRIPT_CALLBACK_WARN_DEDUPE_MS:Float = 2000;
+
     /** Floor between two casts, shared by Auto Attack and the skill rotation. */
     public static inline var MIN_CAST_GAP_MS:Float = 200;
 
@@ -346,6 +361,11 @@ class ApiTimings {
 
             combatWatchdog: COMBAT_WATCHDOG_MS,
             combatTick: COMBAT_TICK_MS,
+            scriptTick: SCRIPT_TICK_MS,
+            scriptMaxCallbacksPerTick: SCRIPT_MAX_CALLBACKS_PER_TICK,
+            scriptCallbackQueueCapacity: SCRIPT_CALLBACK_QUEUE_CAPACITY,
+            scriptCallbackWarn: SCRIPT_CALLBACK_WARN_MS,
+            scriptCallbackWarnDedupe: SCRIPT_CALLBACK_WARN_DEDUPE_MS,
             minCastGap: MIN_CAST_GAP_MS,
             counterWindow: COUNTER_WINDOW_MS,
             counterArmDelay: COUNTER_ARM_DELAY_MS,

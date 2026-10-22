@@ -1,0 +1,219 @@
+// =============================================================================
+// Advanced Daily Queue (Dailies_Advanced.hxs)
+//
+// A data-driven daily runner for the native HScript API.
+//
+// Design:
+//   - Each daily is one queue entry instead of another large if/else branch.
+//   - Quest acceptance and turn-in still go through the native QuestManager checks.
+//   - Combat is delegated to the API hunt engine; this script never sends packets.
+//   - Quest, inventory, combat, and zone events wake the queue when new state arrives.
+//   - A short watchdog remains for recovery, but it does not reissue actions during combat.
+//
+// The plan intentionally contains the stable progression dailies from the old Dailies.hxs
+// and the corresponding Skua CoreDailies routines. Quest availability and membership rules
+// are checked at runtime, so unavailable tasks are skipped instead of blocking the queue forever.
+// =============================================================================
+
+var dailyPlan = [
+    // quest, label, skip checks, map, cell, pad, objectives, access mode
+    [802,  "Elders' Blood",       [["Elders' Blood", 5]],  "arcangrove",     "Enter", "Spawn", [["Gorillaphant", "Slain Gorillaphant", 50]], "any"],
+    [2091, "Mine Crafting",       [],                           "stalagbite",     "Enter", "Spawn", [["Balboa", "Axe of the Prospector", 1], ["Balboa", "Raw Ore", 30]], "any"],
+    [2098, "Hard Core Metals",    [],                           "stalagbite",     "Enter", "Spawn", [["Balboa", "Axe of the Prospector", 1], ["Balboa", "Raw Ore", 30]], "member"],
+    [7551, "Free the Pets",       [],                           "originul",       "Enter", "Spawn", [["Mana Golem", "Mana Energy for Nulgath", 1]], "any"],
+    [2224, "Pyromancer",          [["Pyromancer", 1], ["Shurpu Blaze Token", 84]], "xancave", "Enter", "Spawn", [["Shurpu Ring Guardian", "Guardian Defeated", 1]], "any"],
+    [1316, "The Collector",       [["The Collector", 1], ["Token of Collection", 90]], "terrarium", "Enter", "Spawn", [["Carnivorous Cricket", "This Might Be A Token", 2]], "any"],
+    [3965, "Cryomancer (Member)", [["Cryomancer", 1], ["Glacera Ice Token", 84]], "frozentower", "Enter", "Spawn", [["Frost Invader", "Dark Ice", 1]], "member"],
+    [3966, "Cryomancer",          [["Cryomancer", 1], ["Glacera Ice Token", 84]], "frozentower", "Enter", "Spawn", [["Frost Invader", "Dark Ice", 1]], "nonmember"],
+    [3827, "ShadowScythe General", [["ShadowScythe General", 1], ["Shadow Shield", 100]], "lightguardwar", "Enter", "Spawn", [["Citadel Crusader", "Broken Blade", 1]], "member"],
+    [3828, "Shadow Shield",       [["Shadow Shield", 100]], "lightguardwar", "Enter", "Spawn", [["Citadel Crusader", "Broken Blade", 1]], "nonmember"],
+    [3596, "Dage's Scroll Fragment", [["Dage's Scroll Fragment", 13]], "mountdoomskull", "Enter", "Spawn", [["*", "Chaos Power Increased", 6]], "any"],
+    [6187, "Crypto Token",        [["Crypto Token", 300]], "boxes",          "Enter", "Spawn", [["Sneevil", "Metal Ore", 1]], "any"],
+    [803,  "Sparrow's Blood",     [["Sparrow's Blood", 3]], "arcangrove",     "Enter", "Spawn", [["Blood Lily", "Blood Lily", 30], ["Snapdrake", "Snapdrake", 17], ["*", "DOOM Dirt", 12]], "any"],
+    [6081, "BeastMaster Challenge", [],                         "greenguardwest", "Enter", "Spawn", [["Big Bad Boar", "C-Bacon", 1]], "member"],
+    [3122, "Fungi for a Fun Guy", [],                          "mafic",          "Enter", "Spawn", [["Mafic Dragon", "Fresh Dragon Cheese", 1]], "member"],
+    [3075, "Wheel of Doom (Member)", [],                       "doom",           "Enter", "Spawn", [], "member"],
+    [3076, "Wheel of Doom",      [["Gear of Doom", 3]],       "doom",           "Enter", "Spawn", [], "nonmember" ]
+];
+
+var step = 0;
+var waitTicks = 0;
+var wakeRequested = true;
+var finished = false;
+var cleanupDone = false;
+var zoneEvents = 0;
+var questEvents = 0;
+var inventoryEvents = 0;
+var combatEvents = 0;
+
+function modeAllows(mode) {
+    if (mode == "member" && !isMember()) return false;
+    if (mode == "nonmember" && isMember()) return false;
+    return true;
+}
+
+function skipCheckPassed(checks) {
+    for (check in checks) {
+        if (getQuestQuantity(check[0]) >= check[1]) return true;
+    }
+    return false;
+}
+
+function runDaily(task) {
+    var questId = task[0];
+    var label = task[1];
+    var skipChecks = task[2];
+    var targetMap = task[3];
+    var targetCell = task[4];
+    var targetPad = task[5];
+    var objectives = task[6];
+    var mode = task[7];
+
+    if (!modeAllows(mode)) {
+        log("[Dailies] Skipping " + label + " (membership rule does not apply).");
+        return true;
+    }
+
+    // This is the daily lockout check. Do not use a permanent quest-slot check here.
+    if (isDailyComplete(questId)) {
+        log("[Dailies] Already complete today: " + label + " [" + questId + "]");
+        return true;
+    }
+
+    // Reward ownership is an optional early exit, matching Skua's SkipOnMaxStack behavior.
+    if (skipCheckPassed(skipChecks)) {
+        log("[Dailies] Reward threshold already met: " + label);
+        return true;
+    }
+
+    if (!ensureMap(targetMap, targetCell, targetPad)) {
+        sleep(350);
+        return false;
+    }
+
+    if (!ensureAccept(questId)) {
+        waitTicks++;
+        // A locked, unavailable, or not-yet-unlocked daily must not stop every later daily.
+        if (waitTicks >= 120) {
+            log("[Dailies] Could not accept " + label + " [" + questId + "] after waiting; skipping.");
+            waitTicks = 0;
+            return true;
+        }
+        sleep(350);
+        return false;
+    }
+    waitTicks = 0;
+
+    // Complete every declared drop objective before asking the native quest manager to turn in.
+    for (objective in objectives) {
+        var monster = objective[0];
+        var item = objective[1];
+        var quantity = objective[2];
+        if (getQuestQuantity(item) < quantity) {
+            if (!huntItem(monster, item, quantity)) {
+                // huntItem owns target selection and combat timing. The script only watches it.
+                sleep(300);
+                return false;
+            }
+        }
+    }
+
+    if (!canComplete(questId)) {
+        // A quest can need one more server inventory/quest update after the final drop arrives.
+        sleep(350);
+        return false;
+    }
+
+    if (!complete(questId)) {
+        sleep(500);
+        return false;
+    }
+
+    log("[Dailies] Completed " + label + " [" + questId + "]");
+    sleep(600);
+    return true;
+}
+
+function onStart() {
+    log("[Dailies] Advanced daily queue started.");
+    step = 0;
+    waitTicks = 0;
+    wakeRequested = true;
+    finished = false;
+    cleanupDone = false;
+    zoneEvents = 0;
+    questEvents = 0;
+    inventoryEvents = 0;
+    combatEvents = 0;
+
+    storeGear();
+    acceptAllDrops();
+    setSkipCutscenes(true);
+    if (!equipLoadout("farm")) {
+        log("[Dailies] Farm loadout was not available; using the current class.");
+    }
+
+    var questIds = [];
+    for (task in dailyPlan) questIds.push(task[0]);
+    loadQuests(questIds);
+}
+
+function onTick() {
+    if (finished) return;
+
+    // Combat and the native hunt engine are event-driven. Do not poll or reissue the hunt while
+    // the current target is still alive; inventory, quest, and zone events will wake the queue.
+    if (!wakeRequested && isInCombat()) {
+        sleep(400);
+        return;
+    }
+    wakeRequested = false;
+
+    if (step >= dailyPlan.length) {
+        finished = true;
+        log("[Dailies] All eligible daily tasks completed.");
+        stop();
+        return;
+    }
+
+    var task = dailyPlan[step];
+    if (runDaily(task)) {
+        step++;
+        waitTicks = 0;
+        wakeRequested = true;
+        log("[Dailies] Queue progress: " + step + "/" + dailyPlan.length);
+        sleep(500);
+    }
+}
+
+function onZoneEntered(data) {
+    zoneEvents++;
+    wakeRequested = true;
+}
+
+function onQuestUpdated(data) {
+    questEvents++;
+    wakeRequested = true;
+}
+
+function onInventoryChanged(data) {
+    inventoryEvents++;
+    wakeRequested = true;
+}
+
+function onCombatUpdated(data) {
+    combatEvents++;
+}
+
+function onStop() {
+    if (cleanupDone) return;
+    cleanupDone = true;
+    stopAutoQuest();
+    stopCombat();
+    restoreGear();
+    if (finished) {
+        log("[Dailies] Finished. zones=" + zoneEvents + ", quests=" + questEvents + ", inventory=" + inventoryEvents + ", combat=" + combatEvents);
+    } else {
+        log("[Dailies] Stopped at task " + (step + 1) + "/" + dailyPlan.length + ".");
+    }
+}

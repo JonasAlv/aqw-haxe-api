@@ -14,20 +14,33 @@ import hscript.Interp;
 import hscript.Parser;
 import hscript.Printer;
 
+typedef HScriptCallback = {
+    var name:String;
+    var args:Array<Dynamic>;
+    var runToken:Int;
+};
+
 class HScriptEngine {
     private var _parser:Parser;
     private var _interp:Interp;
     private var _program:Expr;
     private var _timer:Timer;
 
-    public var isRunning:Bool = false;
+    private var _isRunning:Bool = false;
+    public var isRunning(get, never):Bool;
+    public function get_isRunning():Bool return _isRunning;
+
+    private var _lifecycleState:String = "idle";
+    public var lifecycleState(get, never):String;
+    public function get_lifecycleState():String return _lifecycleState;
+
     public var waitTimer:Float = 0;
     public var statusText:String = "Stopped";
     /** Script callbacks are deliberately slower than combat; combat has its own packet wakeups. */
-    public var tickInterval:Int = Std.int(com.aqwapi.utils.ApiTimings.COMBAT_WATCHDOG_MS);
+    public var tickInterval:Int = Std.int(com.aqwapi.utils.ApiTimings.SCRIPT_TICK_MS);
 
     public function sleep(ms:Float):Void {
-        waitTimer = ApiTime.now() + ms;
+        waitTimer = ApiTime.now() + Math.max(0, ms);
     }
 
     private var _hasOnStart:Bool = false;
@@ -41,6 +54,12 @@ class HScriptEngine {
     private var _pendingZoneData:Dynamic = null;
     private var _zoneWaitStartedAt:Float = 0;
     private var _zoneWaitQueued:Bool = false;
+    private var _runToken:Int = 0;
+    private var _stopping:Bool = false;
+    private var _callbackDepth:Int = 0;
+    private var _pendingCallbacks:Array<HScriptCallback> = [];
+    private var _lastSlowCallbackAt:Float = -100000;
+    private var _lastCallbackOverflowAt:Float = -100000;
 
     private static var _instance:HScriptEngine;
     public static var SINGLETON(get, never):HScriptEngine;
@@ -74,7 +93,12 @@ class HScriptEngine {
 
     public function reset():Void {
         if (isRunning) stop();
+        _pendingCallbacks = [];
+        _pendingZoneData = null;
+        _zoneWaitQueued = false;
+        _runToken++;
         waitTimer = 0;
+        _lifecycleState = (_program != null) ? "ready" : "idle";
         statusText = (_program != null) ? "Ready." : "Stopped.";
 
         if (_program != null) {
@@ -98,6 +122,10 @@ class HScriptEngine {
     public function clear():Void {
         if (isRunning) stop();
         _program = null;
+        _pendingCallbacks = [];
+        _pendingZoneData = null;
+        _zoneWaitQueued = false;
+        _runToken++;
         _hasOnStart = false;
         _hasOnTick = false;
         _hasOnStop = false;
@@ -107,6 +135,7 @@ class HScriptEngine {
         _hasOnInventoryChanged = false;
         _hasOnCombatUpdated = false;
         waitTimer = 0;
+        _lifecycleState = "idle";
         statusText = "No script loaded.";
         _resetSandbox();
     }
@@ -126,6 +155,10 @@ class HScriptEngine {
         // a normal restart, so clear the loaded program explicitly for this replacement operation.
         reset();
         _program = null;
+        _pendingCallbacks = [];
+        _pendingZoneData = null;
+        _zoneWaitQueued = false;
+        _runToken++;
         _hasOnStart = false;
         _hasOnTick = false;
         _hasOnStop = false;
@@ -181,7 +214,9 @@ class HScriptEngine {
         _hasOnInventoryChanged = _interp.variables.exists("onInventoryChanged") && Reflect.isFunction(_interp.variables.get("onInventoryChanged"));
         _hasOnCombatUpdated = _interp.variables.exists("onCombatUpdated") && Reflect.isFunction(_interp.variables.get("onCombatUpdated"));
 
-        statusText = "Loaded HScript (" + (_hasOnTick ? "tick-loop" : "exec-once") + ")";
+        var mode = _hasOnTick ? "tick-loop" : (_hasEventHandlers() ? "event-driven" : "exec-once");
+        _lifecycleState = "ready";
+        statusText = "Loaded HScript (" + mode + ")";
         ApiLogger.info("HScript", statusText);
         return true;
     }
@@ -201,11 +236,21 @@ class HScriptEngine {
             ApiLogger.warn("HScript", "Cannot start: no script loaded.");
             return;
         }
+        if (_isRunning || _lifecycleState == "starting" || _lifecycleState == "stopping") {
+            ApiLogger.warn("HScript", "Cannot start: a script run is already active.");
+            return;
+        }
 
         // Truncate api.log to start fresh on every script run
         ApiLogger.clearLog();
 
-        isRunning = true;
+        _runToken++;
+        _pendingCallbacks = [];
+        _pendingZoneData = null;
+        _zoneWaitQueued = false;
+        _stopping = false;
+        _lifecycleState = "starting";
+        _isRunning = true;
         waitTimer = 0;
         ScriptBindings.resetStoryData();
 
@@ -227,71 +272,98 @@ class HScriptEngine {
             Api.map.skipCutscenes  = true;
         }
 
-        _timer.delay = tickInterval;
-        _timer.start();
-        statusText = "Running HScript...";
+        _timer.delay = Std.int(Math.max(Std.int(com.aqwapi.utils.ApiTimings.MIN_POLL_INTERVAL_MS), tickInterval));
+        statusText = "Starting HScript...";
         Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STARTED, "HScript Started!"));
         ApiLogger.info("HScript", "HScript Started!");
+
+        if (!_isRunning) return;
 
         if (_hasOnStart) {
             try {
                 var fn = _interp.variables.get("onStart");
-                fn();
+                _invokeCallback("onStart", fn, []);
             } catch (e:Dynamic) {
                 _handleScriptError("onStart error: " + Std.string(e), e);
             }
         }
+
+        if (!_isRunning) return;
+        _lifecycleState = "running";
+        _timer.start();
+        statusText = "Running HScript...";
     }
 
     public function stop():Void {
-        if (!isRunning) return;
-        isRunning = false;
+        if ((!_isRunning && _lifecycleState != "starting") || _stopping) return;
+        _stopping = true;
+        _isRunning = false;
+        _lifecycleState = "stopping";
+        _runToken++;
         _timer.stop();
+        waitTimer = 0;
+        _pendingCallbacks = [];
+        _pendingZoneData = null;
+        _zoneWaitQueued = false;
         statusText = "Stopped.";
 
-        if (Api.combat != null) {
-            Api.combat.stopAuto();
-            Api.combat.dropCombat();
-            Api.combat.resetHunt();
-        } else {
-            CombatEngine.stop();
+        try {
+            if (Api.combat != null) {
+                Api.combat.stopAuto();
+                Api.combat.dropCombat();
+                Api.combat.resetHunt();
+            } else {
+                CombatEngine.stop();
+            }
+            com.aqwapi.modules.CombatEngine.targetName = null;
+            com.aqwapi.modules.CombatEngine.lockedMMID = null;
+            if (Api.quest != null) {
+                Api.quest.stopAuto();
+                Api.quest.clearQueue();
+            }
+            if (Api.inventory != null) {
+                Api.inventory.clearBankQueue();
+                Api.inventory.cancelRestoreGear();
+            }
+            ScriptBindings.resetStoryData();
+        } catch (e:Dynamic) {
+            ApiLogger.error("HScript", "Script cleanup error: " + Std.string(e));
         }
-        com.aqwapi.modules.CombatEngine.targetName = null;
-        com.aqwapi.modules.CombatEngine.lockedMMID = null;
-        if (Api.quest != null) {
-            Api.quest.stopAuto();
-            Api.quest.clearQueue();
-        }
-        if (Api.inventory != null) {
-            Api.inventory.clearBankQueue();
-            Api.inventory.cancelRestoreGear();
-        }
-        ScriptBindings.resetStoryData();
 
         if (_hasOnStop) {
             try {
                 var fn = _interp.variables.get("onStop");
-                fn();
+                _invokeCallback("onStop", fn, [], false);
             } catch (e:Dynamic) {
                 ApiLogger.error("HScript", "onStop error: " + Std.string(e));
             }
         }
 
-        Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STOPPED, "HScript Stopped!"));
-        ApiLogger.info("HScript", "HScript Stopped!");
-
-        // Restore user settings to what they were before the script ran
-        if (Api.combat != null) Api.combat.setInfiniteRange(_savedInfiniteRange);
-        if (Api.map != null) {
-            Api.map.autoDeathSpawn = _savedDeathSpawn;
-            Api.map.skipCutscenes  = _savedSkipCutscenes;
+        // Restore user settings to what they were before the script ran, even if cleanup or onStop failed.
+        try {
+            if (Api.combat != null) Api.combat.setInfiniteRange(_savedInfiniteRange);
+            if (Api.map != null) {
+                Api.map.autoDeathSpawn = _savedDeathSpawn;
+                Api.map.skipCutscenes  = _savedSkipCutscenes;
+            }
+            com.aqwapi.modules.CombatEngine.smartClass = _savedSmartClass;
+            com.aqwapi.modules.CombatEngine.skillMode  = _savedSkillMode;
+        } catch (e:Dynamic) {
+            ApiLogger.error("HScript", "Script setting restore error: " + Std.string(e));
         }
-        com.aqwapi.modules.CombatEngine.smartClass = _savedSmartClass;
-        com.aqwapi.modules.CombatEngine.skillMode  = _savedSkillMode;
+
+        _lifecycleState = "stopped";
+        try {
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.SCRIPT_STOPPED, "HScript Stopped!"));
+        } catch (e:Dynamic) {
+            ApiLogger.error("HScript", "SCRIPT_STOPPED event error: " + Std.string(e));
+        }
+        ApiLogger.info("HScript", "HScript Stopped!");
+        _stopping = false;
     }
 
     private function onTimerTick(e:TimerEvent):Void {
-        if (!isRunning) return;
+        if (!_isRunning || _lifecycleState != "running") return;
         if (Api.game == null || Api.game.world == null) return;
 
         // Always run skip-cutscenes check and collision state when enabled
@@ -313,19 +385,25 @@ class HScriptEngine {
 
         var now = ApiTime.now();
         if (waitTimer > 0 && now < waitTimer) return;
+        waitTimer = 0;
+
+        _processPendingCallbacks();
+        if (!_isRunning) return;
 
         if (_hasOnTick) {
             try {
                 var fn = _interp.variables.get("onTick");
-                fn();
+                _invokeCallback("onTick", fn, []);
             } catch (err:Dynamic) {
                 _handleScriptError("onTick error: " + Std.string(err), err);
             }
+            if (!_isRunning) return;
         } else {
             var bgCombat = CombatEngine.IS_ON;
             var bgQuest = Api.quest != null && Api.quest.isAutoRunning;
-            if (bgCombat || bgQuest) {
+            if (bgCombat || bgQuest || _hasEventHandlers()) {
                 statusText = bgCombat ? "Auto-combat running" : "Auto-quest running";
+                if (!bgCombat && !bgQuest) statusText = "Waiting for script events...";
                 return;
             }
             stop();
@@ -343,19 +421,20 @@ class HScriptEngine {
         }
         if (!isRunning || !_hasOnZoneEntered) return;
         if (Api.map == null || Api.map.isLoaded) {
-            emitZoneEntered(e.data);
+            _enqueueCallback("onZoneEntered", [e.data]);
         } else {
             _pendingZoneData = e.data;
             if (!_zoneWaitQueued) {
                 _zoneWaitQueued = true;
                 _zoneWaitStartedAt = ApiTime.now();
-                waitForZoneReady();
+                var token = _runToken;
+                haxe.Timer.delay(function() waitForZoneReady(token), 0);
             }
         }
     }
 
-    private function waitForZoneReady():Void {
-        if (!_zoneWaitQueued) return;
+    private function waitForZoneReady(token:Int):Void {
+        if (!_zoneWaitQueued || token != _runToken) return;
         if (!isRunning) {
             _zoneWaitQueued = false;
             _pendingZoneData = null;
@@ -365,7 +444,7 @@ class HScriptEngine {
             var data = _pendingZoneData;
             _zoneWaitQueued = false;
             _pendingZoneData = null;
-            emitZoneEntered(data);
+            _enqueueCallback("onZoneEntered", [data]);
             return;
         }
         if (ApiTime.now() - _zoneWaitStartedAt >= com.aqwapi.utils.ApiTimings.ZONE_READY_TIMEOUT_MS) {
@@ -374,34 +453,110 @@ class HScriptEngine {
             ApiLogger.warn("HScript", "Discarded zone callback because the map did not become ready in time.");
             return;
         }
-        haxe.Timer.delay(waitForZoneReady, Std.int(com.aqwapi.utils.ApiTimings.ZONE_READY_POLL_MS));
-    }
-
-    private function emitZoneEntered(data:Dynamic):Void {
-        try { _interp.variables.get("onZoneEntered")(data); } catch(err:Dynamic) { _handleScriptError("onZoneEntered: " + err, err); }
+        haxe.Timer.delay(function() waitForZoneReady(token), Std.int(com.aqwapi.utils.ApiTimings.ZONE_READY_POLL_MS));
     }
 
     private function onGameQuestUpdated(e:GameEvent):Void {
         if (isRunning && _hasOnQuestUpdated) {
-            try { _interp.variables.get("onQuestUpdated")(e.data); } catch(err:Dynamic) { _handleScriptError("onQuestUpdated: " + err, err); }
+            _enqueueCallback("onQuestUpdated", [e.data]);
         }
     }
 
     private function onGameInventoryChanged(e:GameEvent):Void {
         if (isRunning && _hasOnInventoryChanged) {
-            try { _interp.variables.get("onInventoryChanged")(e.data); } catch(err:Dynamic) { _handleScriptError("onInventoryChanged: " + err, err); }
+            _enqueueCallback("onInventoryChanged", [e.data]);
         }
     }
 
     private function onGameCombatUpdated(e:GameEvent):Void {
         if (isRunning && _hasOnCombatUpdated) {
-            try { _interp.variables.get("onCombatUpdated")(e.data); } catch(err:Dynamic) { _handleScriptError("onCombatUpdated: " + err, err); }
+            _enqueueCallback("onCombatUpdated", [e.data], true);
         }
     }
 
     public function handlePacket(type:String, cmd:String, data:Dynamic):Void {
         if (isRunning && _hasOnPacket) {
-            try { _interp.variables.get("onPacket")(type, cmd, data); } catch(err:Dynamic) { _handleScriptError("onPacket: " + err, err); }
+            _enqueueCallback("onPacket", [type, cmd, data]);
+        }
+    }
+
+    private function _hasEventHandlers():Bool {
+        return _hasOnPacket
+            || _hasOnZoneEntered
+            || _hasOnQuestUpdated
+            || _hasOnInventoryChanged
+            || _hasOnCombatUpdated;
+    }
+
+    /**
+     * Game events are deferred until the scheduler turn instead of invoking HScript reentrantly
+     * from inside an AQW action or packet handler. Combat updates are coalesced because only the
+     * newest state is useful; packets and lifecycle events retain their ordering.
+     */
+    private function _enqueueCallback(name:String, args:Array<Dynamic>, coalesce:Bool = false):Void {
+        if (!_isRunning) return;
+
+        if (coalesce) {
+            for (callback in _pendingCallbacks) {
+                if (callback.runToken == _runToken && callback.name == name) {
+                    callback.args = args;
+                    return;
+                }
+            }
+        }
+
+        if (_pendingCallbacks.length >= com.aqwapi.utils.ApiTimings.SCRIPT_CALLBACK_QUEUE_CAPACITY) {
+            var now = ApiTime.now();
+            if (now - _lastCallbackOverflowAt >= com.aqwapi.utils.ApiTimings.SCRIPT_CALLBACK_WARN_DEDUPE_MS) {
+                _lastCallbackOverflowAt = now;
+                ApiLogger.warn("HScript", "Callback queue full; deferred " + name + " callback was dropped.");
+            }
+            return;
+        }
+
+        _pendingCallbacks.push({
+            name: name,
+            args: args,
+            runToken: _runToken
+        });
+    }
+
+    private function _processPendingCallbacks():Void {
+        var processed = 0;
+        while (_isRunning
+            && _pendingCallbacks.length > 0
+            && processed < com.aqwapi.utils.ApiTimings.SCRIPT_MAX_CALLBACKS_PER_TICK) {
+            var callback = _pendingCallbacks.shift();
+            if (callback == null || callback.runToken != _runToken) continue;
+
+            var fn = _interp.variables.get(callback.name);
+            if (!Reflect.isFunction(fn)) continue;
+            _invokeCallback(callback.name, fn, callback.args);
+            processed++;
+        }
+    }
+
+    private function _invokeCallback(name:String, fn:Dynamic, args:Array<Dynamic>, handleError:Bool = true):Void {
+        if (!Reflect.isFunction(fn)) return;
+
+        var startedAt = ApiTime.now();
+        _callbackDepth++;
+        try {
+            Reflect.callMethod(null, fn, args);
+        } catch (err:Dynamic) {
+            if (handleError) {
+                _handleScriptError(name + " error: " + Std.string(err), err);
+            } else {
+                ApiLogger.error("HScript", name + " error: " + Std.string(err));
+            }
+        }
+
+        _callbackDepth--;
+        var elapsed = ApiTime.now() - startedAt;
+        if (elapsed >= com.aqwapi.utils.ApiTimings.SCRIPT_CALLBACK_WARN_MS
+            && startedAt - _lastSlowCallbackAt >= com.aqwapi.utils.ApiTimings.SCRIPT_CALLBACK_WARN_DEDUPE_MS) {
+            _lastSlowCallbackAt = startedAt;
+            ApiLogger.warn("HScript", name + " callback took " + Std.int(elapsed) + "ms.");
         }
     }
 

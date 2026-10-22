@@ -73,8 +73,8 @@ class ScriptManager {
         var content = getScriptContent(name);
         if (content == null || StringTools.trim(content) == "") return false;
         if (!loadScript(content)) return false;
-        start();
         activeScriptName = name;
+        start();
         return true;
     }
 
@@ -98,9 +98,21 @@ class ScriptManager {
     @:getter(isRunning)
     public function get_isRunning_prop():Bool { return HScriptEngine.SINGLETON.isRunning; }
     @:setter(isRunning)
-    public function set_isRunning_prop(v:Bool):Void { HScriptEngine.SINGLETON.isRunning = v; }
+    public function set_isRunning_prop(v:Bool):Void {
+        if (v) HScriptEngine.SINGLETON.start();
+        else HScriptEngine.SINGLETON.stop();
+    }
     public function get_isRunning():Bool { return HScriptEngine.SINGLETON.isRunning; }
-    public function set_isRunning(v:Bool):Bool { HScriptEngine.SINGLETON.isRunning = v; return v; }
+    public function set_isRunning(v:Bool):Bool {
+        if (v) HScriptEngine.SINGLETON.start();
+        else HScriptEngine.SINGLETON.stop();
+        return HScriptEngine.SINGLETON.isRunning;
+    }
+
+    public var lifecycleState(get, never):String;
+    @:getter(lifecycleState)
+    public function get_lifecycleState_prop():String { return HScriptEngine.SINGLETON.lifecycleState; }
+    public function get_lifecycleState():String { return HScriptEngine.SINGLETON.lifecycleState; }
 
     public var statusText(get, set):String;
     @:getter(statusText)
