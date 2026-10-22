@@ -84,6 +84,7 @@ class ApiLogger {
 
     private static var _logFile:Dynamic = null;
     private static var _logFileInitialized:Bool = false;
+    private static var _chatSettingChecked:Bool = false;
     private static var _memoryLines:Array<String> = [];
     private static inline var MEMORY_MAX_LINES:Int = 2000;
 

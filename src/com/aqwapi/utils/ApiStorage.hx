@@ -216,7 +216,7 @@ class ApiStorage {
         }
     }
 
-    public static inline function cleanFileName(name:String):String {
+    public static function cleanFileName(name:String):String {
         if (name == null) return "";
         var n = StringTools.replace(name, "\\", "/");
         if (n.indexOf("assets/") == 0) n = n.substring(7);

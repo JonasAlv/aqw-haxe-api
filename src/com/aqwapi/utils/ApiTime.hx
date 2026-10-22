@@ -65,8 +65,8 @@ class ApiTime {
     /**
      * Delays function execution by ms using pure Haxe Timer.
      */
-    public static inline function delay(ms:Int, callback:Void->Void):Void {
-        haxe.Timer.delay(callback, ms);
+    public static inline function delay(ms:Float, callback:Void->Void):Void {
+        haxe.Timer.delay(callback, Std.int(ms));
     }
 
     /**
