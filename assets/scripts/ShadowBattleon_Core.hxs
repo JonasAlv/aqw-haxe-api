@@ -1,28 +1,37 @@
-// ShadowBattleon farm using the API core orchestration layer.
+// ShadowBattleon story progression using the API core orchestration layer.
 //
-// This is intentionally a small, goal-oriented example:
+// This follows the verified Shadow of Doom quest chain:
+//   9422 Mega Shadow Hunt Medal  - Doomed Beast
+//   9423 Early Autopsy           - Doomed Beast
+//   9424 Given Life and Purpose  - Possessed Armor
+//   9425 Adult Hatchling         - Ouro Spawn
+//   9426 Solidified Light        - Tainted Wraith
+//   9427 Enigmatic Entity        - Mysterious Stranger
+//
+// The workflow is intentionally small and goal-oriented:
 //   - core.context owns the script policy
 //   - core.travel handles map/cell navigation
 //   - core.recovery handles death/health checks
-//   - core.target keeps the selected monster in the current cell
-//   - core.farm delegates item tracking and native combat timing
-//
-// Change these values to reuse the workflow for another ShadowBattleon drop.
-var goal = {
-    map: "shadowbattleon",
-    cell: "Enter",
-    pad: "Spawn",
-    monster: "Doomed Troll",
-    item: "Troll Token",
-    quantity: 10,
-    temp: false
-};
+//   - core.story coordinates hunting and quest progression
+//   - core.combat delegates native targeting, skill timing, and validation
+var mapName = "shadowbattleon";
+var questIds = [9422, 9423, 9424, 9425, 9426, 9427];
+var questMonsters = [
+    "Doomed Beast",
+    "Doomed Beast",
+    "Possessed Armor",
+    "Ouro Spawn",
+    "Tainted Wraith",
+    "Mysterious Stranger"
+];
 
 var finished = false;
+var step = 0;
 var lastStatusAt = 0;
 
 function onStart() {
     finished = false;
+    step = 0;
     lastStatusAt = 0;
 
     core.context.privateRooms = true;
@@ -30,9 +39,8 @@ function onStart() {
     core.context.autoRecover = true;
 
     core.drops.acceptAll(true);
-    core.drops.track(goal.item);
 
-    log("[ShadowBattleon Core] started: " + goal.item + " x" + goal.quantity);
+    log("[ShadowBattleon Core] started: Shadowbattleon story quests");
 }
 
 function onTick() {
@@ -41,42 +49,30 @@ function onTick() {
 
     if (!core.recovery.maintain()) return;
 
-    if (core.inventory.has(goal.item, goal.quantity)) {
-        finish("already have the requested quantity");
+    while (step < questIds.length && core.quest.isDone(questIds[step])) {
+        step++;
+    }
+
+    if (step >= questIds.length) {
+        finish("all Shadowbattleon quests are complete");
         return;
     }
 
-    if (!core.wait.mapLoaded(goal.map)) {
-        core.travel.ensure(goal.map, goal.cell, goal.pad);
-        return;
-    }
+    var questId = questIds[step];
+    var monster = questMonsters[step];
 
-    if (!core.wait.cell(goal.cell)) {
-        core.travel.ensureCell(goal.cell, goal.pad);
+    // Non-blocking: this joins Shadowbattleon, locates the monster's cell,
+    // starts native combat, and completes the quest when its requirements are met.
+    if (core.story.killQuest(questId, monster, mapName)) {
+        log("[ShadowBattleon Core] completed quest " + questId + " (" + monster + ")");
+        step++;
         return;
-    }
-
-    // The farm core is idempotent: it registers the drop, checks inventory/bank,
-    // locks the target through CombatManager, and starts native combat as needed.
-    if (core.farm.item(goal.monster, goal.item, goal.quantity, goal.map, goal.temp)) {
-        finish("farm goal reached");
-        return;
-    }
-
-    // This is only a recovery path for a stale target. The next core.farm.item()
-    // call remains responsible for starting combat and its skill timings.
-    if (!core.combat.isRunning()) {
-        var target = core.target.nearest(goal.monster);
-        if (target != null && !core.target.valid()) {
-            core.target.lock(goal.monster, goal.cell);
-        }
     }
 
     var now = core.context.now();
     if (now - lastStatusAt >= 5000) {
         lastStatusAt = now;
-        log("[ShadowBattleon Core] farming " + goal.item + " (" +
-            core.inventory.quantity(goal.item) + "/" + goal.quantity + ")");
+        log("[ShadowBattleon Core] quest " + questId + ": hunting " + monster);
     }
 }
 
@@ -85,7 +81,6 @@ function finish(reason) {
     finished = true;
     core.combat.stop();
     core.target.clear();
-    core.drops.pickup(goal.item);
     log("[ShadowBattleon Core] complete: " + reason);
     stop();
 }

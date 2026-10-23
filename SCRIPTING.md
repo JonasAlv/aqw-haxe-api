@@ -386,7 +386,7 @@ Current bundled examples include:
 - `Dailies.hxs` — legacy step-based daily routine.
 - `Dailies_Advanced.hxs` — data-driven daily queue with event-assisted progression and membership-aware tasks.
 - `ShadowBattleon_Leveling.hxs` — simple auto-quest leveling example.
-- `ShadowBattleon_Core.hxs` — goal-oriented ShadowBattleon drop farm using the `core.*` orchestration layer.
+- `ShadowBattleon_Core.hxs` — Shadowbattleon story quest progression using the `core.*` orchestration layer.
 - `ShadowBattleon_Farm_EventDriven.hxs` — lifecycle and event callback example.
 - `ShadowBattleon_API_Test.hxs` — result callbacks and state-health probe example.
 - `Bank_All_Items.hxs`, `Bank_All_Ac_Items.hxs`, and `Unbank_All_Non_Ac_Items.hxs` — inventory examples.
