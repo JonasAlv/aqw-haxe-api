@@ -341,6 +341,11 @@ class HScriptEngine {
 
         // Restore user settings to what they were before the script ran, even if cleanup or onStop failed.
         try {
+            if (Api.map != null) {
+                // A quest cutscene can hide the world immediately before the script
+                // finishes. Restore the native game layer before disabling automation.
+                Api.map.restoreAfterCutscene();
+            }
             if (Api.combat != null) Api.combat.setInfiniteRange(_savedInfiniteRange);
             if (Api.map != null) {
                 Api.map.autoDeathSpawn = _savedDeathSpawn;

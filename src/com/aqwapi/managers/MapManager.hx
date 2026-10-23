@@ -875,6 +875,45 @@ class MapManager {
     private var _skipCutscenes:Bool = false;
 
     /**
+     * Restore the normal game layer after AQW has hidden the world for an external
+     * cutscene. This is also safe to call during script shutdown.
+     */
+    public function restoreAfterCutscene():Void {
+        var g = _g();
+        if (g == null) return;
+        try {
+            if (g.world != null && g.world.cHandle != null && Reflect.hasField(g.world.cHandle, "cancel")) {
+                g.world.cHandle.cancel();
+            }
+        } catch (_:Dynamic) {}
+
+        var nativeCleared:Bool = false;
+        try {
+            // This is the native AQW spelling. It stops cutscene audio, clears the
+            // external SWF, makes world visible, and restores the game UI.
+            untyped g.clearExternamSWF();
+            nativeCleared = true;
+        } catch (_:Dynamic) {}
+
+        if (!nativeCleared) {
+            try {
+                if (g.mcExtSWF != null && g.mcExtSWF.numChildren != null) {
+                    while (untyped g.mcExtSWF.numChildren > 0) {
+                        try { untyped g.mcExtSWF.removeChildAt(0); } catch (_:Dynamic) { break; }
+                    }
+                }
+            } catch (_:Dynamic) {}
+        }
+
+        try {
+            if (g.world != null) g.world.visible = true;
+        } catch (_:Dynamic) {}
+        try {
+            if (Reflect.hasField(g, "showInterface")) untyped g.showInterface();
+        } catch (_:Dynamic) {}
+    }
+
+    /**
      * When enabled, cancels any pending cutscene handler and dismisses external movie cutscenes every tick.
      * Call this from the script engine tick and on map zone-entered events.
      * Uses the same technique as the skip-cutscenes binding.
@@ -919,23 +958,7 @@ class MapManager {
             }
 
             if (cleared) {
-                // Game.loadExternalSWF() hides the world. The native cleanup method
-                // restores world visibility and stops cutscene audio; use it when
-                // available instead of only removing the overlay children.
-                try {
-                    if (Reflect.hasField(g, "clearExternamSWF")) {
-                        untyped g.clearExternamSWF();
-                    }
-                } catch (_:Dynamic) {}
-                try {
-                    if (g.world != null) g.world.visible = true;
-                } catch (_:Dynamic) {}
-                if (g.world != null && Reflect.hasField(g.world, "showInterface")) {
-                    try { g.world.showInterface(); } catch (_:Dynamic) {}
-                }
-                if (Reflect.hasField(g, "showInterface")) {
-                    try { untyped g.showInterface(); } catch (_:Dynamic) {}
-                }
+                restoreAfterCutscene();
             }
         } catch (e:Dynamic) {}
     }
@@ -975,20 +998,7 @@ class MapManager {
             }
 
             if (dismissed) {
-                try {
-                    if (Reflect.hasField(g, "clearExternamSWF")) {
-                        untyped g.clearExternamSWF();
-                    }
-                } catch (_:Dynamic) {}
-                try {
-                    if (g.world != null) g.world.visible = true;
-                } catch (_:Dynamic) {}
-                if (g.world != null && Reflect.hasField(g.world, "showInterface")) {
-                    try { g.world.showInterface(); } catch (_:Dynamic) {}
-                }
-                if (Reflect.hasField(g, "showInterface")) {
-                    try { untyped g.showInterface(); } catch (_:Dynamic) {}
-                }
+                restoreAfterCutscene();
             }
         } catch (e:Dynamic) {}
         return dismissed;
