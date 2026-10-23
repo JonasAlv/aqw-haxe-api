@@ -11,5 +11,9 @@ class CoreTarget {
     public function current():EntityDTO return Api.player != null ? Api.player.target : null;
     public function clear():Void { lockedId = null; lockedName = null; if (Api.combat != null) Api.combat.cancelTarget(); }
     public function valid():Bool { var t = current(); return t != null && t.isMonster && t.alive && (lockedId == null || lockedId == "" || t.mapId == lockedId || t.id == lockedId); }
-    public function nearest(nameOrId:Dynamic = "*"):EntityDTO return Api.monster != null ? Api.monster.getBestMonsterTargetInCell(null, nameOrId) : null;
+    public function nearest(nameOrId:Dynamic = "*"):EntityDTO {
+        if (Api.monster == null) return null;
+        var cell:String = Api.player != null ? Api.player.cell : null;
+        return Api.monster.getBestMonsterTargetInCell(cell, nameOrId);
+    }
 }
