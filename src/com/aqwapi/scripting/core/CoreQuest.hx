@@ -20,7 +20,16 @@ class CoreQuest {
         }
         if (!Api.quest.canComplete(questId)) return false;
         if (Api.combat != null) Api.combat.stopCombat();
-        if (!Api.quest.ensureCompleteChoose(questId, reward)) return false;
+        // Ordinary quests use the native default reward path. Choice selection is only
+        // valid when the quest actually exposes choice rewards; forcing every quest through
+        // ensureCompleteChoose() leaves non-choice quests stuck with "No choice rewards".
+        var queued:Bool = false;
+        if (Api.quest.isChoiceQuest(questId) || reward != -1) {
+            queued = Api.quest.ensureCompleteChoose(questId, reward);
+        } else {
+            queued = Api.quest.ensureComplete(questId);
+        }
+        if (!queued) return false;
         return Api.quest.hasBeenCompleted(questId);
     }
     public function progress(questId:Dynamic, mapName:String = null):Bool {
