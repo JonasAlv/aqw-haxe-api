@@ -498,6 +498,41 @@ function onTick() {
 }
 ```
 
-### Planned CoreBots-style layer
+### Core workflow layer
 
-A reusable CoreBots-style layer is not yet part of the API contract. It is planned as smaller API-oriented services such as `CoreQuest`, `CoreCombat`, `CoreInventory`, `CoreDailies`, and `CoreProgression`. Until those services exist, reusable script helpers should remain in the script itself or in the typed Haxe managers rather than assuming a `core` namespace is available.
+The API now exposes a reusable orchestration layer above the managers. Managers remain the low-level operations; cores compose them into safe workflows with state checks, native timing, target locking, recovery, and event hooks.
+
+Available namespaces:
+
+```text
+core.context       core.wait          core.events
+core.recovery      core.travel        core.target
+core.combat        core.hunt          core.boss
+core.quest         core.story         core.farm
+core.dailies       core.drops         core.inventory
+core.shop          core.merge         core.loadout
+core.enhancement   core.progression   core.boost
+core.party
+```
+
+Example goal-oriented script:
+
+```hscript
+function onStart() {
+    core.context.privateRooms = true;
+    core.drops.acceptAll(true);
+    core.loadout.equipClass("Lord of Order");
+}
+
+function onTick() {
+    if (!core.recovery.maintain()) return;
+    if (core.farm.item("Doomed Troll", "Troll Token", 10, "shadowbattleon")) {
+        core.combat.stop();
+        stop();
+    }
+}
+```
+
+Domain-specific wrappers live under `com.aqwapi.scripting.content` for VHL, LR, NSoD, BLoD, Awe, Forge, and Ultras. They are intentionally thin: generic travel, combat, quest, inventory, drop, and recovery behavior stays in the core layer.
+
+Core calls are non-blocking and should be retried from `onTick` or resumed from `onZoneEntered`, `onQuestUpdated`, `onInventoryChanged`, and `onCombatUpdated`. They do not create background threads or access AQW objects away from the game thread.

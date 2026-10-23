@@ -6,6 +6,7 @@ import com.aqwapi.managers.*;
 import com.aqwapi.net.TransportAdapter;
 import com.aqwapi.scripting.HScriptEngine;
 import com.aqwapi.utils.ApiLogger;
+import com.aqwapi.scripting.core.CoreApi;
 
 class Api {
     public static var dispatcher(default, null):EventDispatcher = new EventDispatcher();
@@ -30,6 +31,8 @@ class Api {
     public static var party(default, null):PartyManager = new PartyManager(null);
     /** Freshness/availability metadata for game-backed state reads. */
     public static var stateHealth(default, null):com.aqwapi.managers.StateHealth = com.aqwapi.managers.StateHealth.instance();
+    /** High-level workflows. These orchestrate managers; they do not replace them. */
+    public static var core(default, null):CoreApi = new CoreApi();
 
     // Plural aliases
     public static var quests(get, never):QuestManager;

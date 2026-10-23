@@ -8,6 +8,7 @@ class GameEvent extends Event {
     public static inline var INVENTORY_CHANGED:String = "inventoryChanged";
     /** Raw combat response. `data.command` is the wire command and `data.payload` its payload. */
     public static inline var COMBAT_UPDATED:String = "combatUpdated";
+    public static inline var PACKET_RECEIVED:String = "packetReceived";
 
     public var data:Dynamic;
 

@@ -130,6 +130,11 @@ class TransportAdapter {
         if (Api.hscript != null) {
             Api.hscript.handlePacket(type, cmd, dataObj);
         }
+        Api.dispatcher.dispatchEvent(new GameEvent(GameEvent.PACKET_RECEIVED, {
+            type: type,
+            command: cmd,
+            payload: dataObj
+        }));
 
         switch (cmd) {
             // Keep combat responses available to script and UI consumers as a typed event. Payloads

@@ -76,6 +76,31 @@ class ScriptBindings {
         registerPlayerStatusShortcuts();
         registerLoggingAndSystem();
         registerPartyShortcuts();
+        registerCoreShortcuts();
+    }
+
+    private static function registerCoreShortcuts():Void {
+        bind("farmItemCore", function(monster:Dynamic, item:String, quantity:Int = 1, mapName:String = null, temp:Bool = false):Bool {
+            return Api.core != null && Api.core.farm.item(monster, item, quantity, mapName, temp);
+        });
+        bind("huntCore", function(monster:Dynamic, mapName:String = null, cell:String = null):Bool {
+            return Api.core != null && Api.core.hunt.monster(monster, mapName, cell);
+        });
+        bind("ensureTarget", function(monster:Dynamic, cell:String = null):Bool {
+            return Api.core != null && Api.core.target.lock(monster, cell);
+        });
+        bind("coreComplete", function(questId:Dynamic, reward:Dynamic = -1):Bool {
+            return Api.core != null && Api.core.quest.complete(questId, reward);
+        });
+        bind("coreTravel", function(mapName:String, cell:String = null, pad:String = null):Bool {
+            return Api.core != null && Api.core.travel.ensure(mapName, cell, pad);
+        });
+        bind("corePickup", function(itemName:String = "all"):Int {
+            return Api.core != null ? Api.core.drops.pickup(itemName) : 0;
+        });
+        bind("coreRecover", function():Bool {
+            return Api.core != null && Api.core.recovery.maintain();
+        });
     }
 
     public static function registerAll(interp:ScriptInterp):Void {
