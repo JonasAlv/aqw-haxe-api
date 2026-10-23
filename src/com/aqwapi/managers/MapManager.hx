@@ -884,7 +884,13 @@ class MapManager {
         var g = _g();
         if (g == null) return;
         try {
+            var cutscenePending:Bool = false;
             if (g.world != null && g.world.cHandle != null) {
+                try {
+                    if (Reflect.hasField(g.world.cHandle, "isPending")) {
+                        cutscenePending = untyped g.world.cHandle.isPending() == true;
+                    }
+                } catch (_:Dynamic) {}
                 try {
                     if (Reflect.hasField(g.world.cHandle, "cancel")) {
                         g.world.cHandle.cancel();
@@ -892,7 +898,7 @@ class MapManager {
                 } catch (e:Dynamic) {}
             }
 
-            var cleared:Bool = false;
+            var cleared:Bool = cutscenePending;
 
             // Check game.mcExtSWF
             if (g.mcExtSWF != null && g.mcExtSWF.numChildren != null && untyped g.mcExtSWF.numChildren > 0) {
@@ -913,6 +919,17 @@ class MapManager {
             }
 
             if (cleared) {
+                // Game.loadExternalSWF() hides the world. The native cleanup method
+                // restores world visibility and stops cutscene audio; use it when
+                // available instead of only removing the overlay children.
+                try {
+                    if (Reflect.hasField(g, "clearExternamSWF")) {
+                        untyped g.clearExternamSWF();
+                    }
+                } catch (_:Dynamic) {}
+                try {
+                    if (g.world != null) g.world.visible = true;
+                } catch (_:Dynamic) {}
                 if (g.world != null && Reflect.hasField(g.world, "showInterface")) {
                     try { g.world.showInterface(); } catch (_:Dynamic) {}
                 }
@@ -930,10 +947,14 @@ class MapManager {
         try {
             if (g.world != null && g.world.cHandle != null) {
                 try {
+                    if (Reflect.hasField(g.world.cHandle, "isPending")) {
+                        dismissed = untyped g.world.cHandle.isPending() == true;
+                    }
+                } catch (_:Dynamic) {}
+                try {
                     if (Reflect.hasField(g.world.cHandle, "cancel")) {
                         g.world.cHandle.cancel();
                     }
-                    dismissed = true;
                 } catch (e:Dynamic) {}
             }
 
@@ -954,6 +975,14 @@ class MapManager {
             }
 
             if (dismissed) {
+                try {
+                    if (Reflect.hasField(g, "clearExternamSWF")) {
+                        untyped g.clearExternamSWF();
+                    }
+                } catch (_:Dynamic) {}
+                try {
+                    if (g.world != null) g.world.visible = true;
+                } catch (_:Dynamic) {}
                 if (g.world != null && Reflect.hasField(g.world, "showInterface")) {
                     try { g.world.showInterface(); } catch (_:Dynamic) {}
                 }
