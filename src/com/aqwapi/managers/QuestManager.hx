@@ -569,8 +569,16 @@ class QuestManager {
         if (!isInProgress(qid)) return true;
         var next = getNextUnownedReward(qid, preferredItems);
         if (next == null) {
-            ApiLogger.warn("Quest", "All choice rewards already owned for quest: " + qid);
-            return false;
+            // Owning every choice reward must not make a ready quest impossible to turn in.
+            // AQW still permits selecting an owned choice; refusing here leaves automation
+            // farming the quest requirements forever. Use the first server-provided choice.
+            var choices = getChoiceRewards(qid);
+            if (choices == null || choices.length == 0) {
+                ApiLogger.warn("Quest", "No choice rewards available for quest: " + qid);
+                return false;
+            }
+            next = choices[0];
+            ApiLogger.info("Quest", "All choice rewards already owned; selecting an existing choice for quest: " + qid);
         }
         var nextId:Int = (next.ItemID != null) ? Std.int(next.ItemID) : ((next.id != null) ? Std.int(next.id) : -1);
         var nextName:String = (next.sName != null) ? Std.string(next.sName) : ((next.name != null) ? Std.string(next.name) : Std.string(nextId));
