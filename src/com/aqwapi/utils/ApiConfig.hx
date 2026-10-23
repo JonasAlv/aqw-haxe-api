@@ -111,6 +111,9 @@ class ApiConfig {
     }
 
     public static function applyToCombatEngine():Void {
+        // The enabled preference is persistent, but a warning hold is only valid for the current
+        // live combat session. Never restore that transient state from a previous account/session.
+        CombatEngine.resetVigilGuardTransientState();
         CombatEngine.farmClass  = getString("api_farm_class", "Current");
         CombatEngine.farmMode   = getString("api_farm_mode", "Auto");
         CombatEngine.soloClass  = getString("api_solo_class", "Current");
@@ -124,8 +127,13 @@ class ApiConfig {
 
         if (Api.combat != null) {
             Api.combat.infiniteRange = getBool("api_infinite_range", false);
+            Api.combat.dropCombatOnStop = getBool("api_drop_combat_on_stop", false);
         }
         CombatEngine.counterHandler = getBool("api_counter_handler", false);
+        // Vigil Guard is intentionally session-only. It must start OFF on every game launch so
+        // enabling it cannot unexpectedly equip/use a consumable in a later session.
+        CombatEngine.vigilGuardEnabled = false;
+        CombatEngine.vigilGuardItem = getString("api_vigil_guard_item", "Vigil");
         if (Api.map != null) {
             Api.map.autoDeathSpawn = getBool("api_death_spawn", false);
             Api.map.usePrivateRoom = getBool("api_private_rooms", false);

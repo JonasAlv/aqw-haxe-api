@@ -174,6 +174,13 @@ class ApiTimings {
     /** Consumable action debounce used by the public potion helper. */
     public static inline var CONSUMABLE_ACTION_GAP_MS:Float = 1500;
 
+    /** Small reaction delay after a Vigil warning to account for client/server timing. */
+    public static inline var VIGIL_GUARD_DELAY_MS:Float = 1000;
+    /** Re-press slot 6 while waiting for the server to confirm the Vigil aura. */
+    public static inline var VIGIL_GUARD_RETRY_MS:Float = 200;
+    /** Maximum time to wait for the Vigil aura after a server warning before failing safe. */
+    public static inline var VIGIL_GUARD_TIMEOUT_MS:Float = 5000;
+
     /** Minimum auto-potion interval when no explicit interval is supplied. */
     public static inline var AUTO_POTION_DEFAULT_INTERVAL_MS:Float = 15000;
 

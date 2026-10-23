@@ -13,8 +13,8 @@ import com.aqwapi.managers.PresetManager;
 /**
  * Normalized registry for HScript sandbox variables, shortcuts, and namespaces.
  *
- * Core Primitives: The ~40 high-frequency functions used in .hxs scripts (quest, hunt,
- * mapItem, complete, ensureMap, etc.) are available as clean top-level functions.
+ * Native scripting primitives: The ~40 high-frequency functions used in .hxs scripts (quest,
+ * hunt, mapItem, complete, ensureMap, etc.) are available as clean top-level functions.
  *
  * Subsystems & Advanced APIs: Specialized properties and methods are accessible via
  * their first-class namespaces: player, combat, map, quests, inventory, bank, drop,
@@ -24,30 +24,6 @@ class ScriptBindings {
 
     public static var shortcuts(default, null):Map<String, Dynamic> = new Map();
     private static var _initialized:Bool = false;
-    private static var _mapItemGrabCount:Map<String, Int> = new Map();
-    private static var _reqToMonsterMap:Map<String, String> = new Map();
-
-    public static function resetStoryData():Void {
-        _mapItemGrabCount = new Map();
-        _reqToMonsterMap = new Map();
-    }
-
-    /**
-     * Clears the monster guesses recorded for one quest.
-     *
-     * `_mapItemGrabCount` is deliberately left alone: grab history is keyed by item and map, not by
-     * quest, so completing an unrelated quest must not make `mapItem()` re-request items it already
-     * counted. Clearing those is `resetMapItems()`' job, and `resetStoryData()` clears everything.
-     */
-    private static function _cleanQuestStoryData(questId:Dynamic):Void {
-        var qid = ApiUtils.parseInt(questId, 0);
-        var prefix = (qid > 0 ? Std.string(qid) : Std.string(questId)) + "_";
-        var monsterKeys:Array<String> = [];
-        for (k in _reqToMonsterMap.keys()) {
-            if (StringTools.startsWith(k, prefix)) monsterKeys.push(k);
-        }
-        for (k in monsterKeys) _reqToMonsterMap.remove(k);
-    }
 
     public static inline function hasShortcut(name:String):Bool {
         ensureInitialized();
@@ -76,31 +52,6 @@ class ScriptBindings {
         registerPlayerStatusShortcuts();
         registerLoggingAndSystem();
         registerPartyShortcuts();
-        registerCoreShortcuts();
-    }
-
-    private static function registerCoreShortcuts():Void {
-        bind("farmItemCore", function(monster:Dynamic, item:String, quantity:Int = 1, mapName:String = null, temp:Bool = false):Bool {
-            return Api.core != null && Api.core.farm.item(monster, item, quantity, mapName, temp);
-        });
-        bind("huntCore", function(monster:Dynamic, mapName:String = null, cell:String = null):Bool {
-            return Api.core != null && Api.core.hunt.monster(monster, mapName, cell);
-        });
-        bind("ensureTarget", function(monster:Dynamic, cell:String = null):Bool {
-            return Api.core != null && Api.core.target.lock(monster, cell);
-        });
-        bind("coreComplete", function(questId:Dynamic, reward:Dynamic = -1):Bool {
-            return Api.core != null && Api.core.quest.complete(questId, reward);
-        });
-        bind("coreTravel", function(mapName:String, cell:String = null, pad:String = null):Bool {
-            return Api.core != null && Api.core.travel.ensure(mapName, cell, pad);
-        });
-        bind("corePickup", function(itemName:String = "all"):Int {
-            return Api.core != null ? Api.core.drops.pickup(itemName) : 0;
-        });
-        bind("coreRecover", function():Bool {
-            return Api.core != null && Api.core.recovery.maintain();
-        });
     }
 
     public static function registerAll(interp:ScriptInterp):Void {
@@ -323,6 +274,18 @@ class ScriptBindings {
         bind("enableCounterHandler", function(enabled:Bool = true):Void {
             if (Api.combat != null) Api.combat.enableCounterHandler(enabled);
         });
+        bind("vigilGuard", function(enabled:Bool = true, itemName:String = "Vigil"):Void {
+            if (Api.combat != null) Api.combat.enableVigilGuard(enabled, itemName);
+        });
+        bind("enableVigilGuard", function(enabled:Bool = true, itemName:String = "Vigil"):Void {
+            if (Api.combat != null) Api.combat.enableVigilGuard(enabled, itemName);
+        });
+        bind("isVigilGuardEnabled", function():Bool {
+            return Api.combat != null && Api.combat.isVigilGuardEnabled();
+        });
+        bind("isVigilGuardActive", function():Bool {
+            return Api.combat != null && Api.combat.isVigilGuardActive();
+        });
         bind("pauseOnAuras", function(auras:Dynamic):Void {
             if (Api.combat != null) Api.combat.pauseOnAuras(auras);
         });
@@ -415,36 +378,23 @@ class ScriptBindings {
             if (targetMap != null && targetMap != "" && Api.map != null) {
                 if (!Api.map.ensure(targetMap)) return false;
             }
-            if (itemName != null && itemName != "" && Api.inventory != null) {
-                if (Api.inventory.hasItem(itemName, targetQuantity) || Api.inventory.getQuestQuantity(itemName) >= targetQuantity) {
-                    return true;
-                }
-            }
-            var grabMap:String = (targetMap != null && targetMap != "") ? targetMap : (Api.map != null ? Api.map.name : "");
-            var grabKey = "mi_" + itemId + "_" + grabMap.toLowerCase();
-            var currentGrabs = _mapItemGrabCount.exists(grabKey) ? _mapItemGrabCount.get(grabKey) : 0;
-            if (currentGrabs >= targetQuantity) return true;
+            if (targetQuantity < 1) targetQuantity = 1;
 
-            if (Api.map != null && Api.map.getMapItem(itemId)) {
-                _mapItemGrabCount.set(grabKey, currentGrabs + 1);
-            }
+            // Progress must come from live AQW state. A successful getMapItem request does not
+            // prove that the server awarded the quest item, so never count requests locally.
+            var lookup:String = (itemName != null && itemName != "") ? itemName : Std.string(itemId);
+            if (Api.inventory != null && Api.inventory.getQuestQuantity(lookup) >= targetQuantity) return true;
+
+            if (Api.map != null) Api.map.getMapItem(itemId);
             return false;
         });
 
         bind("ensureMapItem", function(itemId:Int, arg2:Dynamic = 1, arg3:Dynamic = null, arg4:Dynamic = null):Bool {
             return getShortcut("mapItem")(itemId, arg2, arg3, arg4);
         });
-        bind("resetStoryData", function():Void {
-            resetStoryData();
-        });
-        bind("resetMapItems", function():Void {
-            _mapItemGrabCount = new Map();
-        });
-
         bind("complete", function(questId:Dynamic, ?rewardChoice:Dynamic):Bool {
             if (Api.quest == null) return false;
             if (Api.quest.hasBeenCompleted(questId)) {
-                _cleanQuestStoryData(questId);
                 return true;
             }
             if (Api.quest.canComplete(questId)) {
@@ -456,14 +406,12 @@ class ScriptBindings {
                 }
             }
             var done = Api.quest.hasBeenCompleted(questId);
-            if (done) _cleanQuestStoryData(questId);
             return done;
         });
 
         bind("completeChoose", function(questId:Dynamic, ?preferredItems:Dynamic):Bool {
             if (Api.quest == null) return false;
             if (Api.quest.hasBeenCompleted(questId)) {
-                _cleanQuestStoryData(questId);
                 return true;
             }
             if (Api.quest.canComplete(questId)) {
@@ -471,7 +419,6 @@ class ScriptBindings {
                 Api.quest.ensureCompleteChoose(questId, preferredItems);
             }
             var done = Api.quest.hasBeenCompleted(questId);
-            if (done) _cleanQuestStoryData(questId);
             return done;
         });
 
@@ -578,7 +525,10 @@ class ScriptBindings {
             return Api.quest != null ? Api.quest.getMissingRequirements(questId) : [];
         });
 
-        // Legacy / Macro Story Quest Functions
+        // Legacy story helpers are intentionally no longer part of the API surface. Their
+        // orchestration now lives in runtime HScript libraries, where quest IDs, monsters,
+        // item IDs, quantities, and rewards are supplied by the script.
+#if legacy_story_helpers
         bind("storyKillQuest", function(questId:Dynamic, mapName:String, monster:Dynamic):Bool {
             if (Api.quest == null || Api.map == null || Api.combat == null) return false;
             if (!Api.quest.isLoaded(questId)) {
@@ -786,6 +736,7 @@ class ScriptBindings {
             if (done) _cleanQuestStoryData(questId);
             return done;
         });
+#end
 
         // Auto quest automation
         bind("autoQuest", function(quests:Dynamic):Void {

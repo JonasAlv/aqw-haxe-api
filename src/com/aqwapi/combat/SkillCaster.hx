@@ -37,11 +37,42 @@ class SkillCaster {
     public static function getSkillAction(idx:Int):Dynamic {
         if (Api.game != null && Api.game.world != null) {
             var world:Dynamic = Api.game.world;
+            // AQW's sixth action-bar slot is the consumable action ref `i1`, not `a5`.
+            // Resolve the actual displayed i6 button first. The game's keyboard handler resolves
+            // actionMap[5] and then calls testAction(); the external bridge cannot safely read
+            // World.actionMap on every build because it is internal, while actBar.i6.actObj is the
+            // same action object installed for the visible native button.
+            if (idx == 5) {
+                try {
+                    var potionIcon:Dynamic = getIcon(5);
+                    if (potionIcon != null && potionIcon.actObj != null) return potionIcon.actObj;
+                } catch (_:Dynamic) {}
+                try {
+                    if (world.actions != null && world.actions.active != null) {
+                        var activePotion:Dynamic = world.actions.active[5];
+                        if (activePotion != null && activePotion.ref == "i1") return activePotion;
+                    }
+                } catch (_:Dynamic) {}
+                try {
+                    if (world.getActionByRef != null) {
+                        var potionAct:Dynamic = world.getActionByRef("i1");
+                        if (potionAct != null) return potionAct;
+                    }
+                } catch (_:Dynamic) {}
+            }
             // 1. `actions.active` is public and is what `World.getAutoAttack()` itself scans, so it
             //    is the reliable slot index. Preferred over the refs below.
             if (world.actions != null && world.actions.active != null) {
                 try {
                     var actList:Array<Dynamic> = cast world.actions.active;
+                    // AQW identifies the consumable action by ref `i1`; it is not guaranteed to be
+                    // at array index 5 after a class/action-bar refresh. Resolve it by the game's
+                    // stable ref before using the slot-index fallback.
+                    if (idx == 5) {
+                        for (potionAct in actList) {
+                            if (potionAct != null && potionAct.ref == "i1") return potionAct;
+                        }
+                    }
                     if (idx >= 0 && idx < actList.length) {
                         var act:Dynamic = actList[idx];
                         if (act != null) return act;
@@ -260,9 +291,8 @@ class SkillCaster {
         if (dl != null && dl.intState == 0) return SR_RESOURCE;
 
         // 2b. Consumable slot 5 pending acknowledgement check (World.as:9944)
-        if (idx == 5 && world != null && world.potionAckActID != null && Std.int(world.potionAckActID) != -1) {
-            return SR_TIMING;
-        }
+        if (idx == 5 && world != null && world.potionAckActID != null && Std.int(world.potionAckActID) != -1) return SR_TIMING;
+        if (idx == 5 && world != null && world.lockdownPots == true) return SR_TIMING;
 
         // 3. Timing guard — GCD + per-skill CD
         var timingReady:Bool = false;
@@ -317,6 +347,59 @@ class SkillCaster {
             return SR_RESOURCE;
         }
         return SR_FIRED;
+    }
+
+    /**
+     * Press an action-bar slot using the same boundary as Game.key_actBar().
+     *
+     * The native keyboard handler only resolves the mapped action, checks isOK, and delegates
+     * every other rule to World.testAction(). This is intentionally separate from fireSkill():
+     * mechanic consumables such as Vigil must not be blocked by an API-side interpretation of
+     * GCD, lock, or potion state before AQW gets to perform its own validation.
+     */
+    public static function pressNativeActionBarSlot(world:Dynamic, idx:Int):Bool {
+        if (world == null || idx < 0 || idx > 5) return false;
+        var action:Dynamic = getSkillAction(idx);
+        if (action == null || action.isOK == false) return false;
+
+        try {
+            world.testAction(action);
+            return true;
+        } catch (_:Dynamic) { return false; }
+    }
+
+    /**
+     * Presses a consumable action as if the player repeatedly pressed its action-bar key.
+     *
+     * Unlike a normal rotation skill, a mechanic guard must be able to submit the action while
+     * the API-side GCD estimate is stale. The game's own testAction() remains the final authority;
+     * this method only avoids suppressing the native validation before it is reached.
+     */
+    public static function pressConsumable(world:Dynamic, avatar:Dynamic, idx:Int):Bool {
+        if (world == null || avatar == null || idx < 0 || idx > 5) return false;
+
+        var actObj:Dynamic = getSkillAction(idx);
+        if (actObj == null || actObj.isOK == false) return false;
+        var dl:Dynamic = avatar.dataLeaf;
+        if (dl != null && dl.intState == 0) return false;
+
+        // This is the same lock the native action-bar handler observes. Repeatedly submitting a
+        // locked action only produces server-side "Please slow down" responses and cannot create
+        // another valid potion request.
+        if (actObj.lock == true) return false;
+
+        // Do not send another press while AQW is waiting for the previous consumable response.
+        if (idx == 5 && world.potionAckActID != null && Std.int(world.potionAckActID) != -1) {
+            return false;
+        }
+
+        try {
+            if (world.testAction != null) {
+                world.testAction(actObj);
+                return true;
+            }
+        } catch (_:Dynamic) {}
+        return false;
     }
 
     /**

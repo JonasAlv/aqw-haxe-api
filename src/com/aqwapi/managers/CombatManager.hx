@@ -380,7 +380,14 @@ class CombatManager {
 
     public function stopCombat():Void {
         stopAuto();
-        dropCombat();
+        if (dropCombatOnStop) {
+            dropCombat();
+        } else {
+            // Stopping automation during normal gameplay must not reload the room.
+            // Keep the player in the current combat state while releasing the
+            // native target and any pending attack action.
+            cancelTarget();
+        }
         lastCombatExitTime = com.aqwapi.utils.ApiTime.now();
         resetHunt();
         CombatEngine.targetName = null;
@@ -398,6 +405,20 @@ class CombatManager {
     public function isRunning():Bool {
         return CombatEngine.IS_ON;
     }
+
+    /**
+     * Controls whether stopping automation also reloads/drops native combat.
+     * Disabled by default for normal gameplay; HScript enables it for the
+     * duration of a script run so legacy farming cleanup remains deterministic.
+     */
+    public var dropCombatOnStop(get, set):Bool;
+    private var _dropCombatOnStop:Bool = false;
+    @:getter(dropCombatOnStop)
+    public function get_dropCombatOnStop_prop():Bool { return _dropCombatOnStop; }
+    @:setter(dropCombatOnStop)
+    public function set_dropCombatOnStop_prop(v:Bool):Void { _dropCombatOnStop = v; }
+    public function get_dropCombatOnStop():Bool { return _dropCombatOnStop; }
+    public function set_dropCombatOnStop(v:Bool):Bool { _dropCombatOnStop = v; return v; }
 
     public function ensure(smart:Bool = true):Void {
         if (Api.map != null && !Api.map.isLoaded) return;
@@ -419,6 +440,34 @@ class CombatManager {
     public function enableCounterHandler(enable:Bool = true):Void {
         CombatEngine.counterHandler = enable;
         ApiConfig.setBool("api_counter_handler", enable);
+    }
+
+    /** Enable the server-triggered Vigil guard for Sea Voice and compatible mechanics. */
+    public function enableVigilGuard(enable:Bool = true, itemName:String = "Vigil"):Void {
+        CombatEngine.vigilGuardEnabled = enable;
+        if (!enable) CombatEngine.cancelVigilGuard();
+        if (itemName != null && StringTools.trim(itemName) != "") {
+            CombatEngine.vigilGuardItem = StringTools.trim(itemName);
+        }
+        if (enable) {
+            // Enabling the persistent preference must never inherit a pending hold from an older
+            // map/session; only a newly detected warning may enter HOLD.
+            CombatEngine.resetVigilGuardTransientState();
+            // Start observing packet warnings immediately, even before the combat
+            // engine has begun its first rotation tick.
+            com.aqwapi.modules.ActionFeed.install();
+            CombatEngine.prepareVigilItem();
+        }
+        // The enabled state is session-only; it intentionally is not persisted between launches.
+        ApiConfig.setString("api_vigil_guard_item", CombatEngine.vigilGuardItem);
+    }
+
+    public function isVigilGuardEnabled():Bool {
+        return CombatEngine.vigilGuardEnabled;
+    }
+
+    public function isVigilGuardActive():Bool {
+        return CombatEngine.isVigilGuardActive();
     }
 
     public function pauseOnAuras(auras:Dynamic):Void {
@@ -526,6 +575,14 @@ class CombatManager {
 
         if (Reflect.hasField(opts, "counterHandler")) {
             enableCounterHandler(Reflect.field(opts, "counterHandler") == true);
+        }
+
+        if (Reflect.hasField(opts, "vigilGuard") || Reflect.hasField(opts, "vigil")) {
+            var enabled:Bool = Reflect.hasField(opts, "vigilGuard")
+                ? Reflect.field(opts, "vigilGuard") == true
+                : Reflect.field(opts, "vigil") == true;
+            var item:String = Reflect.hasField(opts, "vigilItem") ? Std.string(Reflect.field(opts, "vigilItem")) : "Vigil";
+            enableVigilGuard(enabled, item);
         }
 
         if (Reflect.hasField(opts, "pauseOnAuras")) {

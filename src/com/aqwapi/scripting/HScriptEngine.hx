@@ -174,6 +174,16 @@ class HScriptEngine {
         if (cleanCode.indexOf("//hscript") == 0) cleanCode = cleanCode.substring(9);
         else if (cleanCode.indexOf("#hscript") == 0) cleanCode = cleanCode.substring(8);
 
+        try {
+            cleanCode = ScriptPreprocessor.expand(cleanCode);
+        } catch (e:Dynamic) {
+            var includeMsg = "Include error: " + Std.string(e);
+            ApiLogger.error("HScript", includeMsg);
+            statusText = includeMsg;
+            Api.dispatcher.dispatchEvent(new ApiEvent(ApiEvent.NOTIFICATION, includeMsg));
+            return false;
+        }
+
         var parsedProgram:Expr = null;
         try {
             parsedProgram = _parser.parseString(cleanCode);
@@ -223,6 +233,7 @@ class HScriptEngine {
 
     // Values saved before script forces globals on, restored when script stops.
     private var _savedInfiniteRange:Bool = false;
+    private var _savedDropCombatOnStop:Bool = false;
     private var _savedDeathSpawn:Bool = false;
     private var _savedSkipCutscenes:Bool = false;
     private var _savedSmartClass:String = "Current";
@@ -252,10 +263,9 @@ class HScriptEngine {
         _lifecycleState = "starting";
         _isRunning = true;
         waitTimer = 0;
-        ScriptBindings.resetStoryData();
-
         // Save current user settings before overriding
         _savedInfiniteRange = (Api.combat != null) ? Api.combat.infiniteRange : false;
+        _savedDropCombatOnStop = (Api.combat != null) ? Api.combat.dropCombatOnStop : false;
         _savedDeathSpawn    = (Api.map != null)    ? Api.map.autoDeathSpawn   : false;
         _savedSkipCutscenes = (Api.map != null)    ? Api.map.skipCutscenes    : false;
         _savedSmartClass    = com.aqwapi.modules.CombatEngine.smartClass;
@@ -265,8 +275,13 @@ class HScriptEngine {
         com.aqwapi.modules.CombatEngine.smartClass = "Current";
         com.aqwapi.modules.CombatEngine.skillMode  = "Auto";
 
-        // Force scripting ergonomics: Infinite Range, Death Spawn, Skip Cutscenes always ON
-        if (Api.combat != null) Api.combat.setInfiniteRange(true);
+        // Force scripting ergonomics: Infinite Range, drop-on-stop, Death Spawn,
+        // and Skip Cutscenes always ON. The drop behavior is restored below so
+        // normal gameplay never inherits the script cleanup behavior.
+        if (Api.combat != null) {
+            Api.combat.setInfiniteRange(true);
+            Api.combat.dropCombatOnStop = true;
+        }
         if (Api.map != null) {
             Api.map.autoDeathSpawn = true;
             Api.map.skipCutscenes  = true;
@@ -325,7 +340,6 @@ class HScriptEngine {
                 Api.inventory.clearBankQueue();
                 Api.inventory.cancelRestoreGear();
             }
-            ScriptBindings.resetStoryData();
         } catch (e:Dynamic) {
             ApiLogger.error("HScript", "Script cleanup error: " + Std.string(e));
         }
@@ -347,6 +361,7 @@ class HScriptEngine {
                 Api.map.restoreAfterCutscene();
             }
             if (Api.combat != null) Api.combat.setInfiniteRange(_savedInfiniteRange);
+            if (Api.combat != null) Api.combat.dropCombatOnStop = _savedDropCombatOnStop;
             if (Api.map != null) {
                 Api.map.autoDeathSpawn = _savedDeathSpawn;
                 Api.map.skipCutscenes  = _savedSkipCutscenes;

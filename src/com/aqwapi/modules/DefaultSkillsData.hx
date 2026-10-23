@@ -43,15 +43,15 @@ class DefaultSkillsData {
     }
 
     public static macro function getSkillsConst():haxe.macro.Expr {
-        return com.aqwapi.utils.MacroAssets.loadAsset("skills.json");
+        return com.aqwapi.utils.MacroAssets.loadAsset("data/skills.json");
     }
 
     public static macro function getUserSkillsConst():haxe.macro.Expr {
-        return com.aqwapi.utils.MacroAssets.loadAsset("userSkills.json");
+        return com.aqwapi.utils.MacroAssets.loadAsset("data/userSkills.json");
     }
 
     public static macro function getPresetsConst():haxe.macro.Expr {
-        return com.aqwapi.utils.MacroAssets.loadAsset("item_presets.json");
+        return com.aqwapi.utils.MacroAssets.loadAsset("data/item_presets.json");
     }
 
     public static macro function getBundledScriptsConst():haxe.macro.Expr {

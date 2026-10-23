@@ -1,0 +1,193 @@
+// The single runtime scripting core for dependency-heavy AQW farms.
+//
+// Hard farms, shop purchases, map items, quests, and combat intentionally share one staged
+// planner. Content recipes belong in small entry scripts; this library never contains a story
+// database or guesses quest objectives.
+
+var hardFarmActive:Bool = false;
+var hardFarmName:String = "";
+var hardFarmStageName:String = "idle";
+var hardFarmStageIndex:Int = 0;
+var hardFarmLastError:String = "";
+var hardFarmShopLastRequest:Map<String,Float> = new Map();
+
+function hardFarmReadyState() {
+    return api.game != null && api.game.world != null;
+}
+
+function hardFarmRecover() {
+    if (!isAlive()) {
+        stopCombat();
+        if (api.map != null) {
+            api.map.autoDeathSpawn = true;
+            api.map.checkAutoDeathSpawn();
+        }
+        return isAlive();
+    }
+    if (api.player != null && (api.player.hpPercent < 0.35
+        || (api.player.maxMp > 0 && api.player.mp / api.player.maxMp < 0.2))) {
+        api.player.rest();
+    }
+    return true;
+}
+
+function hardFarmTravel(mapName:String, cell:String = null, pad:String = null) {
+    if (mapName == null || mapName == "") return true;
+    return ensureMap(mapName, cell, pad);
+}
+
+function hardFarmBegin(name:String = "hard-farm") {
+    if (!hardFarmActive) {
+        hardFarmActive = true;
+        hardFarmName = name;
+        hardFarmStageName = "prepare";
+        hardFarmStageIndex = 0;
+        hardFarmLastError = "";
+        hardFarmShopLastRequest = new Map();
+    }
+    return true;
+}
+
+function hardFarmStage(stageName:String) {
+    if (stageName != null && stageName != "") hardFarmStageName = stageName;
+}
+
+function hardFarmHas(item:Dynamic, quantity:Int = 1) {
+    if (api.inventory == null) return false;
+    var inventory = getItemCount(item);
+    var bank = api.inventory.getBankQuantity(Std.string(item));
+    return inventory + bank >= quantity;
+}
+
+function hardFarmMissing(item:Dynamic, quantity:Int = 1) {
+    var missing = quantity;
+    if (api.inventory != null) {
+        var inventory = getItemCount(item);
+        var bank = api.inventory.getBankQuantity(Std.string(item));
+        var owned = inventory + bank;
+        missing = quantity - owned;
+    }
+    return missing > 0 ? missing : 0;
+}
+
+function hardFarmReady(mapName:String = "", cell:String = null, pad:String = null) {
+    if (!hardFarmReadyState() || !hardFarmRecover()) return false;
+    if (mapName != "" && !hardFarmTravel(mapName, cell, pad)) return false;
+    return true;
+}
+
+function hardFarmItem(monster:Dynamic, item:Dynamic, quantity:Int = 1, mapName:String = null, temp:Bool = false) {
+    if (hardFarmHas(item, quantity)) return true;
+    if (api.inventory == null || !api.inventory.hasSpaceFor(item, 1)) {
+        hardFarmLastError = "Inventory full while farming " + item;
+        return false;
+    }
+    if (!hardFarmReady(mapName)) return false;
+    farmItem(monster, Std.string(item), quantity, temp);
+    hardFarmStageName = "farming";
+    return false;
+}
+
+function hardFarmItemStep(monster:Dynamic, item:Dynamic, quantity:Int = 1, mapName:String = "", temp:Bool = false) {
+    return hardFarmItem(monster, item, quantity, mapName, temp);
+}
+
+// Shop purchases are ordinary AQW shop actions, kept in the same staged core as monster and
+// quest farming. The request is retried only after the native shop-buy cooldown so a plan cannot
+// flood the server while waiting for the purchase to appear in live inventory.
+function hardFarmShopItem(shopId:Dynamic, item:Dynamic, quantity:Int = 1,
+    mapName:String = "", cell:String = null, pad:String = null) {
+    if (item == null || quantity < 1) return false;
+    if (hardFarmHas(item, quantity)) return true;
+    if (!hardFarmReady(mapName, cell, pad)) return false;
+
+    var key = Std.string(shopId) + ":" + Std.string(item) + ":" + quantity;
+    var now = ApiTime.now();
+    var last = hardFarmShopLastRequest.exists(key) ? hardFarmShopLastRequest.get(key) : 0;
+    var buyCooldown = rateLimit().buy;
+    if (last <= 0 || now - last >= buyCooldown) {
+        buyItem(shopId, item, quantity);
+        hardFarmShopLastRequest.set(key, now);
+        hardFarmStageName = "shopping";
+    }
+    return false;
+}
+
+function hardFarmQuestStep(questId:Dynamic, monster:Dynamic = null, item:String = null, quantity:Int = 1, mapName:String = "") {
+    if (hasBeenCompleted(questId) || isDailyComplete(questId)) return true;
+    if (!ensureQuest(questId)) return false;
+    if (item != null && item != "" && !hardFarmItemStep(monster, item, quantity, mapName, false)) return false;
+    if (!canComplete(questId)) return false;
+    return complete(questId);
+}
+
+function hardFarmMapItem(itemId:Int, quantity:Int = 1, mapName:String = "", cell:String = null, pad:String = null) {
+    if (itemId <= 0 || quantity < 1) return false;
+    if (getQuestQuantity(itemId) >= quantity) return true;
+    if (!hardFarmReady(mapName, cell, pad)) return false;
+    mapItem(itemId, quantity);
+    return false;
+}
+
+function hardFarmPlan(plan:Array<Dynamic>) {
+    if (plan == null || plan.length == 0) return true;
+    if (!hardFarmActive) hardFarmBegin();
+    if (hardFarmStageIndex >= plan.length) {
+        hardFarmStageName = "complete";
+        return true;
+    }
+
+    var step = plan[hardFarmStageIndex];
+    if (step == null) {
+        hardFarmStageIndex++;
+        return false;
+    }
+
+    var action = Std.string(step.action);
+    var done:Bool = false;
+    switch (action) {
+        case "travel":
+            done = hardFarmTravel(Std.string(step.map), step.cell, step.pad);
+        case "item":
+            done = hardFarmItem(step.monster, step.item, step.quantity == null ? 1 : Std.int(step.quantity), step.map, step.temp == true);
+        case "shop", "buy":
+            done = hardFarmShopItem(step.shopId, step.item,
+                step.quantity == null ? 1 : Std.int(step.quantity), step.map, step.cell, step.pad);
+        case "map", "mapitem":
+            done = hardFarmMapItem(Std.int(step.itemId), step.quantity == null ? 1 : Std.int(step.quantity),
+                step.map, step.cell, step.pad);
+        case "kills":
+            if (hardFarmReady(step.map, step.cell, step.pad)) {
+                done = huntMonster(step.monster, step.count == null ? 1 : Std.int(step.count), null);
+            }
+        case "quest":
+            var reward = step.reward == null ? -1 : step.reward;
+            if (hasBeenCompleted(step.quest) || isDailyComplete(step.quest)) done = true;
+            else if (ensureQuest(step.quest) && canComplete(step.quest)) done = complete(step.quest, reward);
+        default:
+            hardFarmLastError = "Unknown hard-farm action: " + action;
+            return false;
+    }
+
+    if (done) {
+        hardFarmStageIndex++;
+        hardFarmStageName = "stage-" + hardFarmStageIndex;
+    }
+    return false;
+}
+
+function hardFarmFinish(restore:Bool = true) {
+    stopCombat();
+    acceptAllDrops(false);
+    if (restore && hasGearSnapshot()) restoreGear();
+    hardFarmActive = false;
+    hardFarmName = "";
+    hardFarmStageName = "idle";
+    hardFarmStageIndex = 0;
+    hardFarmShopLastRequest = new Map();
+    return true;
+}
+
+function hardFarmStop() {
+    return hardFarmFinish();
+}

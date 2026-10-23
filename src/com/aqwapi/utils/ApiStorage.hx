@@ -20,6 +20,7 @@ class ApiStorage {
     public static function getEmbeddedAsset(fileName:String):String {
         if (fileName == null) return null;
         var clean = cleanFileName(fileName).toLowerCase();
+        if (StringTools.startsWith(clean, "data/")) clean = clean.substring(5);
         switch (clean) {
             case "skills.json":
                 return com.aqwapi.modules.DefaultSkillsData.getDefaultSkills();
@@ -261,9 +262,6 @@ class ApiStorage {
     }
 
     public static function getFileClass():Dynamic {
-        #if ruffle
-        return null;
-        #end
         var cls:Dynamic = null;
         #if flash
         try { cls = untyped __global__["flash.filesystem.File"]; } catch (_:Dynamic) {}
@@ -283,9 +281,6 @@ class ApiStorage {
     }
 
     public static function getFileStreamClass():Dynamic {
-        #if ruffle
-        return null;
-        #end
         var cls:Dynamic = null;
         #if flash
         try { cls = untyped __global__["flash.filesystem.FileStream"]; } catch (_:Dynamic) {}
@@ -448,7 +443,7 @@ class ApiStorage {
                 try {
                     var target = dir.resolvePath(fname);
                     if (!target.exists) {
-                        var src = appDir.resolvePath("assets/" + fname);
+                        var src = appDir.resolvePath("assets/data/" + fname);
                         var seedContent = readFileStream(src);
                         if (seedContent == null || StringTools.trim(seedContent).length == 0) {
                             seedContent = getEmbeddedAsset(fname);
@@ -466,7 +461,7 @@ class ApiStorage {
             try {
                 var skillsTarget = dir.resolvePath("userSkills.json");
                 if (!skillsTarget.exists) {
-                    var defaultSkills = readFileStream(appDir.resolvePath("assets/userSkills.json"));
+                    var defaultSkills = readFileStream(appDir.resolvePath("assets/data/userSkills.json"));
                     if (defaultSkills == null || StringTools.trim(defaultSkills).length == 0) {
                         defaultSkills = getEmbeddedAsset("userSkills.json");
                     }
@@ -588,7 +583,7 @@ class ApiStorage {
             }
         }
 
-        // 3. Fallback to bundled app directory (File.applicationDirectory/assets/<clean> or File.applicationDirectory/<clean>)
+        // 3. Fallback to bundled app directory. Data defaults live under assets/data.
         try {
             var FileClass:Dynamic = getFileClass();
             if (FileClass != null) {
@@ -600,6 +595,11 @@ class ApiStorage {
                     appDir = getStaticProp(FileClass, "applicationDirectory");
                 }
                 if (appDir != null) {
+                    var dataFile = appDir.resolvePath("assets/data/" + clean);
+                    var dataText = readFileStream(dataFile);
+                    if (dataText != null && StringTools.trim(dataText).length > 0) return dataText;
+
+                    // Keep the root assets fallback for older external packages.
                     var f1 = appDir.resolvePath("assets/" + clean);
                     var txt1 = readFileStream(f1);
                     if (txt1 != null && StringTools.trim(txt1).length > 0) return txt1;

@@ -38,6 +38,9 @@ class CombatEngine {
     public static var huntPriority:String = "lowest_hp";
     // Counter & reflect aura handling
     public static var counterHandler:Bool = false;
+    // Server-triggered consumable guard (for example, Vigil in /seavoice).
+    public static var vigilGuardEnabled:Bool = false;
+    public static var vigilGuardItem:String = "Vigil";
     public static var globalStopOnTargetAuras:Array<String> = [];
     public static var pausedAuraName:String = null;
     public static var isPausedByAura(get, never):Bool;
@@ -71,6 +74,15 @@ class CombatEngine {
     private static var _lastFallbackWarnTime:Float = 0;
     private static var _lastWarnedMismatchClass:String = "";
     private static var _temporaryIgnore:Map<String, Float> = new Map<String, Float>();
+    private static var _vigilWarningPending:Bool = false;
+    private static var _vigilWarningStartedAt:Float = ApiTimings.UNSET_TIMESTAMP_MS;
+    private static var _vigilCastDueAt:Float = ApiTimings.UNSET_TIMESTAMP_MS;
+    private static var _vigilNextCastAt:Float = ApiTimings.UNSET_TIMESTAMP_MS;
+    private static var _vigilCastAttempted:Bool = false;
+    private static var _vigilWarnedMissingAura:Bool = false;
+    private static var _vigilItemEquipped:Bool = false;
+    private static var _lastVisibleVigilNode:Dynamic = null;
+    private static var _visibleVigilNodes:Array<Dynamic> = null;
 
     private static function isTemporarilyIgnored(mmid:String):Bool {
         if (mmid == null || mmid == "" || _temporaryIgnore == null) return false;
@@ -121,6 +133,9 @@ class CombatEngine {
         init();
         isSmart = smart;
         IS_ON = true;
+        // Class equipment can rebuild the action bar after Vigil was enabled. Re-apply the
+        // usable here so slot 6 is prepared for the currently active class as well.
+        if (vigilGuardEnabled) prepareVigilItem();
         var confClass = (smartClass != null && smartClass != "" && smartClass != "Current") ? smartClass : "Current";
         var isCurrentClass = (confClass == "Current");
         var activeClass = isCurrentClass ? SkillManager.getCurrentClassName() : confClass;
@@ -150,6 +165,9 @@ class CombatEngine {
         _lastCastAt = ApiTimings.UNSET_TIMESTAMP_MS;
         _lastSkillAt = ApiTimings.UNSET_TIMESTAMP_MS;
         _avatarBusyAnim = false;
+        clearVigilWarning();
+        _lastVisibleVigilNode = null;
+        _visibleVigilNodes = null;
         ActionFeed.reset();
         _waitUntil = {};
         if (_timer != null && !_timer.running) {
@@ -180,6 +198,9 @@ class CombatEngine {
         _branchStepFirstFailTime = -1;
         _lastActiveModeConfig = null;
         _temporaryIgnore = new Map<String, Float>();
+        clearVigilWarning();
+        _lastVisibleVigilNode = null;
+        _visibleVigilNodes = null;
         if (_timer != null && _timer.running) {
             _timer.stop();
         }
@@ -425,6 +446,39 @@ class CombatEngine {
         return targetActionAgeMs(windowMs, typeFilter) >= 0;
     }
 
+    public static inline function isVigilGuardActive():Bool return _vigilWarningPending;
+
+    /** Reset per-session Vigil reaction state without changing the user's enabled preference. */
+    public static function resetVigilGuardTransientState():Void {
+        clearVigilWarning();
+        _lastVisibleVigilNode = null;
+        _visibleVigilNodes = null;
+        _vigilItemEquipped = false;
+        _vigilCastDueAt = ApiTimings.UNSET_TIMESTAMP_MS;
+        _vigilNextCastAt = ApiTimings.UNSET_TIMESTAMP_MS;
+        _vigilCastAttempted = false;
+    }
+
+    public static function cancelVigilGuard():Void {
+        resetVigilGuardTransientState();
+    }
+
+    /** Prepare the consumable action without starting or stopping combat. */
+    public static function prepareVigilItem():Bool {
+        if (!vigilGuardEnabled || Api.inventory == null) return false;
+        try {
+            if (!Api.inventory.hasItem(vigilGuardItem)) return false;
+
+            // This is intentionally an activation-time operation. AQW locks potion actions while
+            // applying the usable item; retrying here during combat would reset that lock and make
+            // the Vigil window impossible to meet.
+            Api.inventory.equipUsable(vigilGuardItem);
+            _vigilItemEquipped = true;
+            return true;
+        } catch (_:Dynamic) {}
+        return false;
+    }
+
     public static inline function noteCast():Void {
         _lastCastAt = ApiTime.now();
     }
@@ -572,6 +626,168 @@ class CombatEngine {
         } catch (_:Dynamic) {}
     }
 
+    /** Called by ActionFeed when the server announces a lethal resistance check. */
+    public static function notifyVigilWarning(message:String):Void {
+        if (!vigilGuardEnabled || _vigilWarningPending) return;
+
+        // AQW can replay/update combat text while changing maps or restoring the character.
+        // VibeSkua only reacts while its combat loop has a live target; do the same so an old
+        // warning in battleon cannot arm Vigil before the player enters the boss fight.
+        try {
+            if (Api.game == null || Api.game.world == null || Api.game.world.myAvatar == null
+                || Api.game.world.myAvatar.target == null
+                || Api.game.world.myAvatar.target.dataLeaf == null
+                || Api.game.world.myAvatar.target.dataLeaf.intHP <= 0) {
+                return;
+            }
+        } catch (_:Dynamic) {
+            return;
+        }
+
+        _vigilWarningPending = true;
+        _vigilWarningStartedAt = ApiTime.now();
+        _vigilCastDueAt = _vigilWarningStartedAt + ApiTimings.VIGIL_GUARD_DELAY_MS;
+        _vigilNextCastAt = _vigilCastDueAt;
+        _vigilCastAttempted = false;
+        _vigilWarnedMissingAura = false;
+        ApiLogger.warn("Combat", "Vigil Guard warning detected: " + message);
+
+        // ActionFeed receives the warning from the server event path. The actual native press is
+        // intentionally deferred by a small, configured lag allowance and occurs once from the
+        // combat loop; the loop then only confirms the aura and timeout.
+        wake();
+    }
+
+    private static function clearVigilWarning():Void {
+        _vigilWarningPending = false;
+        _vigilWarningStartedAt = ApiTimings.UNSET_TIMESTAMP_MS;
+        _vigilCastDueAt = ApiTimings.UNSET_TIMESTAMP_MS;
+        _vigilNextCastAt = ApiTimings.UNSET_TIMESTAMP_MS;
+        _vigilCastAttempted = false;
+        _vigilWarnedMissingAura = false;
+    }
+
+    private static function attemptVigilCast():Bool {
+        try {
+            if (Api.inventory == null || !Api.inventory.hasItem(vigilGuardItem)) {
+                if (!_vigilWarnedMissingAura) {
+                    _vigilWarnedMissingAura = true;
+                    ApiLogger.error("Combat", "Vigil Guard item not found: " + vigilGuardItem);
+                }
+                return false;
+            }
+            if (!_vigilItemEquipped) {
+                return false;
+            }
+            // Match the native Game.key_actBar() path: resolve the displayed i6 action, check
+            // only isOK, and let World.testAction() perform all AQW validation.
+            if (SkillCaster.pressNativeActionBarSlot(Api.game.world, 5)) {
+                noteSkillCast();
+                ApiLogger.info("Combat", "Vigil Guard pressed slot 6 (" + vigilGuardItem + ").");
+                return true;
+            }
+        } catch (err:Dynamic) {
+            ApiLogger.warn("Combat", "Vigil Guard cast failed: " + Std.string(err));
+        }
+        return false;
+    }
+
+    /**
+     * Runs before target selection and normal rotation. The cast remains a normal AQW slot-6
+     * action, so the game validates inventory, cooldown and the resulting aura as usual.
+     */
+    private static function handleVigilGuard(world:Dynamic, avatar:Dynamic, now:Float):Bool {
+        if (!vigilGuardEnabled || !_vigilWarningPending) return false;
+
+        var hasVigil:Bool = false;
+        try {
+            hasVigil = Api.aura != null && Api.aura.has("Vigil", "player", world, avatar, null);
+        } catch (_:Dynamic) {}
+        if (hasVigil) {
+            ApiLogger.info("Combat", "Vigil Guard protected the player; resuming combat.");
+            clearVigilWarning();
+            return true;
+        }
+
+        if (_vigilWarningStartedAt > ApiTimings.UNSET_TIMESTAMP_MS
+            && now - _vigilWarningStartedAt >= ApiTimings.VIGIL_GUARD_TIMEOUT_MS) {
+            ApiLogger.error("Combat", "Vigil Guard could not obtain the Vigil aura in time; releasing the guard hold.");
+            clearVigilWarning();
+            return true;
+        }
+
+        if (_vigilNextCastAt > ApiTimings.UNSET_TIMESTAMP_MS && now >= _vigilNextCastAt) {
+            _vigilCastAttempted = true;
+            attemptVigilCast();
+            _vigilNextCastAt = now + ApiTimings.VIGIL_GUARD_RETRY_MS;
+        }
+
+        // Keep pressing the native slot like a player repeatedly tapping the potion key until
+        // the server confirms the Vigil aura or the mechanic window expires.
+        return true;
+    }
+
+    /**
+     * Packet detection is the preferred path, but AQW also renders monster
+     * warnings through Game.addUpdate(). Scan that visible update layer as a
+     * fallback so the guard still reacts when the packet shape changes.
+     *
+     * This intentionally does not inspect chat: chat messages are not part of
+     * mcUpdates, so a player typing the phrase cannot trigger Vigil.
+     */
+    private static function scanVisibleVigilWarning():Void {
+        if (!vigilGuardEnabled || Api.game == null || Api.game.ui == null) return;
+
+        try {
+            if (Api.game.world == null || Api.game.world.myAvatar == null
+                || Api.game.world.myAvatar.target == null) return;
+            var updates:Dynamic = Api.game.ui.mcUpdates;
+            if (updates == null || updates.numChildren == null) return;
+
+            var matched:Dynamic = null;
+            var currentNodes:Array<Dynamic> = [];
+            var baselineReady:Bool = _visibleVigilNodes != null;
+            var count:Int = Std.int(updates.numChildren);
+            for (i in 0...count) {
+                var child:Dynamic = updates.getChildAt(i);
+                if (child == null) continue;
+                currentNodes.push(child);
+
+                var text:String = "";
+                try {
+                    if (child.t1 != null && child.t1.ti != null && child.t1.ti.text != null) {
+                        text = Std.string(child.t1.ti.text);
+                    }
+                } catch (_:Dynamic) {}
+
+                if (text == "") {
+                    try {
+                        if (child.text != null) text = Std.string(child.text);
+                    } catch (_:Dynamic) {}
+                }
+
+                var lower:String = StringTools.replace(text.toLowerCase(), "’", "'");
+                if (lower.indexOf("you will not resist") != -1
+                    || lower.indexOf("you cannot resist") != -1
+                    || lower.indexOf("you can't resist") != -1
+                    || lower.indexOf("you cant resist") != -1) {
+                    matched = child;
+                    // Only a newly-created AQW update node may trigger the fallback. This prevents
+                    // an old warning left in mcUpdates from putting the guard into hold at startup.
+                    var isNewNode:Bool = baselineReady && _visibleVigilNodes.indexOf(child) == -1;
+                    if (isNewNode && child != _lastVisibleVigilNode) {
+                        _lastVisibleVigilNode = child;
+                        notifyVigilWarning(text);
+                    }
+                    break;
+                }
+            }
+
+            _visibleVigilNodes = currentNodes;
+            if (matched == null) _lastVisibleVigilNode = null;
+        } catch (_:Dynamic) {}
+    }
+
     private static function onTick(e:TimerEvent):Void {
         if (Api.game == null || Api.game.world == null || Api.game.world.myAvatar == null) return;
         if (Api.transport != null) Api.transport.ensureListening();
@@ -588,6 +804,11 @@ class CombatEngine {
                 Api.combat.taunt.checkTauntTick(nowTick);
             }
         }
+        // A Vigil reaction has priority over the normal rotation. It is checked before target
+        // selection because the warning is a player mechanic and the server may already have
+        // cleared/replaced the target wrapper by the time the next combat tick runs.
+        scanVisibleVigilWarning();
+        if (handleVigilGuard(world, avatar, ApiTime.now())) return;
         var target:Dynamic = avatar.target;
         noteTargetAction(world, target);
         if (target != null) {

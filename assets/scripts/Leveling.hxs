@@ -1,0 +1,30 @@
+// Leveling - ShadowBattleon Doomed Trolls
+// Repeats the three leveling quests: 9421, 9422, and 9423.
+
+var levelingQuests = [9421, 9422, 9423];
+var levelingActive = false;
+
+function onStart() {
+    levelingActive = true;
+    log("[Leveling] Starting ShadowBattleon leveling");
+    acceptAllDrops();
+    equipLoadout("farm");
+    ensureMap("shadowbattleon", "Enter", "Spawn");
+    autoQuest(levelingQuests);
+}
+
+function onTick() {
+    if (!levelingActive) return;
+    if (!isLoaded() || mapName() != "shadowbattleon") {
+        ensureMap("shadowbattleon", "Enter", "Spawn");
+        return;
+    }
+    ensureCombat();
+}
+
+function onStop() {
+    levelingActive = false;
+    stopAutoQuest();
+    stopCombat();
+    log("[Leveling] ShadowBattleon leveling stopped");
+}

@@ -23,6 +23,6 @@ class DefaultEnhancementsData {
     }
 
     public static macro function getEnhancementsConst():haxe.macro.Expr {
-        return com.aqwapi.utils.MacroAssets.loadAsset("enhancements.json");
+        return com.aqwapi.utils.MacroAssets.loadAsset("data/enhancements.json");
     }
 }

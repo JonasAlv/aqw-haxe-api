@@ -12,7 +12,10 @@ class ApiLogger {
     public static var level:Int = LEVEL_INFO;
     public static var printToConsole:Bool = true;
     #if ruffle
-    public static var printToFile:Bool = false;
+    // Mugetsu's storage.patch provides a writable
+    // flash.filesystem.File.applicationStorageDirectory. Keep API logs there so
+    // they follow the same storage contract as scripts, presets and settings.
+    public static var printToFile:Bool = true;
     public static var printToChat:Bool = false;
     #else
     public static var printToFile:Bool = true;
@@ -125,7 +128,21 @@ class ApiLogger {
                 return null;
             };
 
-            // Priority 1: Current working directory assets/api.log (Desktop ADL, build/, or game execution folder)
+            // Priority 1: Mugetsu/Ruffle application storage. storage.patch maps
+            // applicationStorageDirectory to the configured AQW storage root.
+            // This is the canonical location for API-owned files in Ruffle.
+            try {
+                var storageCls:Dynamic = Type.resolveClass("com.aqwapi.utils.ApiStorage");
+                if (storageCls != null && Reflect.field(storageCls, "getDataDirectory") != null) {
+                    var dataDir:Dynamic = storageCls.getDataDirectory();
+                    if (dataDir != null) {
+                        var c = testCandidate(dataDir.resolvePath("api.log"));
+                        if (c != null) { _logFile = c; return _logFile; }
+                    }
+                }
+            } catch (_:Dynamic) {}
+
+            // Priority 2: Current working directory assets/api.log (legacy AIR/ADL fallback)
             try {
                 if (fileCls.currentDirectory != null) {
                     var c = testCandidate(fileCls.currentDirectory.resolvePath("assets/api.log"));
@@ -133,7 +150,7 @@ class ApiLogger {
                 }
             } catch (_:Dynamic) {}
 
-            // Priority 2: applicationDirectory nativePath assets/api.log (Desktop bypass for app:/ URI restriction)
+            // Priority 3: applicationDirectory nativePath assets/api.log (legacy desktop fallback)
             try {
                 if (fileCls.applicationDirectory != null) {
                     var appNative:String = fileCls.applicationDirectory.nativePath;
@@ -147,21 +164,7 @@ class ApiLogger {
                 }
             } catch (_:Dynamic) {}
 
-            // Priority 3: ApiStorage shared directory (Android Documents/AQWPocket/assets/api.log)
-            try {
-                var storageCls:Dynamic = Type.resolveClass("com.aqwapi.utils.ApiStorage");
-                if (storageCls != null && Reflect.field(storageCls, "getDataDirectory") != null) {
-                    var dataDir:Dynamic = storageCls.getDataDirectory();
-                    if (dataDir != null) {
-                        var c = testCandidate(dataDir.resolvePath("assets/api.log"));
-                        if (c != null) { _logFile = c; return _logFile; }
-                        var c2 = testCandidate(dataDir.resolvePath("api.log"));
-                        if (c2 != null) { _logFile = c2; return _logFile; }
-                    }
-                }
-            } catch (_:Dynamic) {}
-
-            // Priority 4: applicationStorageDirectory assets/api.log or api.log (guaranteed writable)
+            // Priority 4: applicationStorageDirectory assets/api.log or api.log (legacy fallback)
             try {
                 if (fileCls.applicationStorageDirectory != null) {
                     var c = testCandidate(fileCls.applicationStorageDirectory.resolvePath("assets/api.log"));
@@ -171,7 +174,7 @@ class ApiLogger {
                 }
             } catch (_:Dynamic) {}
 
-            // Priority 5: userDirectory/AQWPocket/assets/api.log
+            // Priority 5: userDirectory/AQWPocket/assets/api.log (legacy fallback)
             try {
                 if (fileCls.userDirectory != null) {
                     var c = testCandidate(fileCls.userDirectory.resolvePath("AQWPocket/assets/api.log"));
@@ -352,9 +355,6 @@ class ApiLogger {
 
     public static function clearLog():Void {
         _memoryLines = [];
-        #if ruffle
-        return;
-        #end
         try {
             var f = _resolveLogFile();
             if (f != null) {
@@ -374,11 +374,6 @@ class ApiLogger {
     }
 
     public static function readLog(maxBytes:Int = 500000):String {
-        #if ruffle
-        var memory:String = _memoryLines.join("\n");
-        if (memory.length > maxBytes) memory = memory.substring(memory.length - maxBytes);
-        return memory;
-        #end
         try {
             var f = _resolveLogFile();
             if (f != null) {

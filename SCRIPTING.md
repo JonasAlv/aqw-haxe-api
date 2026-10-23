@@ -14,8 +14,9 @@ This guide describes the current Ruffle/Mugetsu scripting runtime. It does not d
 6. [Subsystem namespaces](#subsystem-namespaces)
 7. [Script storage and Script Manager](#script-storage-and-script-manager)
 8. [Included scripts](#included-scripts)
-9. [Safety rules](#safety-rules)
-10. [Examples](#examples)
+9. [Core workflow libraries](#core-workflow-libraries)
+10. [Safety rules](#safety-rules)
+11. [Examples](#examples)
 
 ## Execution model
 
@@ -191,8 +192,16 @@ All functions below are available without a namespace prefix.
 - `enableTaunt(presetOrBoss)` / `tauntBoss(presetOrBoss)` / `taunt(presetOrBoss?)`
 - `disableTaunt()`
 - `counterHandler(enabled?)` / `enableCounterHandler(enabled?)`
+- `vigilGuard(enabled?, itemName?)` / `enableVigilGuard(enabled?, itemName?)`
+- `isVigilGuardEnabled()` / `isVigilGuardActive()`
 - `pauseOnAuras(auras)` / `clearPauseAuras()`
 - `isPausedByAura()` -> `Bool`
+
+`vigilGuard(true)` enables the native server-triggered guard used by Sea Voice-style mechanics. When
+the server packet contains a resistance warning, combat pauses its normal rotation, equips the
+configured item (default `Vigil`), and uses action-bar slot 6 until the player receives the `Vigil`
+aura. The game still validates the item, cooldown, and cast. If the item is missing or the aura does
+not appear within the safety timeout, combat stops instead of continuing unprotected.
 
 `hunt()` is an idempotent request. It returns `false` while map travel, target selection, combat, drops, or requirements are still in progress. Use an early return and let the next scheduler turn continue the same request:
 
@@ -367,6 +376,20 @@ The Script Manager discovers `.hxs` files from:
 - Bundled `assets/scripts/` files included in the API build.
 - Persistent user scripts saved by the Script Manager.
 
+Bundled scripts currently contain one runnable entrypoint:
+
+- `assets/scripts/Leveling.hxs` — ShadowBattleon leveling using quests 9421,
+  9422, and 9423.
+- `assets/scripts/core/` — reusable HScript libraries included by the entry script;
+  these files are not runnable by themselves.
+
+Bundled JSON defaults are kept separately in `assets/data/`. Their logical
+runtime names remain unchanged, so scripts and managers continue to use
+`skills.json`, `userSkills.json`, `enhancements.json`, and `item_presets.json`.
+
+Nested script names remain supported for future user content, but the bundled
+distribution intentionally exposes only `Leveling` as its active entrypoint.
+
 In Ruffle/Mugetsu, user scripts are persisted through the client’s SharedObject-backed API storage. Bundled scripts are read-only; saving a bundled script creates a user copy instead of overwriting the bundled asset.
 
 The Script Manager can:
@@ -379,20 +402,11 @@ The Script Manager can:
 
 The topbar Script button opens the manager. The Script Runner control starts or stops the selected script; opening the manager does not start it.
 
-## Included scripts
+## Included script
 
-Current bundled examples include:
-
-- `Dailies.hxs` — legacy step-based daily routine.
-- `Dailies_Advanced.hxs` — data-driven daily queue with event-assisted progression and membership-aware tasks.
-- `ShadowBattleon_Leveling.hxs` — simple auto-quest leveling example.
-- `ShadowBattleon_Core.hxs` — Shadowbattleon story quest progression using the `core.*` orchestration layer.
-- `ShadowBattleon_Farm_EventDriven.hxs` — lifecycle and event callback example.
-- `ShadowBattleon_API_Test.hxs` — result callbacks and state-health probe example.
-- `Bank_All_Items.hxs`, `Bank_All_Ac_Items.hxs`, and `Unbank_All_Non_Ac_Items.hxs` — inventory examples.
-- `Optimize_AC_Inventory.hxs` and `Sell_Blacklisted.hxs` — maintenance examples.
-
-The advanced daily script demonstrates the preferred direction for larger scripts: a small state machine, declarative task data, native API actions, and event callbacks used to wake or re-evaluate the current task.
+`Leveling.hxs` demonstrates the minimal runtime model: the script supplies the
+quest IDs and starts native quest/combat automation, while the compiled API
+performs live game checks and sends normal AQW actions.
 
 ## Safety rules
 
@@ -501,39 +515,65 @@ function onTick() {
 
 ### Core workflow layer
 
-The API now exposes a reusable orchestration layer above the managers. Managers remain the low-level operations; cores compose them into safe workflows with state checks, native timing, target locking, recovery, and event hooks.
+The API exposes native managers and primitive actions. Optional orchestration
+cores are loaded as HScript libraries, so the API remains usable without any
+bundled farm, story, daily, or hard-farm recipe.
 
-Available namespaces:
-
-```text
-core.context       core.wait          core.events
-core.recovery      core.travel        core.target
-core.combat        core.hunt          core.boss
-core.quest         core.story         core.farm
-core.dailies       core.drops         core.inventory
-core.shop          core.merge         core.loadout
-core.enhancement   core.progression   core.boost
-core.party
-```
+There is no mandatory `core` namespace compiled into the API.
 
 Example goal-oriented script:
 
 ```hscript
+#include "core/CoreFarms"
+
 function onStart() {
-    core.context.privateRooms = true;
-    core.drops.acceptAll(true);
-    core.loadout.equipClass("Lord of Order");
+    farmCoreStart("farm");
 }
 
 function onTick() {
-    if (!core.recovery.maintain()) return;
-    if (core.farm.item("Doomed Troll", "Troll Token", 10, "shadowbattleon")) {
-        core.combat.stop();
+    if (farmCoreItem("Doomed Troll", "Troll Token", 10, "shadowbattleon")) {
+        stopCombat();
         stop();
     }
 }
 ```
 
-Domain-specific wrappers live under `com.aqwapi.scripting.content` for VHL, LR, NSoD, BLoD, Awe, Forge, and Ultras. They are intentionally thin: generic travel, combat, quest, inventory, drop, and recovery behavior stays in the core layer.
+Content-specific recipes will live in runtime HScript files when added. They
+will use the primitive API plus optional libraries and will not be compiled
+into the API.
 
 Core calls are non-blocking and should be retried from `onTick` or resumed from `onZoneEntered`, `onQuestUpdated`, `onInventoryChanged`, and `onCombatUpdated`. They do not create background threads or access AQW objects away from the game thread.
+
+## Core workflow libraries
+
+Reusable HScript recipes live in `assets/scripts/core/` and are included by
+entry scripts with `#include`:
+
+```hscript
+#include "core/CoreFarms"
+#include "core/CoreHardFarms"
+#include "core/CoreDailies"
+```
+
+The include is expanded before HScript parsing. These files are libraries, not
+standalone scripts. Quest IDs, target monsters, item IDs, quantities, and
+reward choices belong to the entry script rather than the compiled API.
+
+Hard-farm plans may also be represented as data and passed to
+`hardFarmPlan()`:
+
+```hscript
+var plan = [
+    { action: "travel", map: "tercessuinotlim", cell: "Enter", pad: "Spawn" },
+    { action: "item", monster: "Cultist High Priest", item: "Tainted Gem", quantity: 10 },
+    { action: "quest", quest: 5895 }
+];
+
+if (hardFarmPlan(plan)) {
+    hardFarmFinish();
+    stop();
+}
+```
+
+The plan runner advances only after the native API reports a stage complete;
+it does not send packets or create its own combat loop.

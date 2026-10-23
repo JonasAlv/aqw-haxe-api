@@ -184,6 +184,12 @@ class ActionFeed {
             var p:Dynamic = e.params;
             if (p == null) return;
             var d:Dynamic = p.dataObj;
+
+            // Sea Voice and several related boss mechanics announce their lethal check in the
+            // server packet stream. Scan the event wrapper as well as dataObj because pext packets
+            // can carry the useful `b.o.ct.anims[].msg` payload one level above the normalized object.
+            detectVigilWarning(p);
+            detectVigilWarning(d);
             if (d == null) return;
 
             // The command lives in a different place per wire format, and getting this wrong fails
@@ -244,6 +250,44 @@ class ActionFeed {
         } catch (_:Dynamic) {
             // A parse failure must never take down the dispatcher or the rest of combat.
         }
+    }
+
+    /**
+     * Finds the server's warning text without depending on one packet wrapper. AE has used all of
+     * these spellings in different encounters/clients:
+     *   "You will not resist!"
+     *   "You cannot resist."
+     *   "You can't resist"
+     * The scan is deliberately bounded because this runs on every extension response.
+     */
+    private static function detectVigilWarning(root:Dynamic):Void {
+        if (!CombatEngine.vigilGuardEnabled) return;
+        scanVigilNode(root, 0);
+    }
+
+    private static function scanVigilNode(value:Dynamic, depth:Int):Void {
+        if (value == null || depth > 12) return;
+        try {
+            if (Std.isOfType(value, String)) {
+                var text:String = Std.string(value).toLowerCase();
+                text = StringTools.replace(text, "’", "'");
+                if (text.indexOf("you will not resist") != -1
+                    || text.indexOf("you cannot resist") != -1
+                    || text.indexOf("you can't resist") != -1
+                    || text.indexOf("you cant resist") != -1) {
+                    CombatEngine.notifyVigilWarning(Std.string(value));
+                    return;
+                }
+                return;
+            }
+            if (Std.isOfType(value, Array)) {
+                for (item in (cast value : Array<Dynamic>)) scanVigilNode(item, depth + 1);
+                return;
+            }
+            for (field in Reflect.fields(value)) {
+                scanVigilNode(Reflect.field(value, field), depth + 1);
+            }
+        } catch (_:Dynamic) {}
     }
 
     private static function fieldList(o:Dynamic):String {
