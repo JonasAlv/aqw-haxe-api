@@ -1,0 +1,98 @@
+// ShadowBattleon farm using the API core orchestration layer.
+//
+// This is intentionally a small, goal-oriented example:
+//   - core.context owns the script policy
+//   - core.travel handles map/cell navigation
+//   - core.recovery handles death/health checks
+//   - core.target keeps the selected monster in the current cell
+//   - core.farm delegates item tracking and native combat timing
+//
+// Change these values to reuse the workflow for another ShadowBattleon drop.
+var goal = {
+    map: "shadowbattleon",
+    cell: "Enter",
+    pad: "Spawn",
+    monster: "Doomed Troll",
+    item: "Troll Token",
+    quantity: 10,
+    temp: false
+};
+
+var finished = false;
+var lastStatusAt = 0;
+
+function onStart() {
+    finished = false;
+    lastStatusAt = 0;
+
+    core.context.privateRooms = true;
+    core.context.privateRoomNumber = 100000;
+    core.context.autoRecover = true;
+
+    core.drops.acceptAll(true);
+    core.drops.track(goal.item);
+
+    log("[ShadowBattleon Core] started: " + goal.item + " x" + goal.quantity);
+}
+
+function onTick() {
+    if (finished || core.context.isStopped()) return;
+    if (!core.context.isReady()) return;
+
+    if (!core.recovery.maintain()) return;
+
+    if (core.inventory.has(goal.item, goal.quantity)) {
+        finish("already have the requested quantity");
+        return;
+    }
+
+    if (!core.wait.mapLoaded(goal.map)) {
+        core.travel.ensure(goal.map, goal.cell, goal.pad);
+        return;
+    }
+
+    if (!core.wait.cell(goal.cell)) {
+        core.travel.ensureCell(goal.cell, goal.pad);
+        return;
+    }
+
+    // The farm core is idempotent: it registers the drop, checks inventory/bank,
+    // locks the target through CombatManager, and starts native combat as needed.
+    if (core.farm.item(goal.monster, goal.item, goal.quantity, goal.map, goal.temp)) {
+        finish("farm goal reached");
+        return;
+    }
+
+    // This is only a recovery path for a stale target. The next core.farm.item()
+    // call remains responsible for starting combat and its skill timings.
+    if (!core.combat.isRunning()) {
+        var target = core.target.nearest(goal.monster);
+        if (target != null && !core.target.valid()) {
+            core.target.lock(goal.monster, goal.cell);
+        }
+    }
+
+    var now = core.context.now();
+    if (now - lastStatusAt >= 5000) {
+        lastStatusAt = now;
+        log("[ShadowBattleon Core] farming " + goal.item + " (" +
+            core.inventory.quantity(goal.item) + "/" + goal.quantity + ")");
+    }
+}
+
+function finish(reason) {
+    if (finished) return;
+    finished = true;
+    core.combat.stop();
+    core.target.clear();
+    core.drops.pickup(goal.item);
+    log("[ShadowBattleon Core] complete: " + reason);
+    stop();
+}
+
+function onStop() {
+    finished = true;
+    core.combat.stop();
+    core.target.clear();
+    log("[ShadowBattleon Core] stopped");
+}
